@@ -82,6 +82,7 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #include "srv0srv.h"
 #include "srv0start.h"
 #include "sync0sync.h"
+#include "trx0trx.h"
 #include "ut0new.h"
 
 #include "scope_guard.h"
@@ -3326,6 +3327,9 @@ buf_page_t *buf_page_get_zip(const page_id_t &page_id,
   BPageMutex *block_mutex;
   rw_lock_t *hash_lock;
   bool discard_attempted = false;
+  trx_t *trx = innobase_get_trx_for_slow_log();
+  uint64_t start_time;
+  uint64_t finish_time;
   buf_pool_t *buf_pool = buf_pool_get(page_id);
 
   Counter::inc(buf_pool->stat.m_n_page_gets, page_id.page_no());
@@ -3345,7 +3349,7 @@ buf_page_t *buf_page_get_zip(const page_id_t &page_id,
     /* Page not in buf_pool: needs to be read from file */
 
     ut_ad(!hash_lock);
-    buf_read_page(page_id, page_size, NULL);
+    buf_read_page(page_id, page_size, trx);
 
 #if defined UNIV_DEBUG || defined UNIV_BUF_DEBUG
     ut_a(++buf_dbg_counter % 5771 || buf_validate());
@@ -3360,6 +3364,12 @@ buf_page_t *buf_page_get_zip(const page_id_t &page_id,
     rw_lock_s_unlock(hash_lock);
 
     return (nullptr);
+  }
+
+  if (UNIV_UNLIKELY(bpage->is_corrupt && srv_pass_corrupt_table <= 1)) {
+    rw_lock_s_unlock(hash_lock);
+
+    return (NULL);
   }
 
   ut_ad(!buf_pool_watch_is_sentinel(buf_pool, bpage));
@@ -3422,6 +3432,15 @@ got_block:
     /* Let us wait until the read operation
     completes */
 
+    if (UNIV_LIKELY_NULL(trx)) {
+      ut_ad(trx->take_stats);
+      start_time = std::chrono::duration_cast<std::chrono::microseconds>(
+                       std::chrono::steady_clock::now().time_since_epoch())
+                       .count();
+    } else {
+      start_time = 0;
+    }
+
     for (;;) {
       enum buf_io_fix io_fix;
 
@@ -3434,6 +3453,13 @@ got_block:
       } else {
         break;
       }
+    }
+
+    if (UNIV_UNLIKELY(start_time != 0)) {
+      finish_time = std::chrono::duration_cast<std::chrono::microseconds>(
+                        std::chrono::steady_clock::now().time_since_epoch())
+                        .count();
+      trx->io_reads_wait_timer += (ulint)(finish_time - start_time);
     }
   }
 
@@ -4600,14 +4626,14 @@ bool buf_page_optimistic_get(ulint rw_latch, buf_block_t *block,
   ut_a(buf_block_get_state(block) == BUF_BLOCK_FILE_PAGE);
 #endif /* UNIV_DEBUG || UNIV_BUF_DEBUG */
 
-  ut_d(buf_page_mutex_enter(block));
-  ut_ad(!block->page.file_page_was_freed);
-  ut_d(buf_page_mutex_exit(block));
-
+  trx_t *trx;
   if (access_time == std::chrono::steady_clock::time_point{}) {
+    trx = innobase_get_trx_for_slow_log();
     /* In the case of a first access, try to apply linear read-ahead */
     buf_read_ahead_linear(block->page.id, block->page.size, ibuf_inside(mtr),
-                          NULL);
+                          trx);
+  } else {
+    trx = nullptr;
   }
 
 #ifdef UNIV_IBUF_COUNT_DEBUG
@@ -4806,6 +4832,7 @@ static void buf_page_init_low(buf_page_t *bpage) noexcept {
 
   HASH_INVALIDATE(bpage, hash);
 
+  bpage->is_corrupt = false;
   ut_d(bpage->file_page_was_freed = false);
 }
 
@@ -5948,7 +5975,22 @@ bool buf_page_io_complete(buf_page_t *bpage, bool evict, IORequest *type,
                                << FORCE_RECOVERY_MSG;
       }
 
-      if (srv_force_recovery < SRV_FORCE_IGNORE_CORRUPT) {
+      if (srv_pass_corrupt_table && bpage->id.space() != 0 &&
+          bpage->id.space() < dict_sys_t::s_log_space_id) {
+        trx_t *trx;
+
+        ib::warn() << "Space " << bpage->id.space()
+                   << " will be treated as corrupt.";
+        fil_space_set_corrupt(bpage->id.space());
+
+        trx = innobase_get_trx();
+        if (trx && trx->dict_operation_lock_mode == RW_X_LATCH) {
+          dict_table_set_corrupt_by_space(bpage->id.space(), false);
+        } else {
+          dict_table_set_corrupt_by_space(bpage->id.space(), true);
+        }
+        bpage->is_corrupt = true;
+      } else if (srv_force_recovery < SRV_FORCE_IGNORE_CORRUPT) {
         /* We do not have to mark any index as
         corrupted here, since we only know the space
         id but not the exact index id. There could

@@ -2895,6 +2895,15 @@ trx_t *check_trx_exists(THD *thd) /*!< in: user thread handle */
   return (trx);
 }
 
+/** Get the transaction of the current connection handle, if either exists.
+@return transaction of the current connection handle, or NULL. */
+trx_t *innobase_get_trx(void) {
+  THD *const thd = current_thd;
+  if (UNIV_UNLIKELY(!thd)) return (nullptr);
+
+  return (thd_to_trx(thd));
+}
+
 /** Get the transaction of the current connection handle if slow query log
 InnoDB extended statistics should be collected.
 @return transaction object if statistics should be collected, or NULL. */
