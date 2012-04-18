@@ -1954,6 +1954,14 @@ struct dict_table_t {
   /** Unlock the table handle. */
   inline void unlock();
 
+  /** @return whether this table is readable
+  @retval true  normally
+  @retval false if this is a single-table tablespace
+                and the .ibd file is missing, or a
+                page cannot be read or decrypted */
+
+  bool is_readable() const { return (UNIV_LIKELY(!ibd_file_missing)); }
+
 #ifndef UNIV_HOTBACKUP
   /** Get schema and table name in system character set.
   @param[out]   schema  schema name
@@ -2454,6 +2462,8 @@ detect this and will eventually quit sooner. */
   but just need a increased counter to track consistent view while
   proceeding SELECT as part of UPDATE. */
   uint64_t sess_trx_id;
+
+  bool is_corrupt;
 
 #ifdef UNIV_DEBUG
   /** Magic number. */
