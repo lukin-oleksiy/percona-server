@@ -7579,6 +7579,12 @@ int ha_innobase::open(const char *name, int, uint open_flags,
     ib_table = nullptr;
   }
 
+  if (UNIV_UNLIKELY(ib_table && ib_table->is_corrupt &&
+                    srv_pass_corrupt_table <= 1)) {
+    free_share(m_share);
+    return HA_ERR_CRASHED_ON_USAGE;
+  }
+
   /* For encrypted table, check if the encryption info in data
   file can't be retrieved properly, mark it as corrupted. */
   if (ib_table != nullptr && ib_table->ibd_file_missing &&
@@ -15564,6 +15570,8 @@ int ha_innobase::truncate_impl(const char *name, TABLE *form,
     return HA_ERR_TABLESPACE_MISSING;
   }
 
+  if (UNIV_UNLIKELY(innodb_table->is_corrupt)) return HA_ERR_CRASHED;
+
   trx_t *trx = check_trx_exists(thd);
   innobase_register_trx(ht, thd, trx);
 
@@ -23542,6 +23550,24 @@ char **thd_innodb_interpreter(THD *thd) {
 }
 #endif /* UNIV_DEBUG */
 
+static const char *corrupt_table_action_names[] = {"assert",  /* 0 */
+                                                   "warn",    /* 1 */
+                                                   "salvage", /* 2 */
+                                                   NullS};
+
+static TYPELIB corrupt_table_action_typelib = {
+    array_elements(corrupt_table_action_names) - 1,
+    "corrupt_table_action_typelib", corrupt_table_action_names, nullptr};
+
+static MYSQL_SYSVAR_ENUM(
+    corrupt_table_action, srv_pass_corrupt_table, PLUGIN_VAR_RQCMDARG,
+    "Warn corruptions of user tables as 'corrupt table' instead of not "
+    "crashing itself, "
+    "when used with file_per_table. "
+    "All file io for the datafile after detected as corrupt are disabled, "
+    "except for the deletion.",
+    nullptr, nullptr, 0, &corrupt_table_action_typelib);
+
 static SYS_VAR *innobase_system_variables[] = {
     MYSQL_SYSVAR(api_trx_level),
     MYSQL_SYSVAR(api_bk_commit_interval),
@@ -23759,6 +23785,7 @@ static SYS_VAR *innobase_system_variables[] = {
 #endif /* UNIV_DEBUG */
     MYSQL_SYSVAR(parallel_read_threads),
     MYSQL_SYSVAR(segment_reserve_factor),
+    MYSQL_SYSVAR(corrupt_table_action),
     MYSQL_SYSVAR(ft_ignore_stopwords),
     nullptr};
 
