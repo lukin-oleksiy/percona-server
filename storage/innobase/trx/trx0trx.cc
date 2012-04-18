@@ -227,6 +227,13 @@ static void trx_init(trx_t *trx) {
 
   trx->error_index = nullptr;
 
+  trx->io_reads = 0;
+  trx->io_read = 0;
+  trx->io_reads_wait_timer = 0;
+  trx->lock_que_wait_timer = 0;
+  trx->innodb_que_wait_timer = 0;
+  trx->take_stats = false;
+
   /* During asynchronous rollback, we should reset forced rollback flag
   only after rollback is complete to avoid race with the thread owning
   the transaction. */
@@ -2333,9 +2340,19 @@ void trx_commit_or_rollback_prepare(trx_t *trx) /*!< in/out: transaction */
       query thread to the suspended state */
 
       if (trx->lock.que_state == TRX_QUE_LOCK_WAIT) {
+        uint64_t now;
+
         ut_a(trx->lock.wait_thr != nullptr);
         trx->lock.wait_thr->state = QUE_THR_SUSPENDED;
         trx->lock.wait_thr = nullptr;
+
+        if (UNIV_UNLIKELY(trx->take_stats)) {
+          now = std::chrono::duration_cast<std::chrono::microseconds>(
+                    std::chrono::steady_clock::now().time_since_epoch())
+                    .count();
+          trx->lock_que_wait_timer +=
+              (ulint)(now - trx->lock_que_wait_ustarted);
+        }
 
         trx->lock.que_state = TRX_QUE_RUNNING;
       }

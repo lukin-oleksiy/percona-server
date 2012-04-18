@@ -470,6 +470,11 @@ trx_t *check_trx_exists(THD *thd);
 @param[in]      trx     Transaction handle. */
 void innobase_commit_low(trx_t *trx);
 
+/** Get the transaction of the current connection handle if slow query log
+InnoDB extended statistics should be collected.
+@return transaction object if statistics should be collected, or NULL. */
+[[nodiscard]] trx_t *innobase_get_trx_for_slow_log(void);
+
 /** Return the number of read threads for this session.
 @param[in]      thd       Session instance, or nullptr to query the global
                           innodb_parallel_read_threads value. */
