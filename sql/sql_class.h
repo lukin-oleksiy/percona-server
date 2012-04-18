@@ -890,6 +890,11 @@ class Global_read_lock {
 
 extern "C" void my_message_sql(uint error, const char *str, myf MyFlags);
 
+struct QUERY_START_TIME_INFO {
+  struct timeval start_time;
+  ulonglong start_utime;
+};
+
 /**
   This class keeps the context of transactional DDL statements. Currently only
   CREATE TABLE with START TRANSACTION uses this context.
@@ -3213,6 +3218,15 @@ class THD : public MDL_context_owner,
     user_time = *t;
     set_time();
   }
+  void get_time(QUERY_START_TIME_INFO *time_info) const noexcept {
+    time_info->start_time = start_time;
+    time_info->start_utime = start_utime;
+  }
+  void set_time(const QUERY_START_TIME_INFO &time_info) noexcept {
+    start_time = time_info.start_time;
+    start_utime = time_info.start_utime;
+  }
+
   inline bool is_fsp_truncate_mode() const {
     return (variables.sql_mode & MODE_TIME_TRUNCATE_FRACTIONAL);
   }
