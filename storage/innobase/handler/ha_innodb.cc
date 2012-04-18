@@ -2895,6 +2895,16 @@ trx_t *check_trx_exists(THD *thd) /*!< in: user thread handle */
   return (trx);
 }
 
+/** Get the transaction of the current connection handle if slow query log
+InnoDB extended statistics should be collected.
+@return transaction object if statistics should be collected, or NULL. */
+trx_t *innobase_get_trx_for_slow_log(void) {
+  THD *thd = current_thd;
+  trx_t *trx = thd ? thd_to_trx(thd) : nullptr;
+  if (trx && UNIV_UNLIKELY(trx->take_stats)) return (trx);
+  return (nullptr);
+}
+
 /** InnoDB transaction object that is currently associated with THD is
 replaced with that of the 2nd argument. The previous value is
 returned through the 3rd argument's buffer, unless it's NULL.  When

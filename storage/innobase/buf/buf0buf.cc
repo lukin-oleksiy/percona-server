@@ -3345,7 +3345,7 @@ buf_page_t *buf_page_get_zip(const page_id_t &page_id,
     /* Page not in buf_pool: needs to be read from file */
 
     ut_ad(!hash_lock);
-    buf_read_page(page_id, page_size);
+    buf_read_page(page_id, page_size, NULL);
 
 #if defined UNIV_DEBUG || defined UNIV_BUF_DEBUG
     ut_a(++buf_dbg_counter % 5771 || buf_validate());
@@ -3627,7 +3627,8 @@ struct Buf_fetch {
       : m_page_id(page_id),
         m_page_size(page_size),
         m_is_temp_space(fsp_is_system_temporary(page_id.space())),
-        m_buf_pool(buf_pool_get(m_page_id)) {}
+        m_buf_pool(buf_pool_get(m_page_id)),
+        m_trx(innobase_get_trx_for_slow_log()) {}
 
   /** For fetching a single page.
   @return block from pool on success or nullptr on failure. */
@@ -3699,6 +3700,7 @@ struct Buf_fetch {
   buf_pool_t *m_buf_pool{};
   /** Hash table lock. */
   rw_lock_t *m_hash_lock{};
+  trx_t *const m_trx;  // For InnoDB slow query log extensions
 
   friend T;
 };
@@ -4121,13 +4123,13 @@ dberr_t Buf_fetch<T>::check_state(buf_block_t *&block) {
 
 template <typename T>
 void Buf_fetch<T>::read_page() {
-  if (buf_read_page(m_page_id, m_page_size)) {
+  if (buf_read_page(m_page_id, m_page_size, m_trx)) {
     /* Avoid doing read-ahead for parallel scans (well, at least currently this
     flag is used only during the parallel scans). This would cause unnecessary
     IO when the process is already being parallelized on higher level of
     abstraction. */
     if (m_mode != Page_fetch::SCAN) {
-      buf_read_ahead_random(m_page_id, m_page_size, ibuf_inside(m_mtr));
+      buf_read_ahead_random(m_page_id, m_page_size, ibuf_inside(m_mtr), m_trx);
     }
     m_retries = 0;
   } else if (m_retries < BUF_PAGE_READ_MAX_RETRIES) {
@@ -4437,7 +4439,7 @@ buf_block_t *Buf_fetch<T>::single_page() {
       access_time == std::chrono::steady_clock::time_point{}) {
     /* In the case of a first access, try to apply linear read-ahead */
 
-    buf_read_ahead_linear(m_page_id, m_page_size, ibuf_inside(m_mtr));
+    buf_read_ahead_linear(m_page_id, m_page_size, ibuf_inside(m_mtr), m_trx);
   }
 
 #ifdef UNIV_IBUF_COUNT_DEBUG
@@ -4604,7 +4606,8 @@ bool buf_page_optimistic_get(ulint rw_latch, buf_block_t *block,
 
   if (access_time == std::chrono::steady_clock::time_point{}) {
     /* In the case of a first access, try to apply linear read-ahead */
-    buf_read_ahead_linear(block->page.id, block->page.size, ibuf_inside(mtr));
+    buf_read_ahead_linear(block->page.id, block->page.size, ibuf_inside(mtr),
+                          NULL);
   }
 
 #ifdef UNIV_IBUF_COUNT_DEBUG
