@@ -2812,6 +2812,9 @@ handler *handler::clone(const char *name, MEM_ROOT *mem_root) {
   if (!(new_handler->ref =
             (uchar *)mem_root->Alloc(ALIGN_SIZE(ref_length) * 2)))
     goto err;
+
+  new_handler->cloned = true;
+
   /*
     TODO: Implement a more efficient way to have more than one index open for
     the same table instance. The ha_open call is not cacheable for clone.
@@ -2833,6 +2836,7 @@ void handler::ha_statistic_increment(
 }
 
 THD *handler::ha_thd() const {
+  if (unlikely(cloned)) return current_thd;
   assert(table == nullptr || table->in_use == nullptr ||
          table->in_use == current_thd);
   return table != nullptr && table->in_use != nullptr ? table->in_use

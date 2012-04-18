@@ -19734,6 +19734,8 @@ static int copy_data_between_tables(
   iterator.reset();
   free_io_cache(from);
 
+  DEBUG_SYNC(thd, "after_copy_data_between_tables");
+
   if (to->file->ha_end_bulk_insert() && error <= 0) {
     to->file->print_error(my_errno(), MYF(0));
     error = 1;

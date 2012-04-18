@@ -613,6 +613,11 @@ class Open_tables_state {
     intermediate tables used in ALTER TABLE implementation.
   */
   TABLE *temporary_tables;
+  /**
+     Protects temporary_tables.
+  */
+  mysql_mutex_t LOCK_temporary_tables;
+
   /*
     During a MySQL session, one can lock tables in two modes: automatic
     or manual. In automatic mode all necessary tables are locked just before

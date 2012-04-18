@@ -450,6 +450,7 @@ extern PSI_mutex_key key_LOCK_query_plan;
 extern PSI_mutex_key key_LOCK_thd_query;
 extern PSI_mutex_key key_LOCK_cost_const;
 extern PSI_mutex_key key_LOCK_current_cond;
+extern PSI_mutex_key key_LOCK_temporary_tables;
 extern PSI_mutex_key key_RELAYLOG_LOCK_commit;
 extern PSI_mutex_key key_RELAYLOG_LOCK_index;
 extern PSI_mutex_key key_RELAYLOG_LOCK_log;
