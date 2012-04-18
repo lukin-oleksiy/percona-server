@@ -1710,6 +1710,22 @@ void THD::awake(THD::killed_state state_to_set) {
   }
 }
 
+/* extend for kill session of idle transaction from engine */
+extern "C" int thd_command(const THD *thd) { return (int)thd->get_command(); }
+
+extern "C" long long thd_start_time(const THD *thd) {
+  return (long long)thd->start_time.tv_sec;
+}
+
+extern "C" void thd_kill(ulong id) {
+  Find_thd_with_id find_thd_with_id(id, false);
+  THD_ptr thd_ptr =
+      Global_THD_manager::get_instance()->find_thd(&find_thd_with_id);
+  if (!thd_ptr) return;
+
+  thd_ptr->awake(THD::KILL_CONNECTION);
+}
+
 /**
    Check whether ft_query_extra_word_chars server variable is enabled for the
    current session
