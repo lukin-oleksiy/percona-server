@@ -109,12 +109,25 @@ class MVCC {
   Validates a read view list. */
   bool validate() const;
 
+  friend class ReadView;
+
   /**
   Find a free view from the active list, if none found then allocate
   a new view. This function will also attempt to move delete marked
   views from the active list to the freed list.
   @return a view to use */
   inline ReadView *get_view();
+
+ public:
+  /**
+  Get the oldest view in the system for statistical purposes.
+
+  @note This method should be used for statistical purposes only, purge needs
+  to use more strict condition (see clone_oldest_view()) when selecting the
+  oldest view.
+
+  @return oldest view if found or NULL */
+  const ReadView *get_oldest_view_stats() const;
 
  private:
   // Prevent copying
