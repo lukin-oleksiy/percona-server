@@ -254,6 +254,8 @@
 #define REFRESH_OPTIMIZER_COSTS 0x200000L /** FLUSH OPTIMIZER_COSTS */
 #define REFRESH_PERSIST 0x400000L         /** RESET PERSIST */
 
+static const int PURGE_BITMAPS_TO_LSN = 1;
+
 /** @}*/
 
 /**
