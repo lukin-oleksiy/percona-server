@@ -160,7 +160,7 @@ MYSQL_VIO vio_new_win32shared_memory(HANDLE handle_file_map, HANDLE handle_map,
 #endif /* _WIN32 */
 
 void vio_delete(MYSQL_VIO vio);
-int vio_shutdown(MYSQL_VIO vio);
+int vio_shutdown(MYSQL_VIO vio, int how);
 int vio_cancel(MYSQL_VIO vio, int how);
 bool vio_reset(MYSQL_VIO vio, enum enum_vio_type type, my_socket sd, void *ssl,
                uint flags);
@@ -199,6 +199,9 @@ ssize_t vio_pending(MYSQL_VIO vio);
 #endif
 /* Set timeout for a network operation. */
 int vio_timeout(MYSQL_VIO vio, uint which, int timeout_sec);
+extern void vio_set_wait_callback(void (*before_wait)(void),
+                                  void (*after_wait)(void));
+
 /* Connect to a peer. */
 bool vio_socket_connect(MYSQL_VIO vio, struct sockaddr *addr, socklen_t len,
                         bool nonblocking, int timeout,
@@ -294,7 +297,7 @@ void vio_end(void);
   (vio)->viokeepalive(vio, set_keep_alive)
 #define vio_should_retry(vio) (vio)->should_retry(vio)
 #define vio_was_timeout(vio) (vio)->was_timeout(vio)
-#define vio_shutdown(vio) ((vio)->vioshutdown)(vio)
+#define vio_shutdown(vio, how) ((vio)->vioshutdown)(vio, how)
 #define vio_cancel(vio, how) ((vio)->viocancel)(vio, how)
 #define vio_peer_addr(vio, buf, prt, buflen) \
   (vio)->peer_addr(vio, buf, prt, buflen)
@@ -304,6 +307,18 @@ void vio_end(void);
 #define vio_set_blocking(vio, val) (vio)->set_blocking(vio, val)
 #define vio_set_blocking_flag(vio, val) (vio)->set_blocking_flag(vio, val)
 #endif /* !defined(DONT_MAP_VIO) */
+
+#ifdef _WIN32
+/*
+  Set thread id for io cancellation (required on Windows XP only,
+  and should to be removed if XP is no more supported)
+*/
+
+#define vio_set_thread_id(vio, tid) \
+  if (vio) vio->thread_id = tid
+#else
+#define vio_set_thread_id(vio, tid)
+#endif
 
 /* This enumerator is used in parser - should be always visible */
 enum SSL_type {
@@ -401,7 +416,7 @@ struct Vio {
      further communications can take place, however any related buffers,
      descriptors, handles can remain valid after a shutdown.
   */
-  int (*vioshutdown)(MYSQL_VIO) = {nullptr};
+  int (*vioshutdown)(MYSQL_VIO, int) = {nullptr};
   /**
     Partial shutdown. All the actions performed which shutdown performs,
     but descriptor remains open and valid.
@@ -412,6 +427,7 @@ struct Vio {
   int (*io_wait)(MYSQL_VIO, enum enum_vio_io_event, int) = {nullptr};
   bool (*connect)(MYSQL_VIO, struct sockaddr *, socklen_t, int) = {nullptr};
 #ifdef _WIN32
+  DWORD thread_id; /* Used on XP only by vio_shutdown() */
 #ifdef __clang__
   OVERLAPPED overlapped = {0, 0, {{0, 0}}, nullptr};
 #else
