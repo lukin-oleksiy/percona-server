@@ -101,7 +101,7 @@
 
 #define MYSQL_UNIVERSAL_CLIENT_CHARSET "utf8mb4"
 
-enum class key_type_t { NONE, PRIMARY, UNIQUE, NON_UNIQUE };
+enum class key_type_t { NONE, PRIMARY, UNIQUE, NON_UNIQUE, CONSTRAINT };
 
 /* Maximum number of fields per table */
 #define MAX_FIELDS 4000
@@ -267,6 +267,7 @@ collation_unordered_set<string> *ignore_table, *include_user;
 std::forward_list<string> *exclude_user;
 
 static std::list<std::string> skipped_keys_list;
+static std::list<std::string> alter_constraints_list;
 
 static struct my_option my_long_options[] = {
     {"all-databases", 'A',
@@ -3231,11 +3232,12 @@ static bool contains_autoinc_column(const char *autoinc_column,
 }
 
 /*
-  Remove secondary key definitions from a given SHOW CREATE TABLE string
+  Remove secondary/foreign key definitions from a given SHOW CREATE TABLE string
   and store them into a temporary list to be used later.
 
   SYNOPSIS
   skip_secondary_keys()
+  table                     table name
   create_str                SHOW CREATE TABLE output
   has_pk                    TRUE, if the table has PRIMARY KEY
   (or UNIQUE key on non-nullable columns)
@@ -3245,20 +3247,35 @@ static bool contains_autoinc_column(const char *autoinc_column,
 
   Stores all lines starting with "KEY" or "UNIQUE KEY"
   into skipped_keys_list and removes them from the input string.
-  Ignoring FOREIGN KEYS constraints when creating the table is ok, because
-  mysqldump sets foreign_key_checks to 0 anyway.
+  Stores all CONSTRAINT/FOREIGN KEYS declarations into
+  alter_constraints_list and removes them from the input string.
 */
 
-static void skip_secondary_keys(char *create_str, bool has_pk) noexcept {
+static void skip_secondary_keys(const char *table, char *create_str,
+                                bool has_pk) noexcept {
   char *last_comma = nullptr;
   bool pk_processed = false;
   char *autoinc_column = nullptr;
   ssize_t autoinc_column_len = 0;
+  bool keys_processed = false;
+
+  /* don't optimize tables with FOREIGN KEYS with REFERENCES to another table
+     as it leads to "Table 'ref' was not locked with LOCK TABLES" */
+  size_t table_len = strlen(table);
+  char *ptr = create_str;
+  while ((ptr = strstr(ptr, " REFERENCES `")) != nullptr) {
+    ptr += sizeof(" REFERENCES `") - 1;
+    const char *end = strchr(ptr, '`');
+    /* break as referenced table name is different from current table name */
+    if ((end == nullptr) || (end != ptr + table_len) ||
+        strncmp(ptr, table, table_len))
+      return;
+  }
 
   char *strend = create_str + strlen(create_str);
 
-  char *ptr = create_str;
-  while (*ptr) {
+  ptr = create_str;
+  while (*ptr && !keys_processed) {
     char *orig_ptr = ptr;
     /* Skip leading whitespace */
     while (*ptr && my_isspace(charset_info, *ptr)) ptr++;
@@ -3272,7 +3289,9 @@ static void skip_secondary_keys(char *create_str, bool has_pk) noexcept {
     *tmp = '\0'; /* so strstr() only processes the current line */
 
     key_type_t type;
-    if (!strncmp(ptr, "UNIQUE KEY ", sizeof("UNIQUE KEY ") - 1))
+    if (!strncmp(ptr, "CONSTRAINT ", sizeof("CONSTRAINT ") - 1))
+      type = key_type_t::CONSTRAINT;
+    else if (!strncmp(ptr, "UNIQUE KEY ", sizeof("UNIQUE KEY ") - 1))
       type = key_type_t::UNIQUE;
     else if (!strncmp(ptr, "KEY ", sizeof("KEY ") - 1))
       type = key_type_t::NON_UNIQUE;
@@ -3290,15 +3309,16 @@ static void skip_secondary_keys(char *create_str, bool has_pk) noexcept {
     /* Is it a secondary index definition? */
     if (c == '\n' && !has_autoinc &&
         ((type == key_type_t::UNIQUE && (pk_processed || !has_pk)) ||
-         type == key_type_t::NON_UNIQUE)) {
+         type == key_type_t::NON_UNIQUE || type == key_type_t::CONSTRAINT)) {
       char *end = tmp - 1;
 
       /* Remove the trailing comma */
       if (*end == ',') end--;
-      char *data =
-          my_strndup(PSI_NOT_INSTRUMENTED, ptr, end - ptr + 1, MYF(MY_FAE));
 
-      skipped_keys_list.emplace_back(data);
+      if (type == key_type_t::CONSTRAINT)
+        alter_constraints_list.emplace_back(ptr, end - ptr + 1);
+      else
+        skipped_keys_list.emplace_back(ptr, end - ptr + 1);
 
       memmove(orig_ptr, tmp + 1, strend - tmp);
       ptr = orig_ptr;
@@ -3309,7 +3329,9 @@ static void skip_secondary_keys(char *create_str, bool has_pk) noexcept {
         *last_comma = ' ';
       }
     } else {
-      if (last_comma != nullptr) {
+      if (last_comma != nullptr && *ptr == ')') {
+        keys_processed = true;
+      } else if (last_comma != nullptr && !keys_processed) {
         /*
           It's not the last line of CREATE TABLE, so we have skipped a key
           definition. We have to restore the last removed comma.
@@ -3722,7 +3744,7 @@ static uint get_table_structure(const char *table, char *db, char *table_type,
       row = mysql_fetch_row(result);
 
       if (opt_innodb_optimize_keys && !strcmp(table_type, "InnoDB"))
-        skip_secondary_keys(row[1], has_pk);
+        skip_secondary_keys(table, row[1], has_pk);
 
       is_log_table = general_log_or_slow_log_tables(db, table);
       is_replication_metadata_table = replication_metadata_tables(db, table);
@@ -4492,24 +4514,44 @@ static char *alloc_query_str(size_t size) {
 */
 
 static void dump_skipped_keys(const char *table) {
-  if (skipped_keys_list.empty()) return;
+  if (skipped_keys_list.empty() && alter_constraints_list.empty()) return;
 
   verbose_msg("-- Dumping delayed secondary index definitions for table %s\n",
               table);
 
-  const auto sk_list_len = skipped_keys_list.size();
-  fprintf(md_result_file, "ALTER TABLE %s%s", table,
-          (sk_list_len > 1) ? "\n" : " ");
+  uint keys;
 
-  for (uint keys = sk_list_len; keys > 0; keys--) {
-    const char *const def = skipped_keys_list.front().c_str();
+  if (!skipped_keys_list.empty()) {
+    const auto sk_list_len = skipped_keys_list.size();
+    fprintf(md_result_file, "ALTER TABLE %s%s", table,
+            (sk_list_len > 1) ? "\n" : " ");
 
-    fprintf(md_result_file, "%sADD %s%s", (sk_list_len > 1) ? "  " : "", def,
-            (keys > 1) ? ",\n" : ";\n");
+    for (keys = sk_list_len; keys > 0; keys--) {
+      const char *const def = skipped_keys_list.front().c_str();
 
-    skipped_keys_list.pop_front();
+      fprintf(md_result_file, "%sADD %s%s", (sk_list_len > 1) ? "  " : "", def,
+              (keys > 1) ? ",\n" : ";\n");
+
+      skipped_keys_list.pop_front();
+    }
+    assert(skipped_keys_list.empty());
   }
-  assert(skipped_keys_list.empty());
+
+  if (!alter_constraints_list.empty()) {
+    const auto ac_list_len = alter_constraints_list.size();
+    fprintf(md_result_file, "ALTER TABLE %s%s", table,
+            (ac_list_len > 1) ? "\n" : " ");
+
+    for (keys = ac_list_len; keys > 0; keys--) {
+      const char *const def = alter_constraints_list.front().c_str();
+
+      fprintf(md_result_file, "%sADD %s%s", (ac_list_len > 1) ? "  " : "", def,
+              (keys > 1) ? ",\n" : ";\n");
+
+      alter_constraints_list.pop_front();
+    }
+    assert(alter_constraints_list.empty());
+  }
 }
 
 /*
