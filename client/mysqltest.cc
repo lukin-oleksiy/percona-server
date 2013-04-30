@@ -5005,7 +5005,8 @@ static void do_change_user(struct st_command *command) {
     /* mysql_reconnect changes this setting to true. We really want it to be
     false at all times. */
     cur_con->mysql.reconnect = false;
-  }
+  } else
+    handle_no_error(command);
 
   dynstr_free(&ds_user);
   dynstr_free(&ds_passwd);
