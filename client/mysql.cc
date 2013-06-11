@@ -3559,13 +3559,12 @@ static int com_help(String *buffer [[maybe_unused]],
   }
 
   put_info(
-      "\nFor information about MySQL products and services, visit:\n"
-      "   https://www.mysql.com/\n"
-      "For developer information, including the MySQL Reference Manual, "
-      "visit:\n"
-      "   https://dev.mysql.com/\n"
-      "To buy MySQL Enterprise support, training, or other products, visit:\n"
-      "   https://shop.mysql.com/\n",
+      "\nFor information about Percona products and services, visit:\n"
+      "   http://www.percona.com/\n"
+      "Percona Server manual: http://www.percona.com/doc/percona-server/8.0/\n"
+      "For the MySQL Reference Manual: http://dev.mysql.com/\n"
+      "To buy Percona support, training, or other products, visit:\n"
+      "   https://www.percona.com/\n",
       INFO_INFO);
   put_info("List of all MySQL commands:", INFO_INFO);
   if (!named_cmds)
