@@ -1870,6 +1870,8 @@ class THD : public MDL_context_owner,
     mysql_mutex_unlock(&this->LOCK_thd_data);
   }
 
+  bool order_deterministic;
+
   /*
     Position of first event in Binlog
     *after* last event written by this
