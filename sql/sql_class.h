@@ -1247,6 +1247,8 @@ class THD : public MDL_context_owner,
   struct rand_struct rand;              // used for authentication
   struct System_variables variables;    // Changeable local variables
   struct System_status_var status_var;  // Per thread statistic vars
+  struct rand_struct slog_rand;         // used for random slow log
+                                        // filtering
   struct System_status_var
       *copy_status_var_ptr;  // A copy of the statistic vars asof the start of
                              // the query

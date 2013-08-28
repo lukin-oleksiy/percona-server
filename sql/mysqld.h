@@ -167,6 +167,7 @@ extern bool opt_bin_log;
 extern bool opt_log_replica_updates;
 extern bool opt_log_unsafe_statements;
 extern bool opt_general_log, opt_slow_log, opt_general_log_raw;
+extern ulonglong slow_query_log_always_write_time;
 extern ulonglong log_output_options;
 extern bool opt_log_queries_not_using_indexes;
 extern ulong opt_log_throttle_queries_not_using_indexes;

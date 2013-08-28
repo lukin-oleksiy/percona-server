@@ -1173,6 +1173,10 @@ void THD::init(void) {
     randominit(&rand,
                tmp + static_cast<ulong>(reinterpret_cast<uintptr_t>(&rand)),
                tmp + (ulong)::atomic_global_query_id);
+    randominit(&slog_rand, tmp + reinterpret_cast<ulong>(&slog_rand),
+               tmp + static_cast<ulong>(::atomic_global_query_id));
+    DBUG_EXECUTE_IF("seed_slow_log_random",
+                    randominit(&slog_rand, 0x11111111, 0x77777777););
   }
 
   server_status = SERVER_STATUS_AUTOCOMMIT;
