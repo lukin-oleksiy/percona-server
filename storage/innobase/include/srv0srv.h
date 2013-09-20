@@ -599,7 +599,21 @@ extern ulong srv_buf_pool_dump_pct;
 
 extern ulint srv_show_locks_held;
 
+extern ulint srv_show_locks_held;
+
 extern ulint srv_lock_table_size;
+
+extern ulong srv_cleaner_lsn_age_factor;
+/*!< page cleaner LSN age factor
+formula option */
+
+extern ulong srv_empty_free_list_algorithm;
+
+/* The relative priority of the current thread.  If 0, low priority; if 1, high
+priority.  */
+extern thread_local ulint srv_current_thread_priority;
+/*!< Empty free list for a query thread
+handling algorithm option */
 
 extern bool srv_random_read_ahead;
 extern ulong srv_read_ahead_threshold;
