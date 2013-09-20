@@ -451,6 +451,16 @@ ulong srv_buf_pool_dump_pct;
 /** Lock table size in bytes */
 ulint srv_lock_table_size = ULINT_MAX;
 
+/** Page cleaner LSN age factor formula option */
+ulong srv_cleaner_lsn_age_factor = SRV_CLEANER_LSN_AGE_FACTOR_HIGH_CHECKPOINT;
+
+/** Empty free list for a query thread handling algorithm option  */
+ulong srv_empty_free_list_algorithm = SRV_EMPTY_FREE_LIST_BACKOFF;
+
+/* The relative priority of the current thread.  If 0, low priority; if 1, high
+priority.  */
+thread_local ulint srv_current_thread_priority = 0;
+
 const ulong srv_idle_flush_pct_default = 100;
 ulong srv_idle_flush_pct = srv_idle_flush_pct_default;
 
