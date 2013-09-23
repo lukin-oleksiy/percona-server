@@ -457,10 +457,6 @@ ulong srv_cleaner_lsn_age_factor = SRV_CLEANER_LSN_AGE_FACTOR_HIGH_CHECKPOINT;
 /** Empty free list for a query thread handling algorithm option  */
 ulong srv_empty_free_list_algorithm = SRV_EMPTY_FREE_LIST_BACKOFF;
 
-/* The relative priority of the current thread.  If 0, low priority; if 1, high
-priority.  */
-thread_local ulint srv_current_thread_priority = 0;
-
 const ulong srv_idle_flush_pct_default = 100;
 ulong srv_idle_flush_pct = srv_idle_flush_pct_default;
 
@@ -507,6 +503,16 @@ ulong srv_adaptive_flushing_lwm = 10;
 
 /* Number of iterations over which adaptive flushing is averaged. */
 ulong srv_flushing_avg_loops = 30;
+
+/* The relative priority of the current thread.  If 0, low priority; if 1, high
+priority.  */
+thread_local ulint srv_current_thread_priority = 0;
+
+/* The relative priority of the purge coordinator and worker threads.  */
+bool srv_purge_thread_priority = false;
+
+/* The relative priority of the master thread.  */
+bool srv_master_thread_priority = false;
 
 /* The number of purge threads to use.*/
 ulong srv_n_purge_threads = 4;
@@ -2703,6 +2709,8 @@ static void srv_master_main_loop(srv_slot_t *slot) {
 
     MONITOR_INC(MONITOR_MASTER_THREAD_SLEEP);
 
+    srv_current_thread_priority = srv_master_thread_priority;
+
     /* Just in case - if there is not much free space in redo,
     try to avoid asking for troubles because of extra work
     performed in such background thread. */
@@ -2877,6 +2885,8 @@ void srv_worker_thread() {
     srv_suspend_thread(slot);
 
     os_event_wait(slot->event);
+
+    srv_current_thread_priority = srv_purge_thread_priority;
 
     if (srv_task_execute()) {
       /* If there are tasks in the queue, wakeup
@@ -3135,6 +3145,8 @@ void srv_purge_coordinator_thread() {
     }
 
     n_total_purged = 0;
+
+    srv_current_thread_priority = srv_purge_thread_priority;
 
     rseg_history_len = srv_do_purge(&n_total_purged);
 
