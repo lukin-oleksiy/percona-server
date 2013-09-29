@@ -527,6 +527,21 @@ int vio_shutdown(Vio *vio) {
   return r;
 }
 
+int vio_cancel(Vio *vio, int how) {
+  int r = 0;
+  DBUG_ENTER("vio_cancel");
+
+  if (!vio->inactive) {
+    assert(vio->type == VIO_TYPE_TCPIP || vio->type == VIO_TYPE_SOCKET ||
+           vio->type == VIO_TYPE_SSL);
+
+    assert(mysql_socket_getfd(vio->mysql_socket) >= 0);
+    if (mysql_socket_shutdown(vio->mysql_socket, how)) r = -1;
+  }
+
+  DBUG_RETURN(r);
+}
+
 #ifndef NDEBUG
 
 #ifdef _WIN32
