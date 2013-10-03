@@ -3186,6 +3186,10 @@ void srv_purge_coordinator_thread() {
 
     rseg_history_len = srv_do_purge(&n_total_purged);
 
+    if (n_total_purged != 0) {
+      srv_inc_activity_count();
+    }
+
   } while (!srv_purge_should_exit(n_total_purged));
 
   /* This is just for test scenarios. Do not pass thd here,
