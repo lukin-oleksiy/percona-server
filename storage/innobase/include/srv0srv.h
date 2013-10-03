@@ -774,6 +774,24 @@ i/o handler thread */
 extern const char *srv_io_thread_op_info[];
 extern const char *srv_io_thread_function[];
 
+/* The tids of the purge threads */
+extern os_tid_t srv_purge_tids[];
+
+/* The tids of the I/O threads */
+extern os_tid_t srv_io_tids[];
+
+/* The tid of the master thread */
+extern os_tid_t srv_master_tid;
+
+/* The relative scheduling priority of the purge threads */
+extern ulint srv_sched_priority_purge;
+
+/* The relative scheduling priority of the I/O threads */
+extern ulint srv_sched_priority_io;
+
+/* The relative scheduling priority of the master thread */
+extern ulint srv_sched_priority_master;
+
 /* The relative priority of the current thread.  If 0, low priority; if 1, high
 priority.  */
 extern thread_local ulint srv_current_thread_priority;
