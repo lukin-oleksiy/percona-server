@@ -1521,6 +1521,11 @@ CHARSET_INFO *warn_on_deprecated_user_defined_collation(
 
 
 /*
+   Tokens from Percona Server 5.7 and older
+*/
+%token CLUSTERING_SYM 1302
+
+/*
   Resolve column attribute ambiguity -- force precedence of "UNIQUE KEY" against
   simple "UNIQUE" and "KEY" attributes:
 */

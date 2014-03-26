@@ -5363,7 +5363,7 @@ static bool prepare_key_column(THD *thd, HA_CREATE_INFO *create_info,
             min(file->max_key_length(), file->max_key_part_length(create_info));
         if (max_field_size)
           key_part_length = min(key_part_length, max_field_size);
-        if (key->type == KEYTYPE_MULTIPLE) {
+        if (key->type & KEYTYPE_MULTIPLE) {
           /* not a critical problem */
           push_warning_printf(thd, Sql_condition::SL_WARNING, ER_TOO_LONG_KEY,
                               ER_THD(thd, ER_TOO_LONG_KEY),
@@ -5421,7 +5421,7 @@ static bool prepare_key_column(THD *thd, HA_CREATE_INFO *create_info,
   if (key_part_length > file->max_key_part_length(create_info) &&
       key->type != KEYTYPE_FULLTEXT) {
     key_part_length = file->max_key_part_length(create_info);
-    if (key->type == KEYTYPE_MULTIPLE) {
+    if (key->type & KEYTYPE_MULTIPLE) {
       /* not a critical problem */
       push_warning_printf(thd, Sql_condition::SL_WARNING, ER_TOO_LONG_KEY,
                           ER_THD(thd, ER_TOO_LONG_KEY),
@@ -7633,7 +7633,7 @@ static bool prepare_key(
 #ifndef NDEBUG
   const decltype(key_info->flags) flags_before_switch = key_info->flags;
 #endif /* NDEBUG */
-  switch (key->type) {
+  switch (static_cast<int>(key->type)) {
     case KEYTYPE_MULTIPLE:
       break;
     case KEYTYPE_FULLTEXT:

@@ -4693,10 +4693,10 @@ static int get_schema_tmp_table_columns_record(THD *thd, Table_ref *tables,
 
     // COLUMN_KEY
     pos = pointer_cast<const uchar *>(
-        field->is_flag_set(PRI_KEY_FLAG)        ? "PRI"
-        : field->is_flag_set(UNIQUE_KEY_FLAG)   ? "UNI"
-        : field->is_flag_set(MULTIPLE_KEY_FLAG) ? "MUL"
-                                                : "");
+        field->is_flag_set(PRI_KEY_FLAG)          ? "PRI"
+        : field->is_flag_set(UNIQUE_KEY_FLAG)     ? "UNI"
+        : (field->is_flag_set(MULTIPLE_KEY_FLAG)) ? "MUL"
+                                                  : "");
     table->field[TMP_TABLE_COLUMNS_COLUMN_KEY]->store(
         (const char *)pos, strlen((const char *)pos), cs);
 

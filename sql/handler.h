@@ -590,6 +590,7 @@ enum class SelectExecutedIn : bool { kPrimaryEngine, kSecondaryEngine };
 */
 #define HA_KEY_SCAN_NOT_ROR 128
 #define HA_DO_INDEX_COND_PUSHDOWN 256 /* Supports Index Condition Pushdown */
+#define HA_CLUSTERED_INDEX 512        /* Data is clustered on this key */
 
 /* operations for disable/enable indexes */
 #define HA_KEY_SWITCH_NONUNIQ 0
@@ -3180,9 +3181,13 @@ struct handlerton {
 
 #define HTON_SUPPORTS_EXTENDED_KEYS (1 << 10)
 
+/**
+  Engine supports secondary clustered keys.
+*/
+#define HTON_SUPPORTS_CLUSTERED_KEYS (1 << 12)
 // Engine support foreign key constraint.
 
-#define HTON_SUPPORTS_FOREIGN_KEYS (1 << 11)
+#define HTON_SUPPORTS_FOREIGN_KEYS (1 << 13)
 
 /**
   Engine supports atomic DDL. That is rollback of transaction for DDL
