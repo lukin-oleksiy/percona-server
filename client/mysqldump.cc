@@ -101,6 +101,9 @@
 
 #define MYSQL_UNIVERSAL_CLIENT_CHARSET "utf8mb4"
 
+/* Chars needed to store LONGLONG, excluding trailing '\0'. */
+static constexpr const auto LONGLONG_LEN = 20;
+
 enum class key_type_t { NONE, PRIMARY, UNIQUE, NON_UNIQUE, CONSTRAINT };
 
 /* Maximum number of fields per table */
@@ -548,9 +551,10 @@ static struct my_option my_long_options[] = {
      "command; "
      "if equal to 2, that command will be prefixed with a comment symbol. "
      "This option will turn --lock-all-tables on, unless "
-     "--single-transaction is specified too (in which case a "
-     "global read lock is only taken a short time at the beginning of the "
-     "dump; "
+     "--single-transaction is specified too (on servers that don't provide "
+     "Binlog_snapshot_file and Binlog_snapshot_position status variables this "
+     "will still take a global read lock is only taken a short time at the "
+     "beginning of the dump; "
      "don't forget to read about --single-transaction below). In all cases, "
      "any action on logs will happen at the exact moment of the dump. "
      "Option automatically turns --lock-tables off.",
@@ -1573,6 +1577,36 @@ static int fetch_db_collation(const char *db_name, char *db_cl_name,
   mysql_free_result(db_cl_res);
 
   return err_status ? 1 : 0;
+}
+
+/*
+  Check if server supports non-blocking binlog position using the
+  binlog_snapshot_file and binlog_snapshot_position status variables. If it
+  does, also return the position obtained if output pointers are non-NULL.
+  Returns true if position available, false if not.
+*/
+static bool check_consistent_binlog_pos(char *binlog_pos_file,
+                                        char *binlog_pos_offset) noexcept {
+  MYSQL_RES *res;
+  MYSQL_ROW row;
+
+  if (mysql_query_with_error_report(mysql, &res,
+                                    "SHOW STATUS LIKE 'binlog_snapshot_%'"))
+    return true;
+
+  int found = 0;
+  while ((row = mysql_fetch_row(res))) {
+    if (0 == strcmp(row[0], "Binlog_snapshot_file")) {
+      if (binlog_pos_file) strmake(binlog_pos_file, row[1], FN_REFLEN - 1);
+      found++;
+    } else if (0 == strcmp(row[0], "Binlog_snapshot_position")) {
+      if (binlog_pos_offset) strmake(binlog_pos_offset, row[1], LONGLONG_LEN);
+      found++;
+    }
+  }
+  mysql_free_result(res);
+
+  return (found == 2);
 }
 
 static char *my_case_str(char *str, size_t str_len, const char *token,
@@ -5983,37 +6017,57 @@ static int dump_selected_tables(char *db, char **table_names, int tables) {
   return 0;
 } /* dump_selected_tables */
 
-static int do_show_binary_log_status(MYSQL *mysql_con) {
-  MYSQL_ROW row;
-  MYSQL_RES *source;
+static int do_show_binary_log_status(MYSQL *mysql_con,
+                                     const bool consistent_binlog_pos) {
+  char binlog_pos_file[FN_REFLEN];
+  char binlog_pos_offset[LONGLONG_LEN + 1];
+  char *file, *offset;
+  std::unique_ptr<MYSQL_RES, decltype(&mysql_free_result)> source(
+      nullptr, mysql_free_result);
+
+  if (consistent_binlog_pos) {
+    if (!check_consistent_binlog_pos(binlog_pos_file, binlog_pos_offset))
+      return true;
+    file = binlog_pos_file;
+    offset = binlog_pos_offset;
+  } else {
+    MYSQL_RES *source_ptr;
+    if (mysql_query_with_error_report(
+            mysql_con, &source_ptr,
+            get_compatible_rpl_source_query("SHOW BINARY LOG STATUS")
+                .c_str())) {
+      return 1;
+    }
+    source.reset(source_ptr);
+    MYSQL_ROW row = mysql_fetch_row(source.get());
+    if (row && row[0] && row[1]) {
+      file = row[0];
+      offset = row[1];
+    } else {
+      if (!opt_force) {
+        /* SHOW BINARY LOG STATUS reports nothing and --force is not enabled */
+        my_printf_error(0, "Error: Binlogging on server not active", MYF(0));
+        maybe_exit(EX_MYSQLERR);
+        return 1;
+      } else {
+        return 0;
+      }
+    }
+  }
+
   const char *comment_prefix =
       (opt_source_data == MYSQL_OPT_SOURCE_DATA_COMMENTED_SQL) ? "-- " : "";
-  if (mysql_query_with_error_report(
-          mysql_con, &source,
-          get_compatible_rpl_source_query("SHOW BINARY LOG STATUS").c_str())) {
-    return 1;
-  }
-  row = mysql_fetch_row(source);
-  if (row && row[0] && row[1]) {
-    /* SHOW BINARY LOG STATUS reports file and position */
-    print_comment(md_result_file, false,
-                  "\n--\n-- Position to start replication or point-in-time "
-                  "recovery from\n--\n\n");
-    fprintf(
-        md_result_file, "%s%s %s='%s', %s=%s;\n", comment_prefix,
-        get_compatible_rpl_replica_command("CHANGE REPLICATION SOURCE TO")
-            .c_str(),
-        get_compatible_rpl_replica_command("SOURCE_LOG_FILE").c_str(), row[0],
-        get_compatible_rpl_replica_command("SOURCE_LOG_POS").c_str(), row[1]);
-    check_io(md_result_file);
-  } else if (!opt_force) {
-    /* SHOW BINARY LOG STATUS reports nothing and --force is not enabled */
-    my_printf_error(0, "Error: Binlogging on server not active", MYF(0));
-    mysql_free_result(source);
-    maybe_exit(EX_MYSQLERR);
-    return 1;
-  }
-  mysql_free_result(source);
+
+  /* SHOW BINARY LOG STATUS reports file and position */
+  print_comment(md_result_file, 0,
+                "\n--\n-- Position to start replication or point-in-time "
+                "recovery from\n--\n\n");
+  fprintf(md_result_file, "%s%s %s='%s', %s=%s;\n", comment_prefix,
+          get_compatible_rpl_replica_command("CHANGE REPLICATION SOURCE TO")
+              .c_str(),
+          get_compatible_rpl_replica_command("SOURCE_LOG_FILE").c_str(), file,
+          get_compatible_rpl_replica_command("SOURCE_LOG_POS").c_str(), offset);
+  check_io(md_result_file);
 
   return 0;
 }
@@ -7222,6 +7276,7 @@ int main(int argc, char **argv) {
   bool server_has_gtid_enabled = false;
   char bin_log_name[FN_REFLEN];
   int exit_code, md_result_fd = 0;
+  bool consistent_binlog_pos = false;
   MY_INIT("mysqldump");
 
   default_charset = mysql_universal_client_charset;
@@ -7284,7 +7339,15 @@ int main(int argc, char **argv) {
       (server_has_gtid_enabled &&
        (opt_set_gtid_purged_mode != SET_GTID_PURGED_OFF));
 
-  if (opt_lock_all_tables || opt_source_data ||
+  if (opt_single_transaction && opt_source_data) {
+    /*
+      See if we can avoid FLUSH TABLES WITH READ LOCK with Binlog_snapshot_*
+      variables.
+    */
+    consistent_binlog_pos = check_consistent_binlog_pos(nullptr, nullptr);
+  }
+
+  if (opt_lock_all_tables || (opt_source_data && !consistent_binlog_pos) ||
       (opt_single_transaction &&
        (flush_logs || server_with_gtids_and_opt_purge_not_off))) {
     if (do_flush_tables_read_lock(mysql)) goto err;
@@ -7296,9 +7359,7 @@ int main(int argc, char **argv) {
     this causes implicit commit starting mysql-5.5.
   */
   if (opt_lock_all_tables || opt_source_data ||
-      (opt_single_transaction &&
-       (flush_logs || server_with_gtids_and_opt_purge_not_off)) ||
-      opt_delete_source_logs) {
+      (opt_single_transaction && flush_logs) || opt_delete_source_logs) {
     if (flush_logs || opt_delete_source_logs) {
       if (mysql_query(mysql, "FLUSH /*!40101 LOCAL */ LOGS")) {
         DB_error(mysql, "when doing refresh");
@@ -7336,7 +7397,9 @@ int main(int argc, char **argv) {
     dump_users(md_result_file);
   }
 
-  if (opt_source_data && do_show_binary_log_status(mysql)) goto err;
+  if (opt_source_data &&
+      do_show_binary_log_status(mysql, consistent_binlog_pos))
+    goto err;
   if (opt_replica_data && do_show_replica_status(mysql)) goto err;
   if (opt_single_transaction && (!opt_lock_for_backup || opt_source_data) &&
       do_unlock_tables(mysql)) /* unlock but no commit! */
