@@ -242,6 +242,8 @@ void finish_transaction_in_engines(THD *thd, bool all, bool run_after_commit);
 }  // namespace
 
 static int binlog_start_consistent_snapshot(handlerton *hton, THD *thd);
+static int binlog_clone_consistent_snapshot(handlerton *hton, THD *thd,
+                                            THD *from_thd);
 
 ulonglong binlog_space_limit;
 
@@ -2624,6 +2626,47 @@ static int binlog_start_consistent_snapshot(handlerton *hton, THD *thd) {
 
   /* Server layer calls us with LOCK_log locked, so this is safe. */
   mysql_bin_log.raw_get_current_log(&cache_mngr->binlog_info);
+
+  trans_register_ha(thd, true, hton, nullptr);
+
+  DBUG_RETURN(err);
+}
+
+static int binlog_clone_consistent_snapshot(handlerton *hton, THD *thd,
+                                            THD *from_thd) {
+  DBUG_ENTER("binlog_start_consistent_snapshot");
+
+  const binlog_cache_mngr *from_cache_mngr =
+      opt_bin_log
+          ? static_cast<binlog_cache_mngr *>(thd_get_cache_mngr(from_thd))
+          : nullptr;
+
+  if (from_cache_mngr == nullptr) {
+    push_warning_printf(thd, Sql_condition::SL_WARNING, HA_ERR_UNSUPPORTED,
+                        "WITH CONSISTENT SNAPSHOT FROM SESSION was ignored for "
+                        "binary log, because the specified session does not "
+                        "have a consistent snapshot of binary log "
+                        "coordinates.");
+    DBUG_RETURN(0);
+  }
+
+  int err = thd->binlog_setup_trx_data();
+  if (err) DBUG_RETURN(err);
+
+  binlog_cache_mngr *const cache_mngr = thd_get_cache_mngr(thd);
+
+  const my_off_t pos = from_cache_mngr->binlog_info.pos;
+  char log_file_name[FN_REFLEN];
+  strmake(log_file_name, from_cache_mngr->binlog_info.log_file_name,
+          sizeof(log_file_name) - 1);
+
+  mysql_mutex_lock(&thd->LOCK_thd_data);
+
+  cache_mngr->binlog_info.pos = pos;
+  strmake(cache_mngr->binlog_info.log_file_name, log_file_name,
+          sizeof(cache_mngr->binlog_info.log_file_name) - 1);
+
+  mysql_mutex_unlock(&thd->LOCK_thd_data);
 
   trans_register_ha(thd, true, hton, nullptr);
 
