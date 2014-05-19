@@ -1601,6 +1601,17 @@ THD::~THD() {
 }
 
 /**
+  Check whether given connection handle is associated with a background thread.
+
+  @param thd  connection handle
+  @retval non-zero  the connection handle belongs to a background thread
+  @retval 0   the connection handle belongs to a different thread type
+*/
+extern "C" int thd_is_background_thread(const THD *thd) {
+  return (thd->system_thread == SYSTEM_THREAD_BACKGROUND);
+}
+
+/**
   Awake a thread.
 
   @param[in]  state_to_set    value for THD::killed
