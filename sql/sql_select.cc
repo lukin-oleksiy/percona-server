@@ -5423,7 +5423,9 @@ bool test_if_cheaper_ordering(const JOIN_TAB *tab, ORDER_with_src *order,
           if (best_key < 0 ||
               (select_limit <= min(quick_records, best_records)
                    ? keyinfo->user_defined_key_parts < best_key_parts
-                   : quick_records < best_records) ||
+                   : quick_records < best_records ||
+                         ((quick_records == best_records) &&
+                          !is_best_covering && is_covering)) ||
               // We assume forward scan is faster than backward even if the
               // key is longer. This should be taken into account in cost
               // calculation.
