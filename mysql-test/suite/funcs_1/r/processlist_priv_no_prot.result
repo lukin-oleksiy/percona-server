@@ -240,10 +240,10 @@ Grants for @localhost
 GRANT PROCESS ON *.* TO ``@`localhost`
 SHOW processlist;
 Id	User	Host	db	Command	Time	State	Info	Rows_sent	Rows_examined
-ID		HOST_NAME	information_schema	Query	TIME	init	SHOW processlist	TIME_MS	0
+ID		HOST_NAME	information_schema	Query	TIME	STATE	SHOW processlist	TIME_MS	0
 ID	1287	HOST_NAME
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	1
-ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	3
+ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	4
 ID	event_scheduler	HOST_NAME	NULL	Daemon	TIME	Waiting on empty queue	NULL	TIME_MS	0
 ID	root	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	0
 Warnings:
@@ -252,7 +252,7 @@ ID	USER	HOST	DB	COMMAND	TIME	STATE	INFO	TIME_MS	ROWS_SENT	ROWS_EXAMINED
 ID		HOST_NAME	information_schema	Query	TIME	executing	SELECT * FROM information_schema.processlist	TIME_MS	0	0
 ID	1287	HOST_NAME
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	1	1
-ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	3	3
+ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	4	4
 ID	event_scheduler	HOST_NAME	NULL	Daemon	TIME	Waiting on empty queue	NULL	TIME_MS	0	0
 ID	root	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	0	0
 Warnings:
@@ -274,14 +274,14 @@ Id	User	Host	db	Command	Time	State	Info	Rows_sent	Rows_examined
 ID	1287	HOST_NAME
 ID	ddicttestuser1	HOST_NAME	information_schema	Query	TIME	STATE	SHOW processlist	TIME_MS	0
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	1
-ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	3
+ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	4
 Warnings:
 SELECT * FROM information_schema.processlist;
 ID	USER	HOST	DB	COMMAND	TIME	STATE	INFO	TIME_MS	ROWS_SENT	ROWS_EXAMINED
 ID	1287	HOST_NAME
 ID	ddicttestuser1	HOST_NAME	information_schema	Query	TIME	executing	SELECT * FROM information_schema.processlist	TIME_MS	0	0
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	1	1
-ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	3	3
+ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	4	4
 Warnings:
 ####################################################################################
 7 Revoke PROCESS privilege from anonymous user
@@ -299,7 +299,7 @@ GRANT USAGE ON *.* TO ``@`localhost`
 SELECT * FROM information_schema.processlist;
 ID	USER	HOST	DB	COMMAND	TIME	STATE	INFO	TIME_MS	ROWS_SENT	ROWS_EXAMINED
 ID		HOST_NAME	information_schema	Query	TIME	executing	SELECT * FROM information_schema.processlist	TIME_MS	0	0
-ID		HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	4	4
+ID		HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	5	5
 ID	1287	HOST_NAME
 Warnings:
 ####################################################################################
@@ -322,7 +322,7 @@ ID	1287	HOST_NAME
 ID	ddicttestuser1	HOST_NAME	information_schema	Query	TIME	STATE	SHOW processlist	TIME_MS	0
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	1
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	3
-ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	3
+ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	4
 Warnings:
 SELECT * FROM information_schema.processlist;
 ID	USER	HOST	DB	COMMAND	TIME	STATE	INFO	TIME_MS	ROWS_SENT	ROWS_EXAMINED
@@ -330,7 +330,7 @@ ID	1287	HOST_NAME
 ID	ddicttestuser1	HOST_NAME	information_schema	Query	TIME	executing	SELECT * FROM information_schema.processlist	TIME_MS	0	0
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	1	1
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	3	3
-ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	3	3
+ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	4	4
 Warnings:
 ####################################################################################
 9 Revoke SUPER privilege from user ddicttestuser1
@@ -353,7 +353,7 @@ ID	1287	HOST_NAME
 ID	ddicttestuser1	HOST_NAME	information_schema	Query	TIME	STATE	SHOW processlist	TIME_MS	0
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	1
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	3
-ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	3
+ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	4
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	4
 Warnings:
 SELECT * FROM information_schema.processlist;
@@ -362,7 +362,7 @@ ID	1287	HOST_NAME
 ID	ddicttestuser1	HOST_NAME	information_schema	Query	TIME	executing	SELECT * FROM information_schema.processlist	TIME_MS	0	0
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	1	1
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	3	3
-ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	3	3
+ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	4	4
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	4	4
 Warnings:
 ####################################################################################
@@ -406,13 +406,13 @@ GRANT PROCESS ON *.* TO `ddicttestuser2`@`localhost`
 SHOW processlist;
 Id	User	Host	db	Command	Time	State	Info	Rows_sent	Rows_examined
 ID		HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	2
-ID		HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	4
+ID		HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	5
 ID	1287	HOST_NAME
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	0
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	0
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	1
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	3
-ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	3
+ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	4
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	4
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	5
 ID	ddicttestuser2	HOST_NAME	information_schema	Query	TIME	STATE	SHOW processlist	TIME_MS	0
@@ -422,13 +422,13 @@ Warnings:
 SELECT * FROM information_schema.processlist;
 ID	USER	HOST	DB	COMMAND	TIME	STATE	INFO	TIME_MS	ROWS_SENT	ROWS_EXAMINED
 ID		HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	2	2
-ID		HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	4	4
+ID		HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	5	5
 ID	1287	HOST_NAME
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	0	0
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	0	0
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	1	1
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	3	3
-ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	3	3
+ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	4	4
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	4	4
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	5	5
 ID	ddicttestuser2	HOST_NAME	information_schema	Query	TIME	executing	SELECT * FROM information_schema.processlist	TIME_MS	0	0
@@ -451,13 +451,13 @@ SHOW processlist;
 Id	User	Host	db	Command	Time	State	Info	Rows_sent	Rows_examined
 ID	1287	HOST_NAME
 ID	ddicttestuser2	HOST_NAME	information_schema	Query	TIME	STATE	SHOW processlist	TIME_MS	0
-ID	ddicttestuser2	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	11
+ID	ddicttestuser2	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	12
 Warnings:
 SELECT * FROM information_schema.processlist;
 ID	USER	HOST	DB	COMMAND	TIME	STATE	INFO	TIME_MS	ROWS_SENT	ROWS_EXAMINED
 ID	1287	HOST_NAME
 ID	ddicttestuser2	HOST_NAME	information_schema	Query	TIME	executing	SELECT * FROM information_schema.processlist	TIME_MS	0	0
-ID	ddicttestuser2	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	11	11
+ID	ddicttestuser2	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	12	12
 Warnings:
 ####################################################################################
 11.2 Revoke SUPER,PROCESS,GRANT OPTION privilege from user ddicttestuser1
@@ -484,7 +484,7 @@ ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	0
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	0
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	1
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	3
-ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	3
+ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	4
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	4
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	5
 Warnings:
@@ -496,7 +496,7 @@ ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	0	0
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	0	0
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	1	1
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	3	3
-ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	3	3
+ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	4	4
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	4	4
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	5	5
 Warnings:
@@ -523,7 +523,7 @@ ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	0
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	0
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	1
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	3
-ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	3
+ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	4
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	4
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	5
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	8
@@ -536,7 +536,7 @@ ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	0	0
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	0	0
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	1	1
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	3	3
-ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	3	3
+ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	4	4
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	4	4
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	5	5
 ID	ddicttestuser1	HOST_NAME	information_schema	Sleep	TIME		NULL	TIME_MS	8	8
