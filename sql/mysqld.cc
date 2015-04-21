@@ -2374,8 +2374,8 @@ class Set_kill_conn : public Do_THD_Impl {
     } else {
       killing_thd->killed = THD::KILL_CONNECTION;
 
-      MYSQL_CALLBACK(Connection_handler_manager::event_functions,
-                     post_kill_notification, (killing_thd));
+      MYSQL_CALLBACK(killing_thd->scheduler, post_kill_notification,
+                     (killing_thd));
     }
 
     if (killing_thd->is_killable && killing_thd->kill_immunizer == nullptr) {
@@ -15019,7 +15019,6 @@ static void init_server_psi_keys(void) {
       "At this point, the real statement type is unknown, "
       "the type will be refined after parsing the event.";
   mysql_statement_register(category, &stmt_info_rpl, 1);
-
 #endif
 
   /* Common client and server code. */
