@@ -250,7 +250,6 @@
 #cmakedefine EDITLINE_HAVE_COMPLETION_CHAR 1
 #cmakedefine EDITLINE_HAVE_COMPLETION_INT 1
 
-
 /*
  * Libedit
  */
