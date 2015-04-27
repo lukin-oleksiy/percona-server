@@ -1774,7 +1774,6 @@ ADD_CUSTOM_TARGET(executable_all)
 # To get all the Homebrew libraries, do 'brew install' <name of lib>.
 SET(SYSTEM_LIBRARIES
   CURL      # Xcode
-  EDITLINE  # Xcode
   ICU       # Homebrew  icu4c
   LZ4       # Homebrew  lz4
   PROTOBUF  # Homebrew  protobuf
