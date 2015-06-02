@@ -32,6 +32,9 @@
 
 #include "my_config.h"
 
+#ifdef HAVE_NETINET_IN_H
+#include <netinet/in.h>
+#endif
 #include <stddef.h>
 #ifdef HAVE_SYS_SOCKET_H
 #include <sys/socket.h>
@@ -63,6 +66,10 @@ struct Vio;
 #elif defined(__cplusplus) && defined(HAVE_KQUEUE)
 #include <sys/event.h>
 #include <atomic>
+#endif
+
+#if defined(__APPLE__)
+#define s6_addr32 __u6_addr.__u6_addr32
 #endif
 
 #ifdef HAVE_PSI_INTERFACE
@@ -170,6 +177,21 @@ int vio_set_blocking_flag(Vio *vio, bool set_blocking_flag);
 size_t vio_read(MYSQL_VIO vio, uchar *buf, size_t size);
 size_t vio_read_buff(MYSQL_VIO vio, uchar *buf, size_t size);
 size_t vio_write(MYSQL_VIO vio, const uchar *buf, size_t size);
+
+struct st_vio_network {
+  union {
+    struct in_addr in;
+    struct in6_addr in6;
+  } addr;
+  union {
+    struct in_addr in;
+    struct in6_addr in6;
+  } mask;
+  sa_family_t family;
+};
+
+void vio_proxy_protocol_add(const st_vio_network &net) noexcept;
+void vio_proxy_cleanup() noexcept;
 /* setsockopt TCP_NODELAY at IPPROTO_TCP level, when possible */
 int vio_fastsend(MYSQL_VIO vio);
 /* setsockopt SO_KEEPALIVE at SOL_SOCKET level, when possible */
