@@ -3876,6 +3876,8 @@ class Fill_process_list : public Do_THD_Impl {
 static int fill_schema_processlist(THD *thd, Table_ref *tables, Item *) {
   DBUG_TRACE;
 
+  DEBUG_SYNC(thd, "before_fill_schema_processlist");
+
   Fill_process_list fill_process_list(thd, tables);
   if (!thd->killed) {
     Global_THD_manager::get_instance()->do_for_all_thd_copy(&fill_process_list);
