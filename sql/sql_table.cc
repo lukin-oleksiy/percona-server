@@ -16451,11 +16451,12 @@ static const Create_field *get_field_by_old_name(Alter_info *alter_info,
 
 /** Type of change to foreign key column, */
 
-enum fk_column_change_type {
-  FK_COLUMN_NO_CHANGE,
-  FK_COLUMN_DATA_CHANGE,
-  FK_COLUMN_RENAMED,
-  FK_COLUMN_DROPPED
+enum class fk_column_change_type {
+  NO_CHANGE,
+  DATA_CHANGE,
+  RENAMED,
+  DROPPED,
+  SAFE_FOR_PARENT
 };
 
 /**
@@ -16479,13 +16480,15 @@ enum fk_column_change_type {
   @note This function takes into account value of @@foreign_key_checks
         setting.
 
-  @retval FK_COLUMN_NO_CHANGE    No significant changes are to be done on
+  @retval NO_CHANGE              No significant changes are to be done on
                                  foreign key columns.
-  @retval FK_COLUMN_DATA_CHANGE  ALTER TABLE might result in value
+  @retval DATA_CHANGE            ALTER TABLE might result in value
                                  change in foreign key column (and
                                  foreign_key_checks is on).
-  @retval FK_COLUMN_RENAMED      Foreign key column is renamed.
-  @retval FK_COLUMN_DROPPED      Foreign key column is dropped.
+  @retval ENAMED                 Foreign key column is renamed.
+  @retval DROPPED                Foreign key column is dropped.
+  @retval SAFE_FOR_PARENT        The column change is safe if this is a
+                                 referenced column.
 */
 
 template <class F>
@@ -16510,12 +16513,14 @@ static fk_column_change_type fk_check_column_changes(
           like it happens in case of in-place algorithm.
         */
         *bad_column_name = column;
-        return FK_COLUMN_RENAMED;
+        return fk_column_change_type::RENAMED;
       }
 
-      if ((old_field->is_equal(new_field) == IS_EQUAL_NO) ||
-          ((new_field->flags & NOT_NULL_FLAG) &&
-           !old_field->is_flag_set(NOT_NULL_FLAG))) {
+      const auto fields_differ =
+          (old_field->is_equal(new_field) == IS_EQUAL_NO);
+
+      if (fields_differ || ((new_field->flags & NOT_NULL_FLAG) &&
+                            !old_field->is_flag_set(NOT_NULL_FLAG))) {
         if (!(thd->variables.option_bits & OPTION_NO_FOREIGN_KEY_CHECKS)) {
           /*
             Column in a FK has changed significantly. Unless
@@ -16524,7 +16529,9 @@ static fk_column_change_type fk_check_column_changes(
             and thus referential integrity might be broken,
           */
           *bad_column_name = column;
-          return FK_COLUMN_DATA_CHANGE;
+          /* NULL to NOT NULL column change is safe for referenced columns */
+          return fields_differ ? fk_column_change_type::DATA_CHANGE
+                               : fk_column_change_type::SAFE_FOR_PARENT;
         }
       }
       assert(old_field->is_gcol() == new_field->is_gcol() &&
@@ -16541,11 +16548,11 @@ static fk_column_change_type fk_check_column_changes(
         integrity in this case.
       */
       *bad_column_name = column;
-      return FK_COLUMN_DROPPED;
+      return fk_column_change_type::DROPPED;
     }
   }
 
-  return FK_COLUMN_NO_CHANGE;
+  return fk_column_change_type::NO_CHANGE;
 }
 
 /**
@@ -16638,10 +16645,11 @@ static bool fk_check_copy_alter_table(THD *thd, Table_ref *table_list,
                                         fk_columns_lambda, &bad_column_name);
 
       switch (changes) {
-        case FK_COLUMN_NO_CHANGE:
+        case fk_column_change_type::SAFE_FOR_PARENT:
+        case fk_column_change_type::NO_CHANGE:
           /* No significant changes. We can proceed with ALTER! */
           break;
-        case FK_COLUMN_DATA_CHANGE: {
+        case fk_column_change_type::DATA_CHANGE: {
           char buff[NAME_LEN * 2 + 2];
           strxnmov(buff, sizeof(buff) - 1, fk_p->child_schema_name().c_str(),
                    ".", fk_p->child_table_name().c_str(), NullS);
@@ -16649,13 +16657,13 @@ static bool fk_check_copy_alter_table(THD *thd, Table_ref *table_list,
                    fk->name().c_str(), buff);
           return true;
         }
-        case FK_COLUMN_RENAMED:
+        case fk_column_change_type::RENAMED:
           my_error(
               ER_ALTER_OPERATION_NOT_SUPPORTED_REASON, MYF(0), "ALGORITHM=COPY",
               ER_THD(thd, ER_ALTER_OPERATION_NOT_SUPPORTED_REASON_FK_RENAME),
               "ALGORITHM=INPLACE");
           return true;
-        case FK_COLUMN_DROPPED:
+        case fk_column_change_type::DROPPED:
           /*
             Should already have been checked in
             transfer_preexisting_foreign_keys().
@@ -16695,27 +16703,26 @@ static bool fk_check_copy_alter_table(THD *thd, Table_ref *table_list,
                                       fk_columns_lambda, &bad_column_name);
 
     switch (changes) {
-      case FK_COLUMN_NO_CHANGE:
+      case fk_column_change_type::NO_CHANGE:
         /* No significant changes. We can proceed with ALTER! */
         break;
-      case FK_COLUMN_DATA_CHANGE:
+      case fk_column_change_type::SAFE_FOR_PARENT:
+      case fk_column_change_type::DATA_CHANGE:
         my_error(ER_FK_COLUMN_CANNOT_CHANGE, MYF(0), bad_column_name,
                  fk->name().c_str());
         return true;
-      case FK_COLUMN_RENAMED:
+      case fk_column_change_type::RENAMED:
         my_error(ER_ALTER_OPERATION_NOT_SUPPORTED_REASON, MYF(0),
                  "ALGORITHM=COPY",
                  ER_THD(thd, ER_ALTER_OPERATION_NOT_SUPPORTED_REASON_FK_RENAME),
                  "ALGORITHM=INPLACE");
         return true;
-      case FK_COLUMN_DROPPED:
+      case fk_column_change_type::DROPPED:
         /*
           Should already have been checked in
           transfer_preexisting_foreign_keys().
         */
         assert(false);
-      default:
-        assert(0);
     }
   }
 
