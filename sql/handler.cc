@@ -2622,6 +2622,43 @@ int ha_start_consistent_snapshot(THD *thd) {
   return 0;
 }
 
+static bool store_binlog_info_handlerton(THD *thd, plugin_ref plugin,
+                                         void *arg) {
+  handlerton *const hton = plugin_data<handlerton *>(plugin);
+
+  if (hton->state == SHOW_OPTION_YES && hton->store_binlog_info) {
+    hton->store_binlog_info(hton, thd);
+    *(static_cast<bool *>(arg)) = false;
+  }
+
+  return false;
+}
+
+int ha_store_binlog_info(THD *thd) {
+  if (!mysql_bin_log.is_open()) return 0;
+
+  assert(tc_log == &mysql_bin_log);
+
+  Log_info li;
+  bool warn = true;
+
+  /* Block commits to get consistent binlog coordinates */
+  tc_log->xlock();
+
+  mysql_bin_log.raw_get_current_log(&li);
+  thd->set_trans_pos(li.log_file_name, li.pos);
+
+  plugin_foreach(thd, store_binlog_info_handlerton, MYSQL_STORAGE_ENGINE_PLUGIN,
+                 &warn);
+
+  tc_log->xunlock();
+
+  if (warn)
+    push_warning(thd, Sql_condition::SL_WARNING, ER_UNKNOWN_ERROR,
+                 "No support for storing binlog coordinates in any storage");
+  return 0;
+}
+
 static bool flush_handlerton(THD *, plugin_ref plugin, void *arg) {
   handlerton *hton = plugin_data<handlerton *>(plugin);
   if (hton->state == SHOW_OPTION_YES && hton->flush_logs &&

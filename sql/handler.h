@@ -1442,6 +1442,8 @@ typedef int (*prepare_t)(handlerton *hton, THD *thd, bool all);
 typedef int (*clone_consistent_snapshot_t)(handlerton *hton, THD *thd,
                                            THD *from_thd);
 
+typedef int (*store_binlog_info_t)(handlerton *hton, THD *thd);
+
 typedef int (*recover_t)(handlerton *hton, XA_recover_txn *xid_list, uint len,
                          MEM_ROOT *mem_root);
 /**
@@ -2926,6 +2928,7 @@ struct handlerton {
   start_consistent_snapshot_t start_consistent_snapshot;
   clone_consistent_snapshot_t clone_consistent_snapshot;
   flush_logs_t flush_logs;
+  store_binlog_info_t store_binlog_info;
   show_status_t show_status;
   partition_flags_t partition_flags;
   is_valid_tablespace_name_t is_valid_tablespace_name;
@@ -8039,6 +8042,7 @@ int ha_change_key_cache(KEY_CACHE *old_key_cache, KEY_CACHE *new_key_cache);
 
 /* transactions: interface to handlerton functions */
 int ha_start_consistent_snapshot(THD *thd);
+int ha_store_binlog_info(THD *thd);
 int ha_commit_trans(THD *thd, bool all, bool ignore_global_read_lock = false);
 int ha_commit_attachable(THD *thd);
 int ha_rollback_trans(THD *thd, bool all);

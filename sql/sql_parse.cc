@@ -2923,6 +2923,11 @@ static bool lock_tables_for_backup(THD *thd) {
 
   bool res = thd->backup_tables_lock.acquire(thd);
 
+  if (ha_store_binlog_info(thd)) {
+    thd->backup_tables_lock.release(thd);
+    res = true;
+  }
+
   DBUG_RETURN(res);
 }
 
