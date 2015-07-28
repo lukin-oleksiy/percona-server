@@ -1754,6 +1754,11 @@ static void innodb_pre_dd_shutdown(handlerton *) {
   }
 }
 
+/** Stores the current binlog coordinates in the trx system header.
+@param[in]	hton	InnoDB handlerton
+@param[in]	thd	MySQL thrad handle */
+static int innobase_store_binlog_info(handlerton *hton, THD *thd) noexcept;
+
 /** Creates an InnoDB transaction struct for the thd if it does not yet have
  one. Starts a new InnoDB transaction if a transaction is not yet started. And
  assigns a new snapshot for a consistent read if the transaction does not yet
@@ -5537,6 +5542,8 @@ static int innodb_init(void *p) {
   innobase_hton->clone_consistent_snapshot =
       innobase_start_trx_and_clone_read_view;
 
+  innobase_hton->store_binlog_info = innobase_store_binlog_info;
+
   innobase_hton->flush_logs = innobase_flush_logs;
   innobase_hton->show_status = innobase_show_status;
   innobase_hton->lock_hton_log = innobase_lock_hton_log;
@@ -6035,6 +6042,24 @@ void innobase_commit_low(trx_t *trx) /*!< in: transaction handle */
     ut_ad(DB_SUCCESS == error);
   }
   trx->will_lock = 0;
+}
+
+/** Stores the current binlog coordinates in the trx system header
+@param[in] hton	InnoDB handlerton
+@param[in] thd	MySQL thread handle */
+static int innobase_store_binlog_info(handlerton *hton, THD *thd) noexcept {
+  DBUG_ENTER("innobase_store_binlog_info");
+
+  const char *file_name;
+  unsigned long long pos;
+  thd_binlog_pos(thd, &file_name, &pos);
+
+  trx_sys_write_binlog_position("", std::numeric_limits<uint64_t>::max(),
+                                file_name, pos);
+
+  innobase_flush_logs(hton, false);
+
+  DBUG_RETURN(0);
 }
 
 /** Creates an InnoDB transaction struct for the thd if it does not yet have

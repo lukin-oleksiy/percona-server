@@ -513,7 +513,6 @@ class Prepared_statement;
 
 /**
   Container for all prepared statements created/used in a connection.
-
   Prepared statements in Prepared_statement_map have unique id
   (guaranteed by id assignment in Prepared_statement::Prepared_statement).
 
