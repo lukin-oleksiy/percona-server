@@ -599,8 +599,6 @@ extern ulong srv_buf_pool_dump_pct;
 
 extern ulint srv_show_locks_held;
 
-extern ulint srv_show_locks_held;
-
 extern ulint srv_lock_table_size;
 
 extern ulong srv_cleaner_lsn_age_factor;
