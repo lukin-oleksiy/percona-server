@@ -414,6 +414,7 @@ MBD=$RPM_BUILD_DIR/%{src_dir}
 install -d -m 0751 %{buildroot}/var/lib/mysql
 install -d -m 0755 %{buildroot}/var/run/mysqld
 install -d -m 0750 %{buildroot}/var/lib/mysql-files
+install -d -m 0750 %{buildroot}/var/lib/mysql-keyring
 
 # Install all binaries
 cd $MBD/release
@@ -427,7 +428,7 @@ install -D -m 0644 $MBD/%{src_dir}/build-ps/rpm/my.cnf %{buildroot}%{_sysconfdir
 install -d %{buildroot}%{_sysconfdir}/my.cnf.d
 %if 0%{?systemd}
 %else
-install -D -m 0755 $MBD/%{src_dir}/build-ps/rpm/mysql.init %{buildroot}%{_sysconfdir}/init.d/mysqld
+install -D -m 0755 $MBD/%{src_dir}/build-ps/rpm/mysql.init %{buildroot}%{_sysconfdir}/init.d/mysql
 %endif
 
 # Add libdir to linker
@@ -494,12 +495,19 @@ fi
 %post -n Percona-Server-server%{product_suffix}
 datadir=$(/usr/bin/my_print_defaults server mysqld | grep '^--datadir=' | sed -n 's/--datadir=//p')
 /bin/chmod 0751 "$datadir" >/dev/null 2>&1 || :
-/bin/touch /var/log/mysqld.log >/dev/null 2>&1 || :
+if [ ! -e /var/log/mysqld.log ]; then
+    /usr/bin/install -m0640 -omysql -gmysql /dev/null /var/log/mysqld.log
+fi
+#/bin/touch /var/log/mysqld.log >/dev/null 2>&1 || :
 %if 0%{?systemd}
-%systemd_post mysqld.service
-/usr/bin/systemctl enable mysqld >/dev/null 2>&1 || :
+  %systemd_post mysqld.service
+  if [ $1 == 1 ]; then
+      /usr/bin/systemctl enable mysqld >/dev/null 2>&1 || :
+  fi
 %else
-/sbin/chkconfig --add mysqld
+  if [ $1 == 1 ]; then
+      /sbin/chkconfig --add mysql
+  fi
 %endif
 # We need this because we don't provide my.cnf on centos 6
 # and the default system one doesn't have info needed
@@ -528,8 +536,8 @@ echo "See http://www.percona.com/doc/percona-server/5.7/management/udf_percona_t
 %systemd_preun mysqld.service
 %else
 if [ "$1" = 0 ]; then
-    /sbin/service mysqld stop >/dev/null 2>&1 || :
-    /sbin/chkconfig --del mysqld
+    /sbin/service mysql stop >/dev/null 2>&1 || :
+    /sbin/chkconfig --del mysql
 fi
 %endif
 
@@ -538,7 +546,7 @@ fi
 %systemd_postun_with_restart mysqld.service
 %else
 if [ $1 -ge 1 ]; then
-    /sbin/service mysqld condrestart >/dev/null 2>&1 || :
+    /sbin/service mysql condrestart >/dev/null 2>&1 || :
 fi
 %endif
 
@@ -644,6 +652,7 @@ fi
 %attr(755, root, root) %{_libdir}/mysql/plugin/auth_socket.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/ha_example.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/innodb_engine.so
+%attr(755, root, root) %{_libdir}/mysql/plugin/keyring_file.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/libmemcached.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/locking_service.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/mypluglib.so
@@ -654,11 +663,14 @@ fi
 %attr(755, root, root) %{_libdir}/mysql/plugin/semisync_slave.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/validate_password.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/version_token.so
+%attr(755, root, root) %{_libdir}/mysql/plugin/mysqlx.so
+%attr(755, root, root) %{_libdir}/mysql/plugin/keyring_udf.so
 %dir %{_libdir}/mysql/plugin/debug
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/adt_null.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/auth_socket.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/ha_example.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/innodb_engine.so
+%attr(755, root, root) %{_libdir}/mysql/plugin/debug/keyring_file.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/libmemcached.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/locking_service.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/mypluglib.so
@@ -669,6 +681,8 @@ fi
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/semisync_slave.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/validate_password.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/version_token.so
+%attr(755, root, root) %{_libdir}/mysql/plugin/debug/mysqlx.so
+%attr(755, root, root) %{_libdir}/mysql/plugin/debug/keyring_udf.so
 %if 0%{?mecab}
 %{_libdir}/mysql/mecab
 %attr(755, root, root) %{_libdir}/mysql/plugin/libpluginmecab.so
@@ -710,15 +724,17 @@ fi
 %attr(644, root, root) %{_datadir}/percona-server/uninstall_rewriter.sql
 %attr(644, root, root) %{_datadir}/percona-server/magic
 %if 0%{?systemd}
+%attr(644, root, root) %{_unitdir}/mysqld@.service
 %attr(644, root, root) %{_unitdir}/mysqld.service
 %attr(644, root, root) %{_prefix}/lib/tmpfiles.d/mysql.conf
 %else
-%attr(755, root, root) %{_sysconfdir}/init.d/mysqld
+%attr(755, root, root) %{_sysconfdir}/init.d/mysql
 %endif
 %attr(644, root, root) %config(noreplace,missingok) %{_sysconfdir}/logrotate.d/mysql
 %dir %attr(751, mysql, mysql) /var/lib/mysql
 %dir %attr(755, mysql, mysql) /var/run/mysqld
 %dir %attr(750, mysql, mysql) /var/lib/mysql-files
+%dir %attr(750, mysql, mysql) /var/lib/mysql-keyring
 
 %attr(755, root, root) %{_datadir}/percona-server/charsets/
 %attr(755, root, root) %{_datadir}/percona-server/errmsg-utf8.txt
@@ -811,6 +827,7 @@ fi
 %attr(-, root, root) %{_datadir}/mysql-test
 %attr(755, root, root) %{_bindir}/mysql_client_test
 %attr(755, root, root) %{_bindir}/mysqltest
+%attr(755, root, root) %{_bindir}/mysqlxtest
 
 %attr(755, root, root) %{_libdir}/mysql/plugin/auth.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/auth_test_plugin.so
@@ -842,6 +859,7 @@ fi
 %attr(755, root, root) %{_libdir}/mysql/plugin/qa_auth_interface.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/qa_auth_server.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/test_security_context.so
+%attr(755, root, root) %{_libdir}/mysql/plugin/test_udf_services.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/auth.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/auth_test_plugin.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/libdaemon_example.so
@@ -871,6 +889,7 @@ fi
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/qa_auth_interface.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/qa_auth_server.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/test_security_context.so
+%attr(755, root, root) %{_libdir}/mysql/plugin/debug/test_udf_services.so
 
 %attr(644, root, root) %{_mandir}/man1/mysql_client_test.1*
 %attr(644, root, root) %{_mandir}/man1/mysql-stress-test.pl.1*
@@ -896,6 +915,10 @@ fi
 %changelog
 * Thu Sep  1 2016 Evgeniy Patlan <evgeniy.patlan@percona.com> 
 - fix license field
+
+* Wed Mar 09 2016 Tomislav Plavcic <tomislav.plavcic@percona.com> - 5.7.11-4
+- Include mysql-keyring directory
+- Provide keyring_file.so plugin
 
 * Thu Feb 11 2016 Tomislav Plavcic <tomislav.plavcic@percona.com> - 5.7.10-3
 - Fix for centos6 to write temp pass into log file instead of stdout (#1541769)
