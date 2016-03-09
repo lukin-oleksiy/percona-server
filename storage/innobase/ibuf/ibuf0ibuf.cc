@@ -2448,7 +2448,7 @@ ulint ibuf_merge_in_background(bool full) {
     sum_bytes += n_bytes;
     sum_pages += n_pag2;
 
-    srv_inc_activity_count();
+    srv_inc_activity_count(true);
   }
 
   return (sum_bytes);
