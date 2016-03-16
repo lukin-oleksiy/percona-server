@@ -207,7 +207,7 @@ struct Rdb_open_tables_map {
 
   static uchar *get_hash_key(Rdb_table_handler *const table_handler,
                              size_t *const length,
-                             my_bool not_used __attribute__((__unused__)));
+                             my_bool not_used MY_ATTRIBUTE((__unused__)));
 
   Rdb_table_handler *get_table_handler(const char *const table_name);
   void release_table_handler(Rdb_table_handler *const table_handler);
@@ -226,11 +226,11 @@ static std::string rdb_normalize_dir(std::string dir) {
   return dir;
 }
 
-static int rocksdb_create_checkpoint(THD *const thd __attribute__((__unused__)),
+static int rocksdb_create_checkpoint(THD *const thd MY_ATTRIBUTE((__unused__)),
                                      struct st_mysql_sys_var *const var
-                                     __attribute__((__unused__)),
+                                     MY_ATTRIBUTE((__unused__)),
                                      void *const save
-                                     __attribute__((__unused__)),
+                                     MY_ATTRIBUTE((__unused__)),
                                      struct st_mysql_value *const value) {
   char buf[FN_REFLEN];
   int len = sizeof(buf);
@@ -283,23 +283,59 @@ static void rocksdb_force_flush_memtable_now_stub(
 static int rocksdb_force_flush_memtable_now(
     THD *const thd, struct st_mysql_sys_var *const var, void *const var_ptr,
     struct st_mysql_value *const value) {
-  sql_print_information("RocksDB: Manual memtable flush\n");
+  sql_print_information("RocksDB: Manual memtable flush.");
   rocksdb_flush_all_memtables();
   return HA_EXIT_SUCCESS;
 }
 
+static void rocksdb_force_flush_memtable_and_lzero_now_stub(
+    THD *const thd, struct st_mysql_sys_var *const var, void *const var_ptr,
+    const void *const save) {}
+
+static int rocksdb_force_flush_memtable_and_lzero_now(
+    THD *const thd, struct st_mysql_sys_var *const var, void *const var_ptr,
+    struct st_mysql_value *const value) {
+  sql_print_information("RocksDB: Manual memtable and L0 flush.");
+  rocksdb_flush_all_memtables();
+
+  const Rdb_cf_manager &cf_manager = rdb_get_cf_manager();
+  const rocksdb::CompactionOptions c_options = rocksdb::CompactionOptions();
+  for (const auto &cf_handle : cf_manager.get_all_cf()) {
+    rocksdb::ColumnFamilyMetaData metadata;
+    rdb->GetColumnFamilyMetaData(cf_handle, &metadata);
+
+    DBUG_ASSERT(metadata.levels[0].level == 0);
+    std::vector<std::string> file_names;
+    for (auto &file : metadata.levels[0].files) {
+      file_names.emplace_back(file.db_path + file.name);
+    }
+
+    if (!file_names.empty()) {
+      rocksdb::Status s;
+      s = rdb->CompactFiles(c_options, cf_handle, file_names, 1);
+
+      if (!s.ok() && !s.IsAborted()) {
+        rdb_handle_io_error(s, RDB_IO_ERROR_GENERAL);
+        return HA_EXIT_FAILURE;
+      }
+    }
+  }
+
+  return HA_EXIT_SUCCESS;
+}
+
 static void rocksdb_drop_index_wakeup_thread(
-    my_core::THD *const thd __attribute__((__unused__)),
-    struct st_mysql_sys_var *const var __attribute__((__unused__)),
-    void *const var_ptr __attribute__((__unused__)), const void *const save);
+    my_core::THD *const thd MY_ATTRIBUTE((__unused__)),
+    struct st_mysql_sys_var *const var MY_ATTRIBUTE((__unused__)),
+    void *const var_ptr MY_ATTRIBUTE((__unused__)), const void *const save);
 
 static my_bool rocksdb_pause_background_work = 0;
 static mysql_mutex_t rdb_sysvars_mutex;
 
 static void rocksdb_set_pause_background_work(
-    my_core::THD *const thd __attribute__((__unused__)),
-    struct st_mysql_sys_var *const var __attribute__((__unused__)),
-    void *const var_ptr __attribute__((__unused__)), const void *const save) {
+    my_core::THD *const thd MY_ATTRIBUTE((__unused__)),
+    struct st_mysql_sys_var *const var MY_ATTRIBUTE((__unused__)),
+    void *const var_ptr MY_ATTRIBUTE((__unused__)), const void *const save) {
   mysql_mutex_lock(&rdb_sysvars_mutex);
   const bool pause_requested = *static_cast<const bool *>(save);
   if (rocksdb_pause_background_work != pause_requested) {
@@ -339,7 +375,7 @@ static void rocksdb_set_collation_exception_list(THD *thd,
                                                  const void *save);
 
 static void rocksdb_set_bulk_load(THD *thd, struct st_mysql_sys_var *var
-                                  __attribute__((__unused__)),
+                                  MY_ATTRIBUTE((__unused__)),
                                   void *var_ptr, const void *save);
 
 static void rocksdb_set_max_background_compactions(
@@ -371,6 +407,7 @@ static my_bool rocksdb_strict_collation_check = 1;
 static char *rocksdb_strict_collation_exceptions;
 static my_bool rocksdb_collect_sst_properties = 1;
 static my_bool rocksdb_force_flush_memtable_now_var = 0;
+static my_bool rocksdb_force_flush_memtable_and_lzero_now_var = 0;
 static uint64_t rocksdb_number_stat_computes = 0;
 static uint32_t rocksdb_seconds_between_stat_computes = 3600;
 static long long rocksdb_compaction_sequential_deletes = 0l;
@@ -1038,6 +1075,13 @@ static MYSQL_SYSVAR_BOOL(
     rocksdb_force_flush_memtable_now, rocksdb_force_flush_memtable_now_stub,
     FALSE);
 
+static MYSQL_SYSVAR_BOOL(
+    force_flush_memtable_and_lzero_now,
+    rocksdb_force_flush_memtable_and_lzero_now_var, PLUGIN_VAR_RQCMDARG,
+    "Acts similar to force_flush_memtable_now, but also compacts all L0 files.",
+    rocksdb_force_flush_memtable_and_lzero_now,
+    rocksdb_force_flush_memtable_and_lzero_now_stub, FALSE);
+
 static MYSQL_THDVAR_BOOL(
     flush_memtable_on_analyze, PLUGIN_VAR_RQCMDARG,
     "Forces memtable flush on ANALZYE table to get accurate cardinality",
@@ -1239,6 +1283,7 @@ static struct st_mysql_sys_var *rocksdb_system_variables[] = {
     MYSQL_SYSVAR(pause_background_work),
     MYSQL_SYSVAR(collect_sst_properties),
     MYSQL_SYSVAR(force_flush_memtable_now),
+    MYSQL_SYSVAR(force_flush_memtable_and_lzero_now),
     MYSQL_SYSVAR(flush_memtable_on_analyze),
     MYSQL_SYSVAR(seconds_between_stat_computes),
 
@@ -1280,7 +1325,7 @@ rdb_get_rocksdb_write_options(my_core::THD *const thd) {
 
 uchar *Rdb_open_tables_map::get_hash_key(Rdb_table_handler *const table_handler,
                                          size_t *const length, my_bool not_used
-                                         __attribute__((__unused__))) {
+                                         MY_ATTRIBUTE((__unused__))) {
   *length = table_handler->m_table_name_length;
   return reinterpret_cast<uchar *>(table_handler->m_table_name);
 }
@@ -1292,9 +1337,9 @@ uchar *Rdb_open_tables_map::get_hash_key(Rdb_table_handler *const table_handler,
 static Rdb_drop_index_thread rdb_drop_idx_thread;
 
 static void rocksdb_drop_index_wakeup_thread(
-    my_core::THD *const thd __attribute__((__unused__)),
-    struct st_mysql_sys_var *const var __attribute__((__unused__)),
-    void *const var_ptr __attribute__((__unused__)), const void *const save) {
+    my_core::THD *const thd MY_ATTRIBUTE((__unused__)),
+    struct st_mysql_sys_var *const var MY_ATTRIBUTE((__unused__)),
+    void *const var_ptr MY_ATTRIBUTE((__unused__)), const void *const save) {
   if (*static_cast<const bool *>(save)) {
     rdb_drop_idx_thread.signal();
   }
@@ -2323,9 +2368,8 @@ static std::string rdb_xid_to_string(const XID &src) {
   Called by hton->flush_logs after MySQL group commit prepares a set of
   transactions.
 */
-static bool rocksdb_flush_wal(handlerton *const hton
-                              __attribute__((__unused__)),
-                              bool binlog_group_flush __attribute__((unused))) {
+static bool rocksdb_flush_wal(handlerton *const hton MY_ATTRIBUTE((__unused__)),
+                              bool binlog_group_flush MY_ATTRIBUTE((unused))) {
   DBUG_ASSERT(rdb != nullptr);
   rocksdb_wal_group_syncs++;
   const rocksdb::Status s = rdb->SyncWAL();
@@ -2382,7 +2426,7 @@ static int rocksdb_commit_by_xid(handlerton *const hton, XID *const xid) {
 }
 
 static int rocksdb_rollback_by_xid(handlerton *const hton
-                                   __attribute__((__unused__)),
+                                   MY_ATTRIBUTE((__unused__)),
                                    XID *const xid) {
   const auto name = rdb_xid_to_string(*xid);
   rocksdb::Transaction *const trx = rdb->GetTransactionByName(name);
@@ -3596,7 +3640,7 @@ void Rdb_open_tables_map::release_table_handler(
   assert(table_handler->m_ref_count > 0);
   if (!--table_handler->m_ref_count) {
     // Last rereference was released. Tear down the hash entry.
-    const auto ret __attribute__((__unused__)) =
+    const auto ret MY_ATTRIBUTE((__unused__)) =
         my_hash_delete(&m_hash, reinterpret_cast<uchar *>(table_handler));
     DBUG_ASSERT(!ret); // the hash entry must actually be found and deleted
     my_core::thr_lock_delete(&table_handler->m_thr_lock);
@@ -8010,7 +8054,7 @@ void Rdb_drop_index_thread::run() {
                      ? 24 * 60 * 60  // no filtering
                      : 60;           // filtering
 
-    const auto ret __attribute__((__unused__)) =
+    const auto ret MY_ATTRIBUTE((__unused__)) =
         mysql_cond_timedwait(&m_signal_cond, &m_signal_mutex, &ts);
     if (m_stop) {
       break;
@@ -8471,7 +8515,7 @@ int ha_rocksdb::calculate_stats(const TABLE *const table_arg, THD *const thd,
   // get RocksDB table properties for these ranges
   rocksdb::TablePropertiesCollection props;
   for (auto it : ranges) {
-    const auto old_size __attribute__((__unused__)) = props.size();
+    const auto old_size MY_ATTRIBUTE((__unused__)) = props.size();
     const auto status = rdb->GetPropertiesOfTablesInRange(
         it.first, &it.second[0], it.second.size(), &props);
     DBUG_ASSERT(props.size() >= old_size);
@@ -9560,7 +9604,7 @@ void Rdb_background_thread::run() {
     // thread. Request to stop the thread should only be triggered when the
     // storage engine is being unloaded.
     mysql_mutex_lock(&m_signal_mutex);
-    const auto ret __attribute__((__unused__)) =
+    const auto ret MY_ATTRIBUTE((__unused__)) =
         mysql_cond_timedwait(&m_signal_cond, &m_signal_mutex, &ts_next_sync);
 
     // Check that we receive only the expected error codes.
@@ -9759,9 +9803,9 @@ Rdb_dict_manager *rdb_get_dict_manager(void) { return &dict_manager; }
 Rdb_ddl_manager *rdb_get_ddl_manager(void) { return &ddl_manager; }
 
 void rocksdb_set_compaction_options(my_core::THD *const thd
-                                    __attribute__((__unused__)),
+                                    MY_ATTRIBUTE((__unused__)),
                                     my_core::st_mysql_sys_var *const var
-                                    __attribute__((__unused__)),
+                                    MY_ATTRIBUTE((__unused__)),
                                     void *const var_ptr,
                                     const void *const save) {
   if (var_ptr && save) {
@@ -9777,9 +9821,9 @@ void rocksdb_set_compaction_options(my_core::THD *const thd
 }
 
 void rocksdb_set_table_stats_sampling_pct(
-    my_core::THD *const thd __attribute__((__unused__)),
-    my_core::st_mysql_sys_var *const var __attribute__((__unused__)),
-    void *const var_ptr __attribute__((__unused__)), const void *const save) {
+    my_core::THD *const thd MY_ATTRIBUTE((__unused__)),
+    my_core::st_mysql_sys_var *const var MY_ATTRIBUTE((__unused__)),
+    void *const var_ptr MY_ATTRIBUTE((__unused__)), const void *const save) {
   mysql_mutex_lock(&rdb_sysvars_mutex);
 
   const uint32_t new_val = *static_cast<const uint32_t *>(save);
@@ -9807,9 +9851,9 @@ void rocksdb_set_table_stats_sampling_pct(
 */
 void rocksdb_set_rate_limiter_bytes_per_sec(my_core::THD *const thd,
                                             my_core::st_mysql_sys_var *const var
-                                            __attribute__((__unused__)),
+                                            MY_ATTRIBUTE((__unused__)),
                                             void *const var_ptr
-                                            __attribute__((__unused__)),
+                                            MY_ATTRIBUTE((__unused__)),
                                             const void *const save) {
   const uint64_t new_val = *static_cast<const uint64_t *>(save);
   if (new_val == 0 || rocksdb_rate_limiter_bytes_per_sec == 0) {
@@ -9873,7 +9917,7 @@ void rocksdb_set_collation_exception_list(THD *const thd,
 }
 
 void rocksdb_set_bulk_load(THD *const thd, struct st_mysql_sys_var *const var
-                           __attribute__((__unused__)),
+                           MY_ATTRIBUTE((__unused__)),
                            void *const var_ptr, const void *const save) {
   Rdb_transaction *&tx = get_tx_from_thd(thd);
 
