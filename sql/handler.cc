@@ -3081,6 +3081,10 @@ int handler::ha_open(TABLE *table_arg, const char *name, int mode,
                            : &table->mem_root;
   assert(alloc_root_inited(mem_root));
 
+  if (cloned) {
+    DEBUG_SYNC(ha_thd(), "start_handler_ha_open_cloned");
+  }
+
   if ((error = open(name, mode, test_if_locked, table_def))) {
     if ((error == EACCES || error == EROFS) && mode == O_RDWR &&
         (table->db_stat & HA_TRY_READ_ONLY)) {
