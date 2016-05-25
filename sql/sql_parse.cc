@@ -2528,6 +2528,9 @@ done:
   log_slow_statement(thd);
 
   THD_STAGE_INFO(thd, stage_cleaning_up);
+  if (thd->lex->sql_command == SQLCOM_CREATE_TABLE) {
+    DEBUG_SYNC(thd, "dispatch_create_table_command_before_thd_root_free");
+  }
 
   thd->reset_query();
   thd->set_command(COM_SLEEP);
