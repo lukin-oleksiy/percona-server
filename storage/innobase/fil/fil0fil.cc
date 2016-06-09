@@ -2537,8 +2537,15 @@ dberr_t Fil_shard::get_file_size(fil_node_t *file, bool read_only_mode) {
     space->flags |= flags & FSP_FLAGS_MASK_ENCRYPTION;
   }
 
+  /* Make a copy of space->flags and flags from the page header
+  so that they can be compared. */
+  /* Do not compare the data directory flag, in case this tablespace was
+  relocated. */
+  auto fil_space_flags = space->flags & ~FSP_FLAGS_MASK_DATA_DIR;
+  auto header_fsp_flags = flags & ~FSP_FLAGS_MASK_DATA_DIR;
+
   /* Make sure the space_flags are the same as the header page flags. */
-  if (space->flags != flags) {
+  if (UNIV_UNLIKELY(fil_space_flags != header_fsp_flags)) {
     ib::error(ER_IB_MSG_272, ulong{space->flags}, file->name, ulonglong{flags});
     ut_error;
   }
