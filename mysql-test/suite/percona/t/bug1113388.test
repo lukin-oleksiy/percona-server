@@ -1,8 +1,9 @@
 #
 # Test for bug 1113388: field.cc:3822: virtual longlong Field_long::val_int(): Assertion `table->in_use == _current_thd()' failed
 #
---source include/have_innodb.inc
 --source include/have_debug_sync.inc
+
+--source include/count_sessions.inc
 
 CREATE TABLE t1(a INT PRIMARY KEY) ENGINE=InnoDB;
 INSERT INTO t1 VALUES (1);
@@ -30,3 +31,6 @@ connection default;
 
 SET SESSION old_alter_table=default;
 DROP TABLE t1;
+SET DEBUG_SYNC= 'RESET';
+
+--source include/wait_until_count_sessions.inc
