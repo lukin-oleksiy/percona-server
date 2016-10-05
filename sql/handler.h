@@ -5047,6 +5047,15 @@ class handler {
   virtual handler *clone(const char *name, MEM_ROOT *mem_root);
   /** This is called after create to allow us to set up cached variables */
   void init() { cached_table_flags = table_flags(); }
+  /**
+    For MyRocks, secondary initialization that happens after frm is parsed into
+    field information from within open_binary_frm. MyRocks uses this secondary
+    init phase to analyze the key and field definitions to determine if it can
+    expose the HA_PRIMARY_KEY_IN_READ_INDEX flag on the table as it only
+    supports that behavior for certain types of key combinations.
+    Return values: false success, true failure.
+  */
+  virtual bool init_with_fields() { return false; }
   /* ha_ methods: public wrappers for private virtual API */
 
   /**
