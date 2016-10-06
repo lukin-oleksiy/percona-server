@@ -528,6 +528,11 @@ enum class SelectExecutedIn : bool { kPrimaryEngine, kSecondaryEngine };
   Supports multi-valued index
 */
 #define HA_MULTI_VALUED_KEY_SUPPORT (1LL << 55)
+/**
+  There is no need to evict the table from the table definition cache having run
+  ANALYZE TABLE on it
+*/
+#define HA_ONLINE_ANALYZE (1LL << 56)
 
 /*
   Bits in index_flags(index_number) for what you can do with index.
@@ -686,7 +691,8 @@ enum legacy_db_type {
   /** Performance schema engine. */
   DB_TYPE_PERFORMANCE_SCHEMA,
   DB_TYPE_TEMPTABLE,
-  DB_TYPE_FIRST_DYNAMIC = 42,
+  DB_TYPE_ROCKSDB = 42,
+  DB_TYPE_FIRST_DYNAMIC = 43,
   DB_TYPE_DEFAULT = 127  // Must be last
 };
 
