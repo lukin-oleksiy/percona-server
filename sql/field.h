@@ -3625,7 +3625,7 @@ class Field_blob : public Field_longstr {
     return get_length(row_offset);
   }
   uint32 get_length(ptrdiff_t row_offset = 0) const;
-  uint32 get_length(const uchar *ptr, uint packlength) const;
+  static uint32 get_length(const uchar *ptr, uint packlength);
   uint32 get_length(const uchar *ptr_arg) const;
   /** Get a const pointer to the BLOB data of this field. */
   const uchar *get_blob_data() const { return get_blob_data(ptr + packlength); }
@@ -3685,7 +3685,7 @@ class Field_blob : public Field_longstr {
     return charset() == &my_charset_bin ? false : true;
   }
   uint32 max_display_length() const final;
-  uint32 char_length() const override;
+  uint32 char_length() const noexcept override;
   bool copy_blob_value(MEM_ROOT *mem_root);
   uint is_equal(const Create_field *new_field) const override;
   bool is_text_key_type() const final { return binary() ? false : true; }
@@ -3846,6 +3846,8 @@ class Field_vector : public Field_blob {
   uint is_equal(const Create_field *new_field) const override;
   String *val_str(String *, String *) const override;
 };
+
+void store_blob_length(uchar *i_ptr, uint i_packlength, uint32 i_number);
 
 class Field_geom final : public Field_blob {
  private:
@@ -4109,7 +4111,7 @@ class Field_typed_array final : public Field_json {
                     uchar auto_flags_arg, const char *field_name_arg,
                     TABLE_SHARE *share, uint blob_pack_length,
                     const CHARSET_INFO *cs);
-  uint32 char_length() const override {
+  uint32 char_length() const noexcept override {
     return field_length / charset()->mbmaxlen;
   }
   void init(TABLE *table_arg) override;
