@@ -627,6 +627,7 @@ SET(SQL_SHARED_SOURCES
   sql_union.cc
   sql_update.cc
   sql_view.cc
+  sql_zip_dict.cc
   ssl_acceptor_context_iterator.cc
   ssl_acceptor_context_data.cc
   ssl_acceptor_context_operator.cc

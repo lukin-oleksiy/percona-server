@@ -149,7 +149,10 @@ static bool verbose = false, opt_no_create_info = false, opt_no_data = false,
             column_statistics = false,
             opt_show_create_table_skip_secondary_engine = false,
             opt_ignore_views = false, opt_drop_masking_policies = true;
-static bool opt_order_by_primary_desc = false, opt_lock_for_backup = false,
+static bool opt_compressed_columns = false,
+            opt_compressed_columns_with_dictionaries = false,
+            opt_drop_compression_dictionary = true,
+            opt_order_by_primary_desc = false, opt_lock_for_backup = false,
             opt_innodb_optimize_keys = false;
 static bool insert_pat_inited = false, debug_info_flag = false,
             debug_check_flag = false;
@@ -270,6 +273,8 @@ bool seen_views = false;
 collation_unordered_set<string> *ignore_table, *include_user;
 std::forward_list<string> *exclude_user;
 
+static collation_unordered_set<std::string> *processed_compression_dictionaries;
+
 static std::list<std::string> skipped_keys_list;
 static std::list<std::string> alter_constraints_list;
 
@@ -284,6 +289,10 @@ static struct my_option my_long_options[] = {
     {"no-tablespaces", 'y', "Do not dump any tablespace information.",
      &opt_notspcs, &opt_notspcs, nullptr, GET_BOOL, NO_ARG, 0, 0, 0, nullptr, 0,
      nullptr},
+    {"add-drop-compression-dictionary", OPT_DROP_COMPRESSION_DICTIONARY,
+     "Add a DROP COMPRESSION_DICTIONARY before each create.",
+     &opt_drop_compression_dictionary, &opt_drop_compression_dictionary, 0,
+     GET_BOOL, NO_ARG, 1, 0, 0, nullptr, 0, nullptr},
     {"add-drop-database", OPT_DROP_DATABASE,
      "Add a DROP DATABASE before each create.", &opt_drop_database,
      &opt_drop_database, nullptr, GET_BOOL, NO_ARG, 0, 0, 0, nullptr, 0,
@@ -412,6 +421,16 @@ static struct my_option my_long_options[] = {
      "Option automatically turns --lock-tables off.",
      &opt_replica_data, &opt_replica_data, nullptr, GET_UINT, OPT_ARG, 0, 0,
      MYSQL_OPT_REPLICA_DATA_COMMENTED_SQL, nullptr, 0, nullptr},
+    {"enable-compressed-columns", OPT_ENABLE_COMPRESSED_COLUMNS,
+     "Enable compressed columns extensions.", &opt_compressed_columns,
+     &opt_compressed_columns, nullptr, GET_BOOL, NO_ARG, 0, 0, 0, nullptr, 0,
+     nullptr},
+    {"enable-compressed-columns-with-dictionaries",
+     OPT_ENABLE_COMPRESSED_COLUMNS_WITH_DICTIONARIES,
+     "Enable dictionaries for compressed columns extensions.",
+     &opt_compressed_columns_with_dictionaries,
+     &opt_compressed_columns_with_dictionaries, nullptr, GET_BOOL, NO_ARG, 0, 0,
+     0, nullptr, 0, nullptr},
     {"dump-slave", OPT_MYSQLDUMP_SLAVE_DATA_DEPRECATED,
      "This option is deprecated and will be removed in a future version. "
      "Use dump-replica instead.",
@@ -1302,6 +1321,10 @@ static int get_options(int *argc, char ***argv) {
   exclude_user = new std::forward_list<string>();
   include_user =
       new collation_unordered_set<string>(charset_info, PSI_NOT_INSTRUMENTED);
+
+  processed_compression_dictionaries =
+      new collation_unordered_set<string>(charset_info, PSI_NOT_INSTRUMENTED);
+
   /* Don't copy internal log tables */
   ignore_table->insert("mysql.apply_status");
   ignore_table->insert("mysql.schema");
@@ -1833,6 +1856,12 @@ static char *cover_definer_clause(char *stmt_str, size_t stmt_length,
 static FILE *open_sql_file_for_table(const char *table, int flags) {
   FILE *res;
   char filename[FN_REFLEN], tmp_path[FN_REFLEN];
+  /*
+    We need to reset processed compression dictionaries container
+    each time a new SQL file is created (for --tab option).
+  */
+  if (processed_compression_dictionaries)
+    processed_compression_dictionaries->clear();
   convert_dirname(tmp_path, path, NullS);
   res = my_fopen(fn_format(filename, table, tmp_path, ".sql",
                            MYF(MY_UNPACK_FILENAME | MY_APPEND_EXT)),
@@ -1850,6 +1879,12 @@ static void free_resources() {
   include_user = nullptr;
   delete exclude_user;
   exclude_user = nullptr;
+
+  if (processed_compression_dictionaries != nullptr) {
+    delete processed_compression_dictionaries;
+    processed_compression_dictionaries = nullptr;
+  }
+
   if (insert_pat_inited) dynstr_free(&insert_pat);
   if (opt_ignore_error) my_free(opt_ignore_error);
   opt_init_commands.free();
@@ -2161,6 +2196,44 @@ static char *quote_name(char *name, char *buff, bool force) {
   to[1] = 0;
   return buff;
 } /* quote_name */
+
+/**
+   Unquotes char string, taking into account compatible mode
+
+   @param opt_quoted_name   Optionally quoted string
+   @param buff              The buffer that will contain the unquoted value,
+   may be returned
+
+   @return Pointer to unquoted string (either original opt_quoted_name or
+   buff).
+*/
+static char *unquote_name(const char *opt_quoted_name, char *buff) noexcept {
+  if (!opt_quoted) return (char *)opt_quoted_name;
+
+  const char qtype = ansi_quotes_mode ? '\"' : '`';
+
+  if (*opt_quoted_name != qtype) {
+    assert(strchr(opt_quoted_name, qtype) == 0);
+    return (char *)opt_quoted_name;
+  }
+
+  ++opt_quoted_name;
+  char *to = buff;
+  while (*opt_quoted_name) {
+    if (*opt_quoted_name == qtype) {
+      ++opt_quoted_name;
+      if (*opt_quoted_name == qtype)
+        *to++ = qtype;
+      else {
+        assert(*opt_quoted_name == '\0');
+      }
+    } else {
+      *to++ = *opt_quoted_name++;
+    }
+  }
+  to[0] = 0;
+  return buff;
+} /* unquote_name */
 
 static const char *quote_name(const char *name, char *buff, bool force) {
   return quote_name(const_cast<char *>(name), buff, force);
@@ -3446,6 +3519,83 @@ static void skip_secondary_keys(const char *table, char *create_str,
   my_free(autoinc_column);
 }
 
+using dict_list_t = std::forward_list<std::string>;
+
+/**
+   Removes some compressed columns extensions from the create table
+   definition (a string produced by SHOW CREATE TABLE) depending on
+   opt_compressed_columns and opt_compressed_columns_with_dictionaries flags.
+   If opt_compressed_columns_with_dictionaries flags is true, in addition
+   dictionaries list will be filled with referenced compression
+   dictionaries.
+
+   @param create_str     SHOW CREATE TABLE output
+   @param dictionaries   the list of dictionary names found in the
+   create table definition
+*/
+static void skip_compressed_columns(char *create_str,
+                                    dict_list_t *dictionaries) {
+  static const constexpr char prefix[] = " /*!" STRINGIFY_ARG(
+      FIRST_SUPPORTED_COMPRESSED_COLUMNS_VERSION) " COLUMN_FORMAT COMPRESSED";
+  static const constexpr auto prefix_length = sizeof(prefix) - 1;
+  static const constexpr char suffix[] = " */";
+  static const constexpr auto suffix_length = sizeof(suffix) - 1;
+  static const constexpr char dictionary_keyword[] =
+      " WITH COMPRESSION_DICTIONARY ";
+  static const constexpr auto dictionary_keyword_length =
+      sizeof(dictionary_keyword) - 1;
+
+  DBUG_ENTER("skip_compressed_columns");
+
+  if (opt_compressed_columns_with_dictionaries && dictionaries != nullptr)
+    dictionaries->clear();
+
+  char *ptr = create_str;
+  char *end_ptr = ptr + strlen(create_str);
+  char *prefix_ptr = strstr(ptr, prefix);
+  while (prefix_ptr != nullptr) {
+    char *const suffix_ptr = strstr(prefix_ptr + prefix_length, suffix);
+    assert(suffix_ptr != nullptr);
+    if (!opt_compressed_columns_with_dictionaries) {
+      if (!opt_compressed_columns) {
+        /* Strip out all compressed columns extensions. */
+        memmove(prefix_ptr, suffix_ptr + suffix_length,
+                end_ptr - (suffix_ptr + suffix_length) + 1);
+        end_ptr -= suffix_ptr + suffix_length - prefix_ptr;
+        ptr = prefix_ptr;
+      } else {
+        /* Strip out only compression dictionary references. */
+        memmove(prefix_ptr + prefix_length, suffix_ptr,
+                end_ptr - suffix_ptr + 1);
+        end_ptr -= suffix_ptr - (prefix_ptr + prefix_length);
+        ptr = prefix_ptr + prefix_length + suffix_length;
+      }
+    } else {
+      /* Do not strip out anything. Leave full column definition as is. */
+      if (dictionaries != nullptr && prefix_ptr + prefix_length != suffix_ptr) {
+        const char *dictionary_keyword_ptr =
+            strstr(prefix_ptr + prefix_length, dictionary_keyword);
+        assert(dictionary_keyword_ptr < suffix_ptr);
+        const auto dictionary_name_length =
+            suffix_ptr - (dictionary_keyword_ptr + dictionary_keyword_length);
+
+        char opt_quoted_buff[NAME_LEN * 2 + 3];
+        strncpy(opt_quoted_buff,
+                dictionary_keyword_ptr + dictionary_keyword_length,
+                dictionary_name_length);
+        opt_quoted_buff[dictionary_name_length] = '\0';
+
+        char unquoted_buff[NAME_LEN * 2 + 3];
+        dictionaries->emplace_front(
+            unquote_name(opt_quoted_buff, unquoted_buff));
+      }
+      ptr = suffix_ptr + suffix_length;
+    }
+    prefix_ptr = strstr(ptr, prefix);
+  }
+  DBUG_VOID_RETURN;
+}
+
 /*
   Check if the table has a primary key defined either explicitly or
   implicitly (i.e. a unique key on non-nullable columns).
@@ -3487,6 +3637,87 @@ cleanup:
   if (res) mysql_free_result(res);
 
   return has_pk;
+}
+
+/**
+   Prints "CREATE COMPRESSION_DICTIONARY ..." statement for the specified
+   dictionary name if this is the first time this dictionary is referenced.
+
+   @param sql_file          output file
+   @param dictionary_name   dictionary name
+*/
+static void print_optional_create_compression_dictionary(
+    FILE *sql_file, const char *dictionary_name) {
+  DBUG_ENTER("print_optional_create_compression_dictionary");
+  DBUG_PRINT("enter", ("dictionary: %s", dictionary_name));
+
+  /*
+    We skip this compression dictionary if it has already been processed
+  */
+  if (!processed_compression_dictionaries->count(dictionary_name)) {
+    static const constexpr char get_zip_dict_data_stmt[] =
+        "SELECT `ZIP_DICT` "
+        "FROM `INFORMATION_SCHEMA`.`XTRADB_ZIP_DICT` "
+        "WHERE `NAME` = '%s'";
+
+    processed_compression_dictionaries->emplace(dictionary_name);
+
+    char query_buff[QUERY_LENGTH];
+    snprintf(query_buff, sizeof(query_buff), get_zip_dict_data_stmt,
+             dictionary_name);
+
+    MYSQL_RES *result = nullptr;
+    if (mysql_query_with_error_report(mysql, &result, query_buff)) {
+      DBUG_VOID_RETURN;
+    }
+
+    MYSQL_ROW row = mysql_fetch_row(result);
+    if (row == nullptr) {
+      mysql_free_result(result);
+      maybe_die(EX_MYSQLERR,
+                "Couldn't read data for compresion dictionary %s (%s)\n",
+                dictionary_name, mysql_error(mysql));
+      DBUG_VOID_RETURN;
+    }
+    const ulong *const lengths = mysql_fetch_lengths(result);
+    assert(lengths != nullptr);
+
+    char quoted_buff[NAME_LEN * 2 + 3];
+    const char *quoted_dictionary_name =
+        quote_name(dictionary_name, quoted_buff, false);
+
+    /*
+      We print DROP COMPRESSION_DICTIONARY only if no --tab
+      (file per table option) and no --skip-add-drop-compression-dictionary
+      were specified
+    */
+    if (path == nullptr && opt_drop_compression_dictionary) {
+      fprintf(sql_file,
+                    "/*!"  STRINGIFY_ARG(FIRST_SUPPORTED_COMPRESSED_COLUMNS_VERSION)
+                    " DROP COMPRESSION_DICTIONARY IF EXISTS %s */;\n",
+                    quoted_dictionary_name);
+      check_io(sql_file);
+    }
+
+    /*
+      Whether IF NOT EXISTS is added to CREATE COMPRESSION_DICTIONARY
+      depends on the --add-drop-compression-dictionary /
+      --skip-add-drop-compression-dictionary options.
+    */
+    fprintf(sql_file,
+                "/*!"  STRINGIFY_ARG(FIRST_SUPPORTED_COMPRESSED_COLUMNS_VERSION)
+                " CREATE COMPRESSION_DICTIONARY %s%s (",
+                path != 0 ? "IF NOT EXISTS " : "",
+                quoted_dictionary_name);
+    check_io(sql_file);
+
+    unescape(sql_file, row[0], lengths[0]);
+    fputs(") */;\n", sql_file);
+    check_io(sql_file);
+
+    mysql_free_result(result);
+  }
+  DBUG_VOID_RETURN;
 }
 
 /* general_log or slow_log tables under mysql database */
@@ -3802,8 +4033,21 @@ static uint get_table_structure(const char *table, char *db, char *table_type,
 
       row = mysql_fetch_row(result);
 
-      if (opt_innodb_optimize_keys && !strcmp(table_type, "InnoDB"))
+      const bool is_innodb_table = (strcmp(table_type, "InnoDB") == 0);
+      if (opt_innodb_optimize_keys && is_innodb_table)
         skip_secondary_keys(table, row[1], has_pk);
+      if (is_innodb_table) {
+        /*
+          Search for compressed columns attributes and remove them if
+          necessary.
+        */
+
+        dict_list_t referenced_dictionaries, current_dictionary;
+
+        skip_compressed_columns(row[1], &referenced_dictionaries);
+        for (const auto &it : referenced_dictionaries)
+          print_optional_create_compression_dictionary(sql_file, it.c_str());
+      }
 
       is_log_table = general_log_or_slow_log_tables(db, table);
       is_replication_metadata_table = replication_metadata_tables(db, table);

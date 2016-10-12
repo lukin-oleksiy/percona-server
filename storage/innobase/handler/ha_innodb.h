@@ -432,6 +432,21 @@ class ha_innobase : public handler {
                                   dd::Table *new_dd_tab) override;
   /** @} */
 
+  /** This function reads zip dict-related info from SYS_ZIP_DICT
+  and SYS_ZIP_DICT_COLS for all columns marked with
+  COLUMN_FORMAT_TYPE_COMPRESSED flag and updates
+  zip_dict_name / zip_dict_data for those which have associated
+  compression dictionaries.
+
+  @param	thd		Thread handle, used to determine whether it
+  is necessary to lock dict_sys mutex
+  @param	part_name	Full table name (including partition part).
+  Must be non-NULL only if called from
+  ha_partition.
+  */
+  virtual void update_field_defs_with_zip_dict_info(THD *thd,
+                                                    const char *part_name);
+
   using Reader = Parallel_reader_adapter;
 
   /** Initializes a parallel scan. It creates a scan_ctx that has to
@@ -1498,4 +1513,57 @@ after DDL
 @param[in,out]  thd     THD object
 @param[in,out]  table   InnoDB table object */
 void innobase_discard_table(THD *thd, dict_table_t *table);
+/** This function builds a translation table in INNOBASE_SHARE
+structure for fast index location with mysql array number from its
+table->key_info structure. This also provides the necessary
+translation between the key order in mysql key_info and InnoDB
+ib_table->indexes if they are not fully matched with each other.  Note
+we do not have any mutex protecting the translation table building
+based on the assumption that there is no concurrent index
+creation/drop and DMLs that requires index lookup. All table handle
+will be closed before the index creation/drop.
+@param[in]	table           table in MySQL data dictionary
+@param[in]	ib_table	table in InnoDB data dictionary
+@param[in,out]	share		share structure where index translation table
+                                will be constructed in.
+@return true if index translation table built successfully */
+[[nodiscard]] bool innobase_build_index_translation(const TABLE *table,
+                                                    dict_table_t *ib_table,
+                                                    INNOBASE_SHARE *share);
+
+// Percona commented out until zip dictionary reimplementation in new DD
+#if 0
+
+/** Compression dictionary id container */
+typedef std::unordered_map<uint16, ulint, std::hash<uint16>,
+			   std::equal_to<uint16>,
+			   ut_allocator<std::pair<const uint16, ulint> > >
+zip_dict_id_container_t;
+
+/** This function checks if all the compression dictionaries referenced
+in table->fields exist in SYS_ZIP_DICT InnoDB system table.
+@param[in]	table		table in MySQL data dictionary
+@param[out]	dict_ids	identified zip dict ids
+@param[in]	trx		transaction
+@param[out]	err_dict_name	the name of the zip_dict which does not exist
+@return true if all referenced dictionaries exist */
+[[nodiscard]]
+bool
+innobase_check_zip_dicts(const TABLE *table,
+			 zip_dict_id_container_t &dict_ids,
+			 trx_t *trx, const char **err_dict_name);
+
+/** This function creates compression dictionary references in
+SYS_ZIP_DICT_COLS InnoDB system table for table_id based on info
+in table->fields and provided zip dict ids.
+@param[in]	table		table in MySQL data dictionary
+@param[in]	ib_table_id	table ID in InnoDB data dictionary
+@param[in]	dict_ids	zip dict ids
+@param[in]	trx		transaction */
+void
+innobase_create_zip_dict_references(const TABLE *table, table_id_t ib_table_id,
+				    const zip_dict_id_container_t &dict_ids,
+				    trx_t *trx);
+#endif
+
 #endif /* ha_innodb_h */

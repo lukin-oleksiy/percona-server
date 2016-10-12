@@ -1,3 +1,4 @@
+
 /*
    Copyright (c) 2000, 2026, Oracle and/or its affiliates.
 
@@ -93,6 +94,7 @@ static int lex_one_token(Lexer_yystype *yylval, THD *thd);
   LEX_STRING constant for null-string to be used in parser and other places.
 */
 const LEX_STRING null_lex_str = {nullptr, 0};
+const LEX_CSTRING null_lex_cstr = {nullptr, 0};
 /**
   Mapping from enum values in enum_binlog_stmt_unsafe to error codes.
 
