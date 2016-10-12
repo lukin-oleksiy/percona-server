@@ -1002,6 +1002,39 @@ enum Ha_clone_mode {
   HA_CLONE_MODE_MAX
 };
 
+/** Create compression dictionary result type. */
+enum class ha_create_zip_dict_result {
+  OK,             /*!< zip_dict successfully created */
+  ALREADY_EXISTS, /*!< zip dict with such name already
+                                       exists */
+  NAME_TOO_LONG,  /*!< zip dict name is too long */
+  DATA_TOO_LONG,  /*!< zip dict data is too long */
+  READ_ONLY,      /*!< cannot create in read-only mode */
+  OUT_OF_MEMORY,  /*!< out of memory */
+  OUT_OF_FILE_SPACE,
+  /*!< out of disk space */
+  TOO_MANY_CONCURRENT_TRXS,
+  /*!< too many concurrent transactions */
+  UNKNOWN_ERROR /*!< unknown error during zip_dict
+                                     creation */
+};
+
+/** Drop compression dictionary result type. */
+enum class ha_drop_zip_dict_result {
+  OK,             /*!< zip_dict successfully dropped */
+  DOES_NOT_EXIST, /*!< zip dict with such name does not
+                                     exist */
+  IS_REFERENCED,  /*!< zip dict is in use */
+  READ_ONLY,      /*!< cannot drop in read-only mode */
+  OUT_OF_MEMORY,  /*!< out of memory */
+  OUT_OF_FILE_SPACE,
+  /*!< out of disk space */
+  TOO_MANY_CONCURRENT_TRXS,
+  /*!< too many concurrent transactions */
+  UNKNOWN_ERROR /*!< unknown error during zip_dict
+                                   removal */
+};
+
 /** Clone operation types. */
 enum Ha_clone_type : size_t {
   /** Caller must block all write operation to the SE. */
@@ -1761,6 +1794,40 @@ using push_to_engine_t = int (*)(THD *thd, AccessPath *query, JOIN *join);
 typedef bool (*is_supported_system_table_t)(const char *db,
                                             const char *table_name,
                                             bool is_sql_layer_system_table);
+
+/**
+   Creates a new compression dictionary with the specified data for this SE.
+
+   @param hton                       handlerton object.
+   @param thd                        thread descriptor.
+   @param name                       compression dictionary name
+   @param name_len                   compression dictionary name length
+   @param data                       compression dictionary data
+   @param data_len                   compression dictionary data length
+
+   @return a valid #ha_create_zip_dict_result value.
+
+   This interface is optional, so not every SE needs to implement it.
+*/
+using create_zip_dict_t = ha_create_zip_dict_result (*)(
+    handlerton *hton, THD *thd, const char *name, ulong *name_len,
+    const char *data, ulong *data_len);
+
+/**
+   Deletes a compression dictionary for this SE.
+
+   @param hton                       handlerton object.
+   @param thd                        thread descriptor.
+   @param name                       compression dictionary name
+   @param name_len                   compression dictionary name length
+
+   @return a valid #ha_drop_zip_dict_result value.
+
+   This interface is optional, so not every SE needs to implement it.
+*/
+using drop_zip_dict_t = ha_drop_zip_dict_result (*)(handlerton *hton, THD *thd,
+                                                    const char *name,
+                                                    ulong *name_len);
 
 /**
   Create SDI in a tablespace. This API should be used when upgrading
@@ -2972,6 +3039,8 @@ struct handlerton {
   table_exists_in_engine_t table_exists_in_engine;
   push_to_engine_t push_to_engine;
   is_supported_system_table_t is_supported_system_table;
+  create_zip_dict_t create_zip_dict;
+  drop_zip_dict_t drop_zip_dict;
 
   /*
     APIs for retrieving Serialized Dictionary Information by tablespace id
@@ -3531,6 +3600,7 @@ struct HA_CREATE_INFO {
     @param[in] thd user session
    */
   bool set_db_type(THD *thd);
+  Item *zip_dict_name{nullptr};
 };
 
 /**
@@ -7594,7 +7664,19 @@ class handler {
   void set_ha_table(TABLE *table_arg) { table = table_arg; }
 
   int get_lock_type() const { return m_lock_type; }
+  /**
+    This method is supposed to fill field definition objects with
+    compression dictionary info (name and data).
+    If the handler does not support compression dictionaries
+    this method should be left empty (not overloaded).
 
+    @param    thd          Thread handle
+    @param    part_name    Full table name (including partition part).
+                           Optional.
+  */
+  virtual void update_field_defs_with_zip_dict_info(THD *, const char *) {}
+
+ public:
   /* Read-free replication interface */
 
   /**
@@ -7609,8 +7691,6 @@ class handler {
      Storage engine hooks to be called before and after row delete and update
      events
   */
-  virtual void rpl_before_write_rows() {}
-  virtual void rpl_after_write_rows() {}
   virtual void rpl_before_delete_rows() {}
   virtual void rpl_after_delete_rows() {}
   virtual void rpl_before_update_rows() {}
@@ -8007,6 +8087,7 @@ bool ha_log_ddl_create_schema(const char *schema_name);
 
 int ha_create_table(THD *thd, const char *path, const char *db,
                     const char *table_name, HA_CREATE_INFO *create_info,
+                    const List<Create_field> *create_fields,
                     bool update_create_info, bool is_temp_table,
                     dd::Table *table_def);
 

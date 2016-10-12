@@ -2282,7 +2282,7 @@ bool dd_add_instant_columns(const dd::Table *old_dd_table,
 
     row_mysql_store_col_in_innobase_format(
         &dfield, reinterpret_cast<byte *>(&buf), true, mysql_data, size,
-        dict_table_is_comp(new_dict_table));
+        dict_table_is_comp(new_dict_table), false, nullptr, 0, nullptr);
 
     DD_instant_col_val_coder coder;
     size_t length = 0;
