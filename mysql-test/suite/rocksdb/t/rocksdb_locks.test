@@ -1,4 +1,11 @@
---source include/have_rocksdb_as_default.inc
+--source include/have_rocksdb.inc
+
+# Save the initial number of concurrent sessions
+--source include/count_sessions.inc
+
+--disable_query_log
+call mtr.add_suppression("Got error 522 when reading table");
+--enable_query_log
 
 #
 # MyRocks-specific tests for locking
@@ -16,6 +23,7 @@ select * from t1 where pk=1 for update;
 
 --connect (con1,localhost,root,,)
 --connection con1
+call mtr.add_suppression("Got snapshot conflict errors");
 --echo ### Connection con1
 let $ID= `select connection_id()`;
 set @@rocksdb_lock_wait_timeout=500;
@@ -90,3 +98,5 @@ ROLLBACK;
 --disconnect con1
 --connection default
 drop table t1;
+
+--source include/wait_until_count_sessions.inc

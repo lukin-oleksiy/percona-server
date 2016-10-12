@@ -34,6 +34,7 @@
 #include "./debug_sync.h"
 #include "./my_bit.h"
 #include "./my_stacktrace.h"
+#include "./sql_audit.h"
 #include "./sql_table.h"
 #include <mysql/psi/mysql_table.h>
 #include <mysql/thread_pool_priv.h>
@@ -361,6 +362,7 @@ static char *rocksdb_datadir;
 static uint32_t rocksdb_table_stats_sampling_pct;
 static my_bool rocksdb_enable_bulk_load_api = 1;
 static my_bool rpl_skip_tx_api_var = 0;
+static my_bool rocksdb_print_snapshot_conflict_queries = 0;
 
 std::atomic<uint64_t> rocksdb_snapshot_conflict_errors(0);
 
@@ -411,6 +413,14 @@ static MYSQL_THDVAR_ULONG(lock_wait_timeout, PLUGIN_VAR_RQCMDARG,
                           "Number of seconds to wait for lock", nullptr,
                           nullptr, /*default*/ 1, /*min*/ 1,
                           /*max*/ 1024 * 1024 * 1024, 0);
+
+static MYSQL_THDVAR_BOOL(deadlock_detect, PLUGIN_VAR_RQCMDARG,
+                         "Enables deadlock detection", nullptr, nullptr, FALSE);
+
+static MYSQL_THDVAR_BOOL(
+    trace_sst_api, PLUGIN_VAR_RQCMDARG,
+    "Generate trace output in the log for each call to the SstFileWriter",
+    nullptr, nullptr, FALSE);
 
 static MYSQL_THDVAR_BOOL(
     bulk_load, PLUGIN_VAR_RQCMDARG,
@@ -576,7 +586,7 @@ static MYSQL_SYSVAR_BOOL(
     allow_concurrent_memtable_write,
     *reinterpret_cast<my_bool *>(
         &rocksdb_db_options.allow_concurrent_memtable_write),
-    PLUGIN_VAR_RQCMDARG,
+    PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
     "DBOptions::allow_concurrent_memtable_write for RocksDB", nullptr, nullptr,
     rocksdb_db_options.allow_concurrent_memtable_write);
 
@@ -584,7 +594,7 @@ static MYSQL_SYSVAR_BOOL(
     enable_write_thread_adaptive_yield,
     *reinterpret_cast<my_bool *>(
         &rocksdb_db_options.enable_write_thread_adaptive_yield),
-    PLUGIN_VAR_RQCMDARG,
+    PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
     "DBOptions::enable_write_thread_adaptive_yield for RocksDB", nullptr,
     nullptr, rocksdb_db_options.enable_write_thread_adaptive_yield);
 
@@ -1022,6 +1032,12 @@ static MYSQL_SYSVAR_BOOL(
     "Counting SingleDelete as rocksdb_compaction_sequential_deletes", nullptr,
     nullptr, rocksdb_compaction_sequential_deletes_count_sd);
 
+static MYSQL_SYSVAR_BOOL(
+    print_snapshot_conflict_queries, rocksdb_print_snapshot_conflict_queries,
+    PLUGIN_VAR_RQCMDARG,
+    "Logging queries that got snapshot conflict errors into *.err log", nullptr,
+    nullptr, rocksdb_print_snapshot_conflict_queries);
+
 static MYSQL_THDVAR_INT(checksums_pct, PLUGIN_VAR_RQCMDARG,
                         "How many percentages of rows to be checksummed",
                         nullptr, nullptr, 100,
@@ -1078,6 +1094,7 @@ static const int ROCKSDB_ASSUMED_KEY_VALUE_DISK_SIZE = 100;
 
 static struct st_mysql_sys_var *rocksdb_system_variables[] = {
     MYSQL_SYSVAR(lock_wait_timeout),
+    MYSQL_SYSVAR(deadlock_detect),
     MYSQL_SYSVAR(max_row_locks),
     MYSQL_SYSVAR(lock_scanned_rows),
     MYSQL_SYSVAR(bulk_load),
@@ -1174,6 +1191,7 @@ static struct st_mysql_sys_var *rocksdb_system_variables[] = {
     MYSQL_SYSVAR(compaction_sequential_deletes_window),
     MYSQL_SYSVAR(compaction_sequential_deletes_file_size),
     MYSQL_SYSVAR(compaction_sequential_deletes_count_sd),
+    MYSQL_SYSVAR(print_snapshot_conflict_queries),
 
     MYSQL_SYSVAR(datadir),
     MYSQL_SYSVAR(create_checkpoint),
@@ -1426,11 +1444,29 @@ public:
 
       return HA_ERR_LOCK_WAIT_TIMEOUT;
     }
-    if (s.IsBusy()) {
-      rocksdb_snapshot_conflict_errors++;
+
+    if (s.IsDeadlock()) {
+      my_core::thd_mark_transaction_to_rollback(thd,
+                                                false /* just statement */);
       return HA_ERR_LOCK_DEADLOCK;
     }
-    /* TODO: who returns HA_ERR_ROCKSDB_TOO_MANY_LOCKS now?? */
+
+    if (s.IsBusy()) {
+      rocksdb_snapshot_conflict_errors++;
+      if (rocksdb_print_snapshot_conflict_queries) {
+        char user_host_buff[MAX_USER_HOST_SIZE + 1];
+        make_user_name(thd, user_host_buff);
+        // NO_LINT_DEBUG
+        sql_print_warning("Got snapshot conflict errors: User: %s "
+                          "Query: %s",
+                          user_host_buff, thd->query());
+      }
+      return HA_ERR_LOCK_DEADLOCK;
+    }
+
+    if (s.IsLockLimit()) {
+      return HA_ERR_ROCKSDB_TOO_MANY_LOCKS;
+    }
 
     my_error(ER_INTERNAL_ERROR, MYF(0), s.ToString().c_str());
     return HA_ERR_INTERNAL_ERROR;
@@ -1847,16 +1883,13 @@ class Rdb_transaction_impl : public Rdb_transaction {
 
   bool has_snapshot() { return m_read_opts.snapshot != nullptr; }
 
-  const char *err_too_many_locks = "Number of locks held by the transaction "
-                                   "exceeded @@rocksdb_max_row_locks";
-
   rocksdb::Status put(rocksdb::ColumnFamilyHandle *column_family,
                       const rocksdb::Slice &key,
                       const rocksdb::Slice &value) override {
     ++m_write_count;
     ++m_lock_count;
     if (m_write_count > m_max_row_locks || m_lock_count > m_max_row_locks)
-      return rocksdb::Status::Aborted(rocksdb::Slice(err_too_many_locks));
+      return rocksdb::Status::Aborted(rocksdb::Status::kLockLimit);
     return m_rocksdb_tx->Put(column_family, key, value);
   }
 
@@ -1865,7 +1898,7 @@ class Rdb_transaction_impl : public Rdb_transaction {
     ++m_write_count;
     ++m_lock_count;
     if (m_write_count > m_max_row_locks || m_lock_count > m_max_row_locks)
-      return rocksdb::Status::Aborted(rocksdb::Slice(err_too_many_locks));
+      return rocksdb::Status::Aborted(rocksdb::Status::kLockLimit);
     return m_rocksdb_tx->Delete(column_family, key);
   }
 
@@ -1874,7 +1907,7 @@ class Rdb_transaction_impl : public Rdb_transaction {
     ++m_write_count;
     ++m_lock_count;
     if (m_write_count > m_max_row_locks || m_lock_count > m_max_row_locks)
-      return rocksdb::Status::Aborted(rocksdb::Slice(err_too_many_locks));
+      return rocksdb::Status::Aborted(rocksdb::Status::kLockLimit);
     return m_rocksdb_tx->SingleDelete(column_family, key);
   }
 
@@ -1903,7 +1936,7 @@ class Rdb_transaction_impl : public Rdb_transaction {
                                  const rocksdb::Slice &key,
                                  std::string *value) override {
     if (++m_lock_count > m_max_row_locks)
-      return rocksdb::Status::Aborted(rocksdb::Slice(err_too_many_locks));
+      return rocksdb::Status::Aborted(rocksdb::Status::kLockLimit);
     return m_rocksdb_tx->GetForUpdate(m_read_opts, column_family, key, value);
   }
 
@@ -1920,6 +1953,7 @@ class Rdb_transaction_impl : public Rdb_transaction {
     rocksdb::WriteOptions write_opts;
     tx_opts.set_snapshot = false;
     tx_opts.lock_timeout = m_timeout_sec * 1000;
+    tx_opts.deadlock_detect = THDVAR(m_thd, deadlock_detect);
 
     write_opts.sync = THDVAR(m_thd, write_sync);
     write_opts.disableWAL = THDVAR(m_thd, write_disable_wal);
@@ -2541,12 +2575,12 @@ public:
       rdb->GetEnv()->GetCurrentTime(&curr_time);
 
       THD *thd = tx->get_thd();
-
+      char buffer[1024];
+      thd_security_context(thd, buffer, sizeof buffer, 0);
       m_data += format_string("---SNAPSHOT, ACTIVE %lld sec\n"
-                              "MySQL thread id %lu, OS thread handle %p\n"
+                              "%s\n"
                               "lock count %llu, write count %llu\n",
-                              curr_time - snapshot_timestamp,
-                              my_core::thd_get_thread_id(thd), thd,
+                              curr_time - snapshot_timestamp, buffer,
                               tx->get_lock_count(), tx->get_write_count());
     }
   }
@@ -6454,9 +6488,9 @@ int ha_rocksdb::bulk_load_key(Rdb_transaction *tx, const Rdb_key_def &kd,
   DBUG_ASSERT(cf != nullptr);
 
   if (m_sst_info == nullptr) {
-    m_sst_info =
-        std::make_shared<Rdb_sst_info>(rdb, m_table_handler->m_table_name,
-                                       kd.get_name(), cf, rocksdb_db_options);
+    m_sst_info = std::make_shared<Rdb_sst_info>(
+        rdb, m_table_handler->m_table_name, kd.get_name(), cf,
+        rocksdb_db_options, THDVAR(ha_thd(), trace_sst_api));
     tx->start_bulk_load(this);
     m_bulk_load_tx = tx;
   }
@@ -8676,7 +8710,6 @@ struct rocksdb_status_counters_t {
   uint64_t number_multiget_bytes_read;
   uint64_t number_deletes_filtered;
   uint64_t number_merge_failures;
-  uint64_t sequence_number;
   uint64_t bloom_filter_prefix_checked;
   uint64_t bloom_filter_prefix_useful;
   uint64_t number_reseeks_iteration;
@@ -8733,7 +8766,6 @@ DEF_SHOW_FUNC(number_multiget_keys_read, NUMBER_MULTIGET_KEYS_READ)
 DEF_SHOW_FUNC(number_multiget_bytes_read, NUMBER_MULTIGET_BYTES_READ)
 DEF_SHOW_FUNC(number_deletes_filtered, NUMBER_FILTERED_DELETES)
 DEF_SHOW_FUNC(number_merge_failures, NUMBER_MERGE_FAILURES)
-DEF_SHOW_FUNC(sequence_number, SEQUENCE_NUMBER)
 DEF_SHOW_FUNC(bloom_filter_prefix_checked, BLOOM_FILTER_PREFIX_CHECKED)
 DEF_SHOW_FUNC(bloom_filter_prefix_useful, BLOOM_FILTER_PREFIX_USEFUL)
 DEF_SHOW_FUNC(number_reseeks_iteration, NUMBER_OF_RESEEKS_IN_ITERATION)
@@ -8825,7 +8857,6 @@ static SHOW_VAR rocksdb_status_vars[] = {
     DEF_STATUS_VAR(number_multiget_bytes_read),
     DEF_STATUS_VAR(number_deletes_filtered),
     DEF_STATUS_VAR(number_merge_failures),
-    DEF_STATUS_VAR(sequence_number),
     DEF_STATUS_VAR(bloom_filter_prefix_checked),
     DEF_STATUS_VAR(bloom_filter_prefix_useful),
     DEF_STATUS_VAR(number_reseeks_iteration),
