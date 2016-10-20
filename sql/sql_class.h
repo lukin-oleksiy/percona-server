@@ -170,6 +170,8 @@ struct Log_info;
 extern bool opt_log_slow_admin_statements;
 extern ulong opt_log_slow_sp_statements;
 
+extern ulong kill_idle_transaction_timeout;
+
 typedef struct user_conn USER_CONN;
 struct MYSQL_LOCK;
 
@@ -1858,6 +1860,10 @@ class THD : public MDL_context_owner,
   bool skip_wait_timeout{false};
 
   inline ulong get_wait_timeout(void) const noexcept {
+    if (in_active_multi_stmt_transaction() &&
+        kill_idle_transaction_timeout > 0 &&
+        kill_idle_transaction_timeout < variables.net_wait_timeout)
+      return kill_idle_transaction_timeout;
     return variables.net_wait_timeout;
   }
 
