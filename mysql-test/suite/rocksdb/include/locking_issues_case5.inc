@@ -15,11 +15,7 @@
 --echo -   using $isolation_level transaction isolation level
 --echo -----------------------------------------------------------------------
 
---disable_warnings
-DROP TABLE IF EXISTS t0;
---enable_warnings
-
-CREATE TABLE t0(id INT AUTO_INCREMENT PRIMARY KEY, value INT);
+CREATE TABLE t0(id INT AUTO_INCREMENT PRIMARY KEY, value INT) ENGINE=ROCKSDB;
 
 # Insert 200,000 rows, breaking it up into inserts of 1000 rows at a time
 --echo Inserting 200,000 rows
@@ -56,7 +52,7 @@ send SELECT * FROM t0 WHERE value > 0 FOR UPDATE;
 
 connection con2;
 let $wait_condition = SELECT 1 FROM information_schema.processlist
-                      WHERE id = $ID AND state = "Sending data";
+                      WHERE id = $ID AND state = "executing";
 --source include/wait_condition.inc
 eval SET SESSION TRANSACTION ISOLATION LEVEL $isolation_level;
 BEGIN;
@@ -64,8 +60,12 @@ DELETE FROM t0 WHERE id=190000;
 COMMIT;
 
 connection con1;
---error ER_LOCK_DEADLOCK
+if ($isolation_level == "REPEATABLE READ")
+{
+  --error ER_UNKNOWN_ERROR
+}
 reap;
+--echo ERROR: $mysql_errno
 COMMIT;
 
 connection default;
