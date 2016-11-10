@@ -5728,7 +5728,7 @@ class handler {
                           bool eq_range, bool sorted);
   int ha_read_range_next();
 
-  bool has_transactions() {
+  bool has_transactions() const noexcept {
     return (ha_table_flags() & HA_NO_TRANSACTIONS) == 0;
   }
   virtual uint extra_rec_buf_length() const { return 0; }
@@ -5978,6 +5978,20 @@ class handler {
     return index_read_last(buf, key, key_len);
   }
 
+  /**
+    Query storage engine to see if it supports gap locks on this table.
+  */
+  virtual bool has_gap_locks() const noexcept { return false; }
+
+ protected:
+  static bool is_using_full_key(key_part_map keypart_map,
+                                uint actual_key_parts) noexcept;
+  bool is_using_full_unique_key(uint active_index, key_part_map keypart_map,
+                                enum ha_rkey_function find_flag) const noexcept;
+  bool is_using_prohibited_gap_locks(
+      TABLE *table, bool using_full_primary_key) const noexcept;
+
+ public:
   virtual int read_range_first(const key_range *start_key,
                                const key_range *end_key, bool eq_range_arg,
                                bool sorted);

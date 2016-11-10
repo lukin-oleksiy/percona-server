@@ -114,6 +114,7 @@ class ha_blackhole : public handler {
              dd::Table *table_def) override;
   THR_LOCK_DATA **store_lock(THD *thd, THR_LOCK_DATA **to,
                              enum thr_lock_type lock_type) override;
+  bool has_gap_locks() const noexcept override { return true; }
   FT_INFO *ft_init_ext(uint flags, uint inx, String *key) override;
   int ft_init() override;
 
