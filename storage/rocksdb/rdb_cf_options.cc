@@ -43,7 +43,11 @@ Rdb_rev_comparator Rdb_cf_options::s_rev_pk_comparator;
 bool Rdb_cf_options::init(
     const rocksdb::BlockBasedTableOptions &table_options,
     std::shared_ptr<rocksdb::TablePropertiesCollectorFactory> prop_coll_factory,
-    const char *default_cf_options, const char *override_cf_options) {
+    const char *const default_cf_options,
+    const char *const override_cf_options) {
+  assert(default_cf_options != nullptr);
+  assert(override_cf_options != nullptr);
+
   m_default_cf_opts.comparator = &s_pk_comparator;
   m_default_cf_opts.compaction_filter_factory.reset(
       new Rdb_compact_filter_factory);
@@ -65,8 +69,8 @@ bool Rdb_cf_options::init(
 }
 
 void Rdb_cf_options::get(const std::string &cf_name,
-                         rocksdb::ColumnFamilyOptions *opts) {
-  DBUG_ASSERT(opts != nullptr);
+                         rocksdb::ColumnFamilyOptions *const opts) {
+  assert(opts != nullptr);
 
   // set defaults
   rocksdb::GetColumnFamilyOptionsFromString(*opts, m_default_config, opts);
@@ -94,8 +98,8 @@ bool Rdb_cf_options::set_default(const std::string &default_config) {
 }
 
 // Skip over any spaces in the input string.
-void Rdb_cf_options::skip_spaces(const std::string &input, size_t *pos) {
-  DBUG_ASSERT(pos != nullptr);
+void Rdb_cf_options::skip_spaces(const std::string &input, size_t *const pos) {
+  assert(pos != nullptr);
 
   while (*pos < input.size() && isspace(input[*pos]))
     ++(*pos);
@@ -104,12 +108,13 @@ void Rdb_cf_options::skip_spaces(const std::string &input, size_t *pos) {
 // Find a valid column family name.  Note that all characters except a
 // semicolon are valid (should this change?) and all spaces are trimmed from
 // the beginning and end but are not removed between other characters.
-bool Rdb_cf_options::find_column_family(const std::string &input, size_t *pos,
-                                        std::string *key) {
-  DBUG_ASSERT(pos != nullptr);
-  DBUG_ASSERT(key != nullptr);
+bool Rdb_cf_options::find_column_family(const std::string &input,
+                                        size_t *const pos,
+                                        std::string *const key) {
+  assert(pos != nullptr);
+  assert(key != nullptr);
 
-  size_t beg_pos = *pos;
+  const size_t beg_pos = *pos;
   size_t end_pos = *pos - 1;
 
   // Loop through the characters in the string until we see a '='.
@@ -132,10 +137,10 @@ bool Rdb_cf_options::find_column_family(const std::string &input, size_t *pos,
 // Find a valid options portion.  Everything is deemed valid within the options
 // portion until we hit as many close curly braces as we have seen open curly
 // braces.
-bool Rdb_cf_options::find_options(const std::string &input, size_t *pos,
-                                  std::string *options) {
-  DBUG_ASSERT(pos != nullptr);
-  DBUG_ASSERT(options != nullptr);
+bool Rdb_cf_options::find_options(const std::string &input, size_t *const pos,
+                                  std::string *const options) {
+  assert(pos != nullptr);
+  assert(options != nullptr);
 
   // Make sure we have an open curly brace at the current position.
   if (*pos < input.size() && input[*pos] != '{') {
@@ -151,7 +156,7 @@ bool Rdb_cf_options::find_options(const std::string &input, size_t *pos,
 
   // Set up our brace_count, the begin position and current end position.
   size_t brace_count = 1;
-  size_t beg_pos = *pos;
+  const size_t beg_pos = *pos;
 
   // Loop through the characters in the string until we find the appropriate
   // number of closing curly braces.
@@ -189,12 +194,13 @@ bool Rdb_cf_options::find_options(const std::string &input, size_t *pos,
   return false;
 }
 
-bool Rdb_cf_options::find_cf_options_pair(const std::string &input, size_t *pos,
-                                          std::string *cf,
-                                          std::string *opt_str) {
-  DBUG_ASSERT(pos != nullptr);
-  DBUG_ASSERT(cf != nullptr);
-  DBUG_ASSERT(opt_str != nullptr);
+bool Rdb_cf_options::find_cf_options_pair(const std::string &input,
+                                          size_t *const pos,
+                                          std::string *const cf,
+                                          std::string *const opt_str) {
+  assert(pos != nullptr);
+  assert(cf != nullptr);
+  assert(opt_str != nullptr);
 
   // Skip any spaces.
   skip_spaces(input, pos);
@@ -292,8 +298,8 @@ Rdb_cf_options::get_cf_comparator(const std::string &cf_name) {
 }
 
 void Rdb_cf_options::get_cf_options(const std::string &cf_name,
-                                    rocksdb::ColumnFamilyOptions *opts) {
-  DBUG_ASSERT(opts != nullptr);
+                                    rocksdb::ColumnFamilyOptions *const opts) {
+  assert(opts != nullptr);
 
   *opts = m_default_cf_opts;
   get(cf_name, opts);
