@@ -4,6 +4,7 @@
 #
 # The variables
 #     $engine_type         -- storage engine to be tested
+#     $eval_before_analyze -- statement to execute before any analyze table
 #     $merge_table_support -- 1 storage engine supports merge tables
 #                          -- 0 storage engine does not support merge tables
 # have to be set before sourcing this script.
@@ -69,6 +70,10 @@ call populate_t0();
 
 drop procedure populate_t0;
 
+if ($eval_before_analyze)
+{
+  eval $eval_before_analyze;
+}
 analyze table t0;
 
 --echo # 1. One index
@@ -250,6 +255,10 @@ alter table t2 add index i321(key3, key2, key1);
 
 -- disable_query_log
 -- disable_result_log
+if ($eval_before_analyze)
+{
+  eval $eval_before_analyze;
+}
 analyze table t2;
 -- enable_result_log
 -- enable_query_log
@@ -284,6 +293,10 @@ insert into t4 select key1,key1,key1 div 10, key1 % 10, key1 % 10, key1 from t0;
 
 -- disable_query_log
 -- disable_result_log
+if ($eval_before_analyze)
+{
+  eval $eval_before_analyze;
+}
 analyze table t4;
 -- enable_result_log
 -- enable_query_log
@@ -310,6 +323,10 @@ insert into t1 select * from t0;
 
 -- disable_query_log
 -- disable_result_log
+if ($eval_before_analyze)
+{
+  eval $eval_before_analyze;
+}
 analyze table t1;
 -- enable_result_log
 -- enable_query_log
@@ -357,6 +374,10 @@ explain select * from t0,t1 where t0.key1 = 5 and
 
 --echo # Fix for bug#1974
 --replace_regex $elide_costs
+if ($index_merge_random_rows_in_EXPLAIN)
+{
+  --replace_regex $elide_costs_and_rows
+}
 explain select * from t0,t1 where t0.key1 < 3 and
   (t1.key1 = t0.key1 or t1.key8 = t0.key1);
 
@@ -380,6 +401,10 @@ update t3 set key9=key1,keyA=key1,keyB=key1,keyC=key1;
 
 -- disable_query_log
 -- disable_result_log
+if ($eval_before_analyze)
+{
+  eval $eval_before_analyze;
+}
 analyze table t3;
 -- enable_result_log
 -- enable_query_log
@@ -406,6 +431,10 @@ update t0 set key8=123 where key1 < 3 or key2 < 4;
 
 -- disable_query_log
 -- disable_result_log
+if ($eval_before_analyze)
+{
+  eval $eval_before_analyze;
+}
 analyze table t0;
 -- enable_result_log
 -- enable_query_log
@@ -417,6 +446,10 @@ select * from t0 where key1 < 3 or key2 < 4;
 delete from t0 where key1 < 3 or key2 < 4;
 -- disable_query_log
 -- disable_result_log
+if ($eval_before_analyze)
+{
+  eval $eval_before_analyze;
+}
 analyze table t0;
 -- enable_result_log
 -- enable_query_log
@@ -430,6 +463,10 @@ create table t4 (a int);
 insert into t4 values (1),(4),(3);
 -- disable_query_log
 -- disable_result_log
+if ($eval_before_analyze)
+{
+  eval $eval_before_analyze;
+}
 analyze table t4;
 -- enable_result_log
 -- enable_query_log
@@ -451,6 +488,10 @@ select max(a.key1 + b.key1 + a.key2 + b.key2 + a.key3 + b.key3 + a.key4 + b.key4
 update t0 set key1=1;
 -- disable_query_log
 -- disable_result_log
+if ($eval_before_analyze)
+{
+  eval $eval_before_analyze;
+}
 analyze table t0;
 -- enable_result_log
 -- enable_query_log
@@ -471,7 +512,15 @@ update t0 set key2=1, key3=1, key4=1, key5=1,key6=1,key7=1 where key7 < 500;
 
 -- disable_query_log
 -- disable_result_log
-analyze table t0;
+if ($eval_before_analyze)
+{
+  eval $eval_before_analyze;
+}
+# We use OPTIMIZE instead of ANALYZE here to handle the case when InnoDB
+# purge threads do not manage to keep up and completely remove records which
+# were marked for deletion earlier, which affects row count estimations in
+# EXPLAIN below.
+optimize table t0;
 -- enable_result_log
 -- enable_query_log
 
@@ -523,6 +572,10 @@ select count(*) from t1;
 
 -- disable_query_log
 -- disable_result_log
+if ($eval_before_analyze)
+{
+  eval $eval_before_analyze;
+}
 analyze table t1;
 -- enable_result_log
 -- enable_query_log
@@ -561,6 +614,10 @@ create table t3 (
 
 -- disable_query_log
 -- disable_result_log
+if ($eval_before_analyze)
+{
+  eval $eval_before_analyze;
+}
 analyze table t0;
 analyze table t1;
 analyze table t2;
@@ -642,6 +699,10 @@ insert into t2 select * from t1;
 
 -- disable_query_log
 -- disable_result_log
+if ($eval_before_analyze)
+{
+  eval $eval_before_analyze;
+}
 analyze table t1;
 analyze table t2;
 -- enable_result_log
@@ -656,7 +717,6 @@ select * from t1 where a=4 or b=4;
 select * from t1 ignore index(a,b) where a=4 or b=4;
 
 --echo must use union, not sort-union:
---replace_column 10 # 11 #
 --replace_regex $elide_costs_and_rows
 explain select * from t2 where a=4 or b=4;
 --sorted_result
@@ -698,6 +758,10 @@ insert into t3 values (1,1,'data');
 
 -- disable_query_log
 -- disable_result_log
+if ($eval_before_analyze)
+{
+  eval $eval_before_analyze;
+}
 analyze table t0;
 analyze table t1;
 analyze table t2;
@@ -705,11 +769,11 @@ analyze table t3;
 -- enable_result_log
 -- enable_query_log
 
+--replace_regex $elide_costs
 if ($index_merge_random_rows_in_EXPLAIN)
 {
-  --replace_column 10 # 11 #
+  --replace_regex $elide_costs_and_rows
 }
---replace_regex $elide_costs
 explain select * from t1 
 where exists (select 1 from t2, t3 
               where t2.a=t1.a and (t3.a=t2.b or t3.b=t2.b or t3.b=t2.b+1));
@@ -734,6 +798,10 @@ INSERT INTO t1 SELECT * FROM t1;
 INSERT INTO t1 SELECT * FROM t1;
 -- disable_query_log
 -- disable_result_log
+if ($eval_before_analyze)
+{
+  eval $eval_before_analyze;
+}
 analyze table t1;
 -- enable_result_log
 -- enable_query_log
