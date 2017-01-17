@@ -1387,7 +1387,22 @@ loop:
   buf_LRU_check_size_of_non_data_objects(buf_pool);
 
   /* If there is a block in the free list, take it */
-  block = buf_LRU_get_free_only(buf_pool);
+  if (DBUG_EVALUATE_IF("simulate_lack_of_pages", true, false)) {
+    block = NULL;
+
+    if (srv_debug_monitor_printed) DBUG_SET("-d,simulate_lack_of_pages");
+
+  } else if (DBUG_EVALUATE_IF("simulate_recovery_lack_of_pages",
+                              recv_recovery_on, false)) {
+    block = NULL;
+
+    if (srv_debug_monitor_printed) {
+      flush_error_log_messages();
+      DBUG_SUICIDE();
+    }
+  } else {
+    block = buf_LRU_get_free_only(buf_pool);
+  }
 
   if (block != nullptr) {
     ut_ad(!block->page.someone_has_io_responsibility());
