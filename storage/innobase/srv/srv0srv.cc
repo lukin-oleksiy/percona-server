@@ -1358,6 +1358,9 @@ position where the part about transactions starts.
 static void srv_printf_locks_and_transactions(FILE *file,
                                               ulint *trx_start_pos) {
   ut_ad(locksys::owns_exclusive_global_latch());
+
+  if (recv_recovery_on) return;
+
   lock_print_info_summary(file);
   if (trx_start_pos) {
     long t = ftell(file);
@@ -1419,18 +1422,20 @@ bool srv_printf_innodb_monitor(FILE *file, bool nowait, ulint *trx_start_pos,
   low level 135. Therefore we can reserve the latter mutex here without
   a danger of a deadlock of threads. */
 
-  mutex_enter(&dict_foreign_err_mutex);
+  if (!recv_recovery_on) {
+    mutex_enter(&dict_foreign_err_mutex);
 
-  if (!srv_read_only_mode && ftell(dict_foreign_err_file) != 0L) {
-    fputs(
-        "------------------------\n"
-        "LATEST FOREIGN KEY ERROR\n"
-        "------------------------\n",
-        file);
-    ut_copy_file(file, dict_foreign_err_file);
+    if (!srv_read_only_mode && ftell(dict_foreign_err_file) != 0L) {
+      fputs(
+          "------------------------\n"
+          "LATEST FOREIGN KEY ERROR\n"
+          "------------------------\n",
+          file);
+      ut_copy_file(file, dict_foreign_err_file);
+    }
+
+    mutex_exit(&dict_foreign_err_mutex);
   }
-
-  mutex_exit(&dict_foreign_err_mutex);
 
   ret = true;
   if (nowait) {
@@ -1466,12 +1471,14 @@ bool srv_printf_innodb_monitor(FILE *file, bool nowait, ulint *trx_start_pos,
       file);
   os_aio_print(file);
 
-  fputs(
-      "-------------------------------------\n"
-      "INSERT BUFFER AND ADAPTIVE HASH INDEX\n"
-      "-------------------------------------\n",
-      file);
-  ibuf_print(file);
+  if (!recv_recovery_on) {
+    fputs(
+        "-------------------------------------\n"
+        "INSERT BUFFER AND ADAPTIVE HASH INDEX\n"
+        "-------------------------------------\n",
+        file);
+    ibuf_print(file);
+  }
 
   for (ulint i = 0; i < btr_ahi_parts; ++i) {
     auto &part = btr_search_sys->parts[i];
@@ -1486,12 +1493,14 @@ bool srv_printf_innodb_monitor(FILE *file, bool nowait, ulint *trx_start_pos,
   btr_cur_n_sea_old = btr_cur_n_sea;
   btr_cur_n_non_sea_old = btr_cur_n_non_sea;
 
-  fputs(
-      "---\n"
-      "LOG\n"
-      "---\n",
-      file);
-  log_print(*log_sys, file);
+  if (!recv_recovery_on) {
+    fputs(
+        "---\n"
+        "LOG\n"
+        "---\n",
+        file);
+    log_print(*log_sys, file);
+  }
 
   fputs(
       "----------------------\n"
@@ -1502,7 +1511,7 @@ bool srv_printf_innodb_monitor(FILE *file, bool nowait, ulint *trx_start_pos,
           "Total large memory allocated " ULINTPF
           "\n"
           "Dictionary memory allocated %zu\n",
-          os_total_large_mem_allocated.load(), dict_sys->size);
+          os_total_large_mem_allocated.load(), dict_sys ? dict_sys->size : 0UL);
 
   buf_print_io(file);
 
@@ -1589,6 +1598,10 @@ bool srv_printf_innodb_monitor(FILE *file, bool nowait, ulint *trx_start_pos,
       file);
   mutex_exit(&srv_innodb_monitor_mutex);
   fflush(file);
+
+#ifndef DBUG_OFF
+  srv_debug_monitor_printed = true;
+#endif
 
   return (ret);
 }
@@ -1847,6 +1860,12 @@ void srv_export_innodb_status(void) {
 
   mutex_exit(&srv_innodb_monitor_mutex);
 }
+
+#ifndef DBUG_OFF
+/** false before InnoDB monitor has been printed at least once, true
+afterwards */
+bool srv_debug_monitor_printed = false;
+#endif
 
 /** A thread which prints the info output by various InnoDB monitors. */
 void srv_monitor_thread() {
