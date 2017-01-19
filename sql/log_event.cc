@@ -153,6 +153,7 @@
 #include "sql/sql_bitmap.h"
 #include "sql/sql_class.h"
 #include "sql/sql_cmd.h"
+#include "sql/sql_connect.h"  //update_global_user_stats
 #include "sql/sql_data_change.h"
 #include "sql/sql_db.h"  // load_db_opt_by_name
 #include "sql/sql_digest_stream.h"
@@ -10177,12 +10178,19 @@ int Rows_log_event::do_apply_event(Relay_log_info const *rli) {
 
       error = (this->*do_apply_row_ptr)(rli);
 
+      if (!error) thd->updated_row_count++;
+
       if (handle_idempotent_and_ignored_errors(rli, &error)) break;
 
       /* this advances m_curr_row */
       do_post_row_operations(rli, error);
 
     } while (!error && (m_curr_row != m_rows_end));
+
+    if (unlikely(opt_userstat)) {
+      thd->update_stats(false);
+      update_global_user_stats(thd, true, my_getsystime());
+    }
 
 #ifdef HAVE_PSI_STAGE_INTERFACE
     m_psi_progress.end_work();
