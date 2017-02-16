@@ -20,15 +20,18 @@
 #endif
 
 /* C++ standard header files */
+#include <cinttypes>
 #include <set>
 #include <string>
 #include <unordered_set>
 #include <vector>
 
 /* MySQL header files */
-#include "./handler.h"   /* handler */
+#include "./handler.h" /* handler */
+#include "./ib_ut0counter.h"
 #include "./my_global.h" /* ulonglong */
-#include "./sql_string.h"
+#include "my_icp.h"
+#include "sql_bitmap.h"
 
 /* RocksDB header files */
 #include "rocksdb/cache.h"
@@ -176,7 +179,7 @@ const char *const INDEX_THREAD_NAME = "myrocks-index";
 
   The reason behind the cast issue is the lack of unsigned int support in Java.
 */
-#define MAX_RATE_LIMITER_BYTES_PER_SEC static_cast<uint64_t>(LONGLONG_MAX)
+#define MAX_RATE_LIMITER_BYTES_PER_SEC static_cast<uint64_t>(LLONG_MAX)
 
 /*
   Hidden PK column (for tables with no primary key) is a longlong (aka 8 bytes).
@@ -503,7 +506,7 @@ class ha_rocksdb : public my_core::handler {
 
   /* Describes instructions on how to decode the field */
   class READ_FIELD {
-   public:
+  public:
     /* Points to Rdb_field_encoder describing the field */
     Rdb_field_encoder *m_field_enc;
     /* if true, decode the field, otherwise skip it */
@@ -555,10 +558,11 @@ class ha_rocksdb : public my_core::handler {
   */
   void update_stats(void);
 
- public:
+public:
   /*
     Controls whether writes include checksums. This is updated from the session
-    variable at the start of each query.
+    variable
+    at the start of each query.
   */
   bool m_store_row_debug_checksums;
 
@@ -645,7 +649,7 @@ class ha_rocksdb : public my_core::handler {
     DBUG_RETURN(&key_map_full);
   }
 
-  bool primary_key_is_clustered() override {
+  bool primary_key_is_clustered() const override {
     DBUG_ENTER_FUNC();
 
     DBUG_RETURN(true);
@@ -813,7 +817,7 @@ class ha_rocksdb : public my_core::handler {
   /*
     Default implementation from cancel_pushed_idx_cond() suits us
   */
- private:
+private:
   struct key_def_cf_info {
     rocksdb::ColumnFamilyHandle *cf_handle;
     bool is_reverse_cf;
@@ -1043,7 +1047,7 @@ public:
       __attribute__((__warn_unused_result__));
 
   my_bool register_query_cache_table(THD *const thd, char *const table_key,
-                                     uint key_length,
+                                     size_t key_length,
                                      qc_engine_callback *const engine_callback,
                                      ulonglong *const engine_data) override {
     DBUG_ENTER_FUNC();
@@ -1150,7 +1154,7 @@ struct Rdb_inplace_alter_ctx : public my_core::inplace_alter_handler_ctx {
 
   ~Rdb_inplace_alter_ctx() {}
 
- private:
+private:
   /* Disable Copying */
   Rdb_inplace_alter_ctx(const Rdb_inplace_alter_ctx &);
   Rdb_inplace_alter_ctx &operator=(const Rdb_inplace_alter_ctx &);
