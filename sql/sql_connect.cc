@@ -252,15 +252,13 @@ static void increment_count_by_name(const std::string &name,
   const auto &it = users_or_clients->find(name);
   if (it == users_or_clients->cend()) {
     // First connection for this user or client
-    const auto res = users_or_clients->emplace(
+    users_or_clients->emplace(
         std::piecewise_construct, std::forward_as_tuple(name),
         std::forward_as_tuple(role_name, ssl_connections,
                               thd.diff_denied_connections));
-    res.first->second.concurrent_connections++;
   } else {
     it->second.total_connections++;
     it->second.total_ssl_connections += ssl_connections;
-    it->second.concurrent_connections++;
   }
 }
 
@@ -321,11 +319,6 @@ static void update_global_user_stats_with_user(const THD &thd,
   user_stats->lost_connections += thd.diff_lost_connections;
   user_stats->access_denied_errors += thd.diff_access_denied_errors;
   user_stats->empty_queries += thd.diff_empty_queries;
-
-  if (thd.diff_disconnects && thd.diff_denied_connections == 0) {
-    assert(user_stats->concurrent_connections > 0);
-    user_stats->concurrent_connections -= thd.diff_disconnects;
-  }
 }
 
 static void update_global_thread_stats_with_thread(const THD &thd,
@@ -1022,12 +1015,6 @@ void end_connection(THD *thd) {
     of someone else.
   */
   release_user_connection(thd);
-
-  if (unlikely(opt_userstat)) {
-    thd->update_stats(false);
-    thd->diff_disconnects = 1;
-    update_global_user_stats(thd, false, time(nullptr));
-  }
 
   if (thd->killed || (net->error && net->vio != nullptr)) {
     aborted_threads++;
