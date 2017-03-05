@@ -5687,6 +5687,21 @@ extern "C" void *handle_slave_io(void *arg) {
         */
         THD_STAGE_INFO(thd, stage_waiting_for_source_to_send_event);
         event_len = read_event(mysql, &rpl, mi, &suppress_warnings);
+
+        DBUG_EXECUTE_IF(
+            "relay_xid_trigger", if (event_len != packet_error) {
+              const uchar *event_buf =
+                  static_cast<const uchar *>(mysql->net.read_pos + 1);
+              Log_event_type event_type =
+                  static_cast<Log_event_type>(event_buf[EVENT_TYPE_OFFSET]);
+              if (event_type == mysql::binlog::event::XID_EVENT) {
+                static constexpr char act[] =
+                    "now signal relay_xid_reached wait_for resume";
+                assert(
+                    !debug_sync_set_action(current_thd, STRING_WITH_LEN(act)));
+              }
+            });
+
         if (check_io_slave_killed(thd, mi,
                                   "Replica I/O thread killed while "
                                   "reading event"))
