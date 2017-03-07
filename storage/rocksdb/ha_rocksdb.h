@@ -534,7 +534,7 @@ class ha_rocksdb : public my_core::handler {
 
   /* Describes instructions on how to decode the field */
   class READ_FIELD {
-  public:
+   public:
     /* Points to Rdb_field_encoder describing the field */
     Rdb_field_encoder *m_field_enc;
     /* if true, decode the field, otherwise skip it */
@@ -586,7 +586,7 @@ class ha_rocksdb : public my_core::handler {
   */
   void update_stats(void);
 
-public:
+ public:
   /*
     Controls whether writes include checksums. This is updated from the session
     variable
@@ -870,7 +870,7 @@ public:
   /*
     Default implementation from cancel_pushed_idx_cond() suits us
   */
-private:
+ private:
   struct key_def_cf_info {
     rocksdb::ColumnFamilyHandle *cf_handle;
     bool is_reverse_cf;
@@ -1030,7 +1030,7 @@ private:
       const std::unordered_set<std::shared_ptr<Rdb_key_def>> &indexes)
       MY_ATTRIBUTE((__nonnull__, __warn_unused_result__));
 
-public:
+ public:
   int index_init(uint idx, bool sorted) override
       MY_ATTRIBUTE((__warn_unused_result__));
   int index_end() override MY_ATTRIBUTE((__warn_unused_result__));
@@ -1144,14 +1144,14 @@ public:
 
   void set_use_read_free_rpl(const char *const whitelist);
 
-public:
+ public:
   virtual void rpl_before_delete_rows() override;
   virtual void rpl_after_delete_rows() override;
   virtual void rpl_before_update_rows() override;
   virtual void rpl_after_update_rows() override;
   virtual bool use_read_free_rpl();
 
-private:
+ private:
   /* Flags tracking if we are inside different replication operation */
   bool m_in_rpl_delete_rows;
   bool m_in_rpl_update_rows;
@@ -1204,7 +1204,7 @@ struct Rdb_inplace_alter_ctx : public my_core::inplace_alter_handler_ctx {
 
   ~Rdb_inplace_alter_ctx() {}
 
-private:
+ private:
   /* Disable Copying */
   Rdb_inplace_alter_ctx(const Rdb_inplace_alter_ctx &);
   Rdb_inplace_alter_ctx &operator=(const Rdb_inplace_alter_ctx &);
