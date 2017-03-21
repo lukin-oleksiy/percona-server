@@ -1,5 +1,5 @@
 --source include/have_rocksdb.inc
---source include/master-slave.inc
+--source include/rpl/init_source_replica.inc
 
 connection master;
 
@@ -10,14 +10,14 @@ begin;
 insert into t1 values (11, 1);
 savepoint a;
 insert into t1 values (12, 1);
---error ER_UNKNOWN_ERROR
+--error ER_ROLLBACK_TO_SAVEPOINT
 rollback to savepoint a;
---error ER_UNKNOWN_ERROR
+--error ER_ROLLBACK_ONLY
 commit;
 commit;
 select * from t1;
 
---source include/sync_slave_sql_with_master.inc
+--source include/rpl/sync_to_replica.inc
 connection slave;
 
 select * from t1;
@@ -27,16 +27,16 @@ begin;
 insert into t1 values (21, 1);
 savepoint a;
 insert into t1 values (22, 1);
---error ER_UNKNOWN_ERROR
+--error ER_ROLLBACK_TO_SAVEPOINT
 rollback to savepoint a;
---error ER_UNKNOWN_ERROR
+--error ER_ROLLBACK_ONLY
 insert into t1 values (23, 1);
---error ER_UNKNOWN_ERROR
+--error ER_ROLLBACK_ONLY
 commit;
 commit;
 select * from t1;
 
---source include/sync_slave_sql_with_master.inc
+--source include/rpl/sync_to_replica.inc
 connection slave;
 select * from t1;
 
@@ -48,14 +48,14 @@ savepoint a;
 insert into t1 values (32, 1);
 savepoint b;
 insert into t1 values (33, 1);
---error ER_UNKNOWN_ERROR
+--error ER_ROLLBACK_TO_SAVEPOINT
 rollback to savepoint a;
---error ER_UNKNOWN_ERROR
+--error ER_ROLLBACK_ONLY
 insert into t1 values (34, 1);
 rollback;
 select * from t1;
 
---source include/sync_slave_sql_with_master.inc
+--source include/rpl/sync_to_replica.inc
 connection slave;
 select * from t1;
 
@@ -67,12 +67,12 @@ SAVEPOINT A;
 select * from t1;
 SAVEPOINT A;
 insert into t1 values (35, 35);
---error ER_UNKNOWN_ERROR
+--error ER_ROLLBACK_TO_SAVEPOINT
 ROLLBACK TO SAVEPOINT A;
---error ER_UNKNOWN_ERROR
+--error ER_ROLLBACK_ONLY
 START TRANSACTION;
 select * from t1;
---source include/sync_slave_sql_with_master.inc
+--source include/rpl/sync_to_replica.inc
 connection slave;
 select * from t1;
 
@@ -80,4 +80,4 @@ select * from t1;
 connection master;
 drop table t1;
 
---source include/rpl_end.inc
+--source include/rpl/deinit.inc
