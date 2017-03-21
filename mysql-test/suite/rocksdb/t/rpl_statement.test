@@ -1,11 +1,11 @@
 --source include/have_rocksdb.inc
---source include/master-slave.inc
+--source include/rpl/init_source_replica.inc
 
 connection master;
 
 select @@binlog_format;
 create table t1 (pk int primary key) engine=rocksdb;
---error ER_UNKNOWN_ERROR
+--error ER_REQUIRE_ROW_BINLOG_FORMAT
 insert into t1 values (1),(2),(3);
 
 set session rocksdb_unsafe_for_binlog=on;
@@ -14,13 +14,13 @@ select * from t1;
 delete from t1;
 set session rocksdb_unsafe_for_binlog=off;
 
---error ER_UNKNOWN_ERROR
+--error ER_REQUIRE_ROW_BINLOG_FORMAT
 insert into t1 values (1),(2),(3);
 
 set binlog_format=row;
 insert into t1 values (1),(2),(3);
 
---source include/sync_slave_sql_with_master.inc
+--source include/rpl/sync_to_replica.inc
 connection slave;
 
 select * from t1;
@@ -38,7 +38,7 @@ update t1 set value2=100 where id=1;
 update t1 set value2=200 where id=2;
 update t1 set value2=300 where id=3;
 
---source include/sync_slave_sql_with_master.inc
+--source include/rpl/sync_to_replica.inc
 connection slave;
 select * from t1 where id=1;
 select * from t1 where id=2;
@@ -48,4 +48,4 @@ connection master;
 drop table t1;
 set binlog_format=row;
 
---source include/rpl_end.inc
+--source include/rpl/deinit.inc
