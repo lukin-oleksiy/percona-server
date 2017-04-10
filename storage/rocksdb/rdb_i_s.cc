@@ -452,10 +452,6 @@ static int rdb_i_s_cfoptions_fill_table(my_core::THD *const thd,
         {"ARENA_BLOCK_SIZE", std::to_string(opts.arena_block_size)},
         {"DISABLE_AUTO_COMPACTIONS",
          opts.disable_auto_compactions ? "ON" : "OFF"},
-        {"PURGE_REDUNDANT_KVS_WHILE_FLUSH",
-         opts.purge_redundant_kvs_while_flush ? "ON" : "OFF"},
-        {"VERIFY_CHECKSUM_IN_COMPACTION",
-         opts.verify_checksums_in_compaction ? "ON" : "OFF"},
         {"MAX_SEQUENTIAL_SKIP_IN_ITERATIONS",
          std::to_string(opts.max_sequential_skip_in_iterations)},
         {"MEMTABLE_FACTORY", opts.memtable_factory == nullptr
@@ -470,8 +466,6 @@ static int rdb_i_s_cfoptions_fill_table(my_core::THD *const thd,
          std::to_string(opts.memtable_huge_page_size)},
         {"BLOOM_LOCALITY", std::to_string(opts.bloom_locality)},
         {"MAX_SUCCESSIVE_MERGES", std::to_string(opts.max_successive_merges)},
-        {"MIN_PARTIAL_MERGE_OPERANDS",
-         std::to_string(opts.min_partial_merge_operands)},
         {"OPTIMIZE_FILTERS_FOR_HITS",
          (opts.optimize_filters_for_hits ? "ON" : "OFF")},
     };
@@ -763,17 +757,31 @@ static int rdb_i_s_global_info_fill_table(my_core::THD *const thd,
   char cf_id_buf[INT_BUF_LEN] = {0};
   char cf_value_buf[FN_REFLEN + 1] = {0};
   const Rdb_cf_manager &cf_manager = rdb_get_cf_manager();
+
   for (const auto &cf_handle : cf_manager.get_all_cf()) {
+    assert(cf_handle != nullptr);
+
     uint flags;
-    dict_manager->get_cf_flags(cf_handle->GetID(), &flags);
+
+    if (!dict_manager->get_cf_flags(cf_handle->GetID(), &flags)) {
+      // NO_LINT_DEBUG
+      sql_print_error("RocksDB: Failed to get column family flags "
+                      "from CF with id = %u. MyRocks data dictionary may "
+                      "be corrupted.",
+                      cf_handle->GetID());
+      abort_with_stack_traces();
+    }
+
     snprintf(cf_id_buf, INT_BUF_LEN, "%u", cf_handle->GetID());
     snprintf(cf_value_buf, FN_REFLEN, "%s [%u]", cf_handle->GetName().c_str(),
              flags);
+
     ret |= rdb_global_info_fill_row(thd, tables, "CF_FLAGS", cf_id_buf,
                                     cf_value_buf);
 
-    if (ret)
+    if (ret) {
       break;
+    }
   }
 
   /* DDL_DROP_INDEX_ONGOING */

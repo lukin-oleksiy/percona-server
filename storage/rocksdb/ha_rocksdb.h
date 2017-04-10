@@ -30,6 +30,7 @@
 #include "./handler.h" /* handler */
 #include "./ib_ut0counter.h"
 #include "./my_global.h" /* ulonglong */
+#include "./sql_string.h"
 #include "my_icp.h"
 #include "sql_bitmap.h"
 
@@ -1103,7 +1104,6 @@ public:
 private:
   /* Flags tracking if we are inside different replication operation */
   bool m_in_rpl_delete_rows;
-
   bool m_in_rpl_update_rows;
 };
 
