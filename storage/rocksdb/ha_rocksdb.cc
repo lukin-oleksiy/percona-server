@@ -26,6 +26,7 @@
 /* C++ standard header files */
 #include <algorithm>
 #include <limits>
+#include <map>
 #include <queue>
 #include <set>
 #include <string>
@@ -86,6 +87,7 @@ namespace myrocks {
 
 static st_global_stats global_stats;
 static st_export_stats export_stats;
+static st_memory_stats memory_stats;
 
 const std::string DEFAULT_CF_NAME("default");
 const std::string DEFAULT_SYSTEM_CF_NAME("__system__");
@@ -348,6 +350,18 @@ static void rocksdb_set_pause_background_work(
   RDB_MUTEX_UNLOCK_CHECK(rdb_sysvars_mutex);
 }
 
+static void rocksdb_set_enable_ttl(
+    my_core::THD *const thd,
+    my_core::st_mysql_sys_var *const var MY_ATTRIBUTE((__unused__)),
+    void *const var_ptr, const void *const save) {
+  DBUG_ASSERT(save != nullptr);
+  RDB_MUTEX_LOCK_CHECK(rdb_sysvars_mutex);
+
+  *static_cast<bool *>(var_ptr) = *static_cast<const bool *>(save);
+
+  RDB_MUTEX_UNLOCK_CHECK(rdb_sysvars_mutex);
+}
+
 static void rocksdb_set_compaction_options(THD *thd,
                                            struct st_mysql_sys_var *var,
                                            void *var_ptr, const void *save);
@@ -419,6 +433,8 @@ static char *rocksdb_strict_collation_exceptions;
 static my_bool rocksdb_collect_sst_properties = 1;
 static my_bool rocksdb_force_flush_memtable_now_var = 0;
 static my_bool rocksdb_force_flush_memtable_and_lzero_now_var = 0;
+static my_bool rocksdb_enable_ttl = 1;
+static my_bool rocksdb_reset_stats = 0;
 static uint64_t rocksdb_number_stat_computes = 0;
 static uint32_t rocksdb_seconds_between_stat_computes = 3600;
 static long long rocksdb_compaction_sequential_deletes = 0l;
@@ -472,6 +488,32 @@ static void rocksdb_set_rocksdb_info_log_level(
   rocksdb_info_log_level = *static_cast<const uint64_t *>(save);
   rocksdb_db_options->info_log->SetInfoLogLevel(
       static_cast<const rocksdb::InfoLogLevel>(rocksdb_info_log_level));
+  RDB_MUTEX_UNLOCK_CHECK(rdb_sysvars_mutex);
+}
+
+static void rocksdb_set_reset_stats(
+    my_core::THD *const /* unused */,
+    my_core::st_mysql_sys_var *const /* unused */,
+    void *const var_ptr, const void *const save) {
+  DBUG_ASSERT(save != nullptr);
+  DBUG_ASSERT(rdb != nullptr);
+  DBUG_ASSERT(rocksdb_stats != nullptr);
+
+  RDB_MUTEX_LOCK_CHECK(rdb_sysvars_mutex);
+
+  *static_cast<bool *>(var_ptr) = *static_cast<const bool *>(save);
+
+  if (rocksdb_reset_stats) {
+    rocksdb::Status s = rdb->ResetStats();
+
+    // RocksDB will always return success. Let's document this assumption here
+    // as well so that we'll get immediately notified when contract changes.
+    assert(s == rocksdb::Status::OK());
+
+    s = rocksdb_stats->Reset();
+    assert(s == rocksdb::Status::OK());
+  }
+
   RDB_MUTEX_UNLOCK_CHECK(rdb_sysvars_mutex);
 }
 
@@ -1087,6 +1129,17 @@ static MYSQL_SYSVAR_BOOL(pause_background_work, rocksdb_pause_background_work,
                          "Disable all rocksdb background operations", nullptr,
                          rocksdb_set_pause_background_work, FALSE);
 
+static MYSQL_SYSVAR_BOOL(
+                         enable_ttl, rocksdb_enable_ttl, PLUGIN_VAR_RQCMDARG,
+                         "Disable expired ttl records from being dropped "
+                         "during compaction.",
+                         nullptr, rocksdb_set_enable_ttl, TRUE);
+
+static MYSQL_SYSVAR_BOOL(
+    reset_stats, rocksdb_reset_stats, PLUGIN_VAR_RQCMDARG,
+    "Reset the RocksDB internal statistics without restarting the DB.", nullptr,
+    rocksdb_set_reset_stats, FALSE);
+
 static MYSQL_SYSVAR_BOOL(strict_collation_check, rocksdb_strict_collation_check,
                          PLUGIN_VAR_RQCMDARG,
                          "Enforce case sensitive collation for MyRocks indexes",
@@ -1321,6 +1374,8 @@ static struct st_mysql_sys_var *rocksdb_system_variables[] = {
     MYSQL_SYSVAR(collect_sst_properties),
     MYSQL_SYSVAR(force_flush_memtable_now),
     MYSQL_SYSVAR(force_flush_memtable_and_lzero_now),
+    MYSQL_SYSVAR(enable_ttl),
+    MYSQL_SYSVAR(reset_stats),
     MYSQL_SYSVAR(flush_memtable_on_analyze),
     MYSQL_SYSVAR(seconds_between_stat_computes),
 
@@ -2012,6 +2067,7 @@ class Rdb_transaction_impl : public Rdb_transaction {
   rocksdb::Status get(rocksdb::ColumnFamilyHandle *const column_family,
                       const rocksdb::Slice &key,
                       std::string *value) const override {
+    global_stats.queries[QUERIES_POINT].inc();
     return m_rocksdb_tx->Get(m_read_opts, column_family, key, value);
   }
 
@@ -2029,6 +2085,7 @@ class Rdb_transaction_impl : public Rdb_transaction {
   rocksdb::Iterator *
   get_iterator(const rocksdb::ReadOptions &options,
                rocksdb::ColumnFamilyHandle *const column_family) override {
+    global_stats.queries[QUERIES_RANGE].inc();
     return m_rocksdb_tx->GetIterator(options, column_family);
   }
 
@@ -10043,11 +10100,28 @@ static void myrocks_update_status() {
   export_stats.rows_inserted = global_stats.rows[ROWS_INSERTED];
   export_stats.rows_read = global_stats.rows[ROWS_READ];
   export_stats.rows_updated = global_stats.rows[ROWS_UPDATED];
+  export_stats.rows_expired = global_stats.rows[ROWS_EXPIRED];
 
   export_stats.system_rows_deleted = global_stats.system_rows[ROWS_DELETED];
   export_stats.system_rows_inserted = global_stats.system_rows[ROWS_INSERTED];
   export_stats.system_rows_read = global_stats.system_rows[ROWS_READ];
   export_stats.system_rows_updated = global_stats.system_rows[ROWS_UPDATED];
+
+  export_stats.queries_point = global_stats.queries[QUERIES_POINT];
+  export_stats.queries_range = global_stats.queries[QUERIES_RANGE];
+}
+
+static void myrocks_update_memory_status() {
+  std::vector<rocksdb::DB *> dbs;
+  std::unordered_set<const rocksdb::Cache *> cache_set;
+  dbs.push_back(rdb);
+  std::map<rocksdb::MemoryUtil::UsageType, uint64_t> temp_usage_by_type;
+  rocksdb::MemoryUtil::GetApproximateMemoryUsageByType(dbs, cache_set,
+                                                       &temp_usage_by_type);
+  memory_stats.memtable_total =
+      temp_usage_by_type[rocksdb::MemoryUtil::kMemTableTotal];
+  memory_stats.memtable_unflushed =
+      temp_usage_by_type[rocksdb::MemoryUtil::kMemTableUnFlushed];
 }
 
 static SHOW_VAR myrocks_status_variables[] = {
@@ -10058,6 +10132,8 @@ static SHOW_VAR myrocks_status_variables[] = {
     DEF_STATUS_VAR_FUNC("rows_read", &export_stats.rows_read, SHOW_LONGLONG),
     DEF_STATUS_VAR_FUNC("rows_updated", &export_stats.rows_updated,
                         SHOW_LONGLONG),
+    DEF_STATUS_VAR_FUNC("rows_expired", &export_stats.rows_expired,
+                        SHOW_LONGLONG),
     DEF_STATUS_VAR_FUNC("system_rows_deleted",
                         &export_stats.system_rows_deleted, SHOW_LONGLONG),
     DEF_STATUS_VAR_FUNC("system_rows_inserted",
@@ -10066,11 +10142,20 @@ static SHOW_VAR myrocks_status_variables[] = {
                         SHOW_LONGLONG),
     DEF_STATUS_VAR_FUNC("system_rows_updated",
                         &export_stats.system_rows_updated, SHOW_LONGLONG),
+    DEF_STATUS_VAR_FUNC("memtable_total", &memory_stats.memtable_total,
+                        SHOW_LONGLONG),
+    DEF_STATUS_VAR_FUNC("memtable_unflushed", &memory_stats.memtable_unflushed,
+                        SHOW_LONGLONG),
+    DEF_STATUS_VAR_FUNC("queries_point", &export_stats.queries_point,
+                        SHOW_LONGLONG),
+    DEF_STATUS_VAR_FUNC("queries_range", &export_stats.queries_range,
+                        SHOW_LONGLONG),
 
     {NullS, NullS, SHOW_LONG, SHOW_SCOPE_GLOBAL}};
 
 static void show_myrocks_vars(THD *thd, SHOW_VAR *var, char *buff) {
   myrocks_update_status();
+  myrocks_update_memory_status();
   var->type = SHOW_ARRAY;
   var->value = reinterpret_cast<char *>(&myrocks_status_variables);
 }
@@ -10281,6 +10366,29 @@ Rdb_cf_manager &rdb_get_cf_manager() { return cf_manager; }
 
 const rocksdb::BlockBasedTableOptions &rdb_get_table_options() {
   return *rocksdb_tbl_options;
+}
+
+bool rdb_is_ttl_enabled() { return rocksdb_enable_ttl; }
+
+void rdb_update_global_stats(const operation_type &type, uint count,
+                             bool is_system_table) {
+  assert(type < ROWS_MAX);
+
+  if (is_system_table) {
+    if (count > 1) {
+      global_stats.system_rows[type].add(count);
+    } else {
+      global_stats.system_rows[type].inc();
+    }
+
+    return;
+  }
+
+  if (count > 1) {
+    global_stats.rows[type].add(count);
+  } else {
+    global_stats.rows[type].inc();
+  }
 }
 
 int rdb_get_table_perf_counters(const char *const tablename,
