@@ -4817,7 +4817,28 @@ template <typename Table>
       compression = nullptr;
     }
 
-    if (!Encryption::is_none(ha_alter_info->create_info->encrypt_type.str)) {
+    const char *encrypt;
+    encrypt = ha_alter_info->create_info->encrypt_type.str;
+    /* If encryption option is specified, then it must be
+    innodb-file-per-table tablespace. Otherwise case would
+    have already been blocked at
+    create_option_tablespace_is_valid(). */
+    if (encrypt) {
+      ut_ad(flags2 & DICT_TF2_USE_FILE_PER_TABLE);
+      ut_ad(!DICT_TF_HAS_SHARED_SPACE(flags));
+    }
+
+    if (!(ctx->new_table->flags2 & DICT_TF2_USE_FILE_PER_TABLE) &&
+        ha_alter_info->create_info->encrypt_type.length > 0 &&
+        !Encryption::is_none(encrypt) &&
+        !DICT_TF2_FLAG_IS_SET(ctx->old_table,
+                              DICT_TF2_ENCRYPTION_FILE_PER_TABLE)) {
+      dict_mem_table_free(ctx->new_table);
+      my_error(ER_TABLESPACE_CANNOT_ENCRYPT, MYF(0));
+      goto new_clustered_failed;
+    } else if (!Encryption::is_none(encrypt)) {
+      /* Set the encryption flag. */
+
       /* Check if keyring is ready. */
       if (!Encryption::check_keyring()) {
         dict_mem_table_free(ctx->new_table);

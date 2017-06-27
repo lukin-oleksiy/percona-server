@@ -13286,6 +13286,68 @@ bool create_table_info_t::create_option_compression_is_valid() {
   return (true);
 }
 
+/** Validate ENCRYPTION option.
+@return true if valid, false if not. */
+bool create_table_info_t::create_option_encryption_is_valid() const {
+  space_id_t space_id;
+
+  if (m_create_info->encrypt_type.length > 0) {
+    dberr_t err = Encryption::validate(m_create_info->encrypt_type.str);
+
+    if (err == DB_UNSUPPORTED) {
+      my_error(ER_INVALID_ENCRYPTION_OPTION, MYF(0));
+      return (false);
+    }
+  }
+
+  const bool table_is_encrypted =
+      !Encryption::is_none(m_create_info->encrypt_type.str);
+
+  if ((m_create_info->options & HA_LEX_CREATE_TMP_TABLE) &&
+      table_is_encrypted) {
+    my_printf_error(ER_ILLEGAL_HA_CREATE_OPTION,
+                    "InnoDB: Unsupported encryption option for"
+                    " temporary tables.",
+                    MYF(0));
+    return (false);
+  } else if (m_use_shared_space) {
+    space_id = fil_space_get_id_by_name(m_create_info->tablespace);
+
+    /* Space id already validated by
+    create_option_tablespace_is_valid */
+    ut_a(space_id != SPACE_UNKNOWN);
+  } else if (!m_use_file_per_table) {
+    space_id = TRX_SYS_SPACE;
+  } else {
+    return (true);
+  }
+
+  const uint32_t fsp_flags = fil_space_get_flags(space_id);
+
+  const bool tablespace_is_encrypted = FSP_FLAGS_GET_ENCRYPTION(fsp_flags);
+  const char *tablespace_name = m_create_info->tablespace != nullptr
+                                    ? m_create_info->tablespace
+                                    : dict_sys_t::s_sys_space_name;
+
+  if (table_is_encrypted && !tablespace_is_encrypted) {
+    my_printf_error(ER_ILLEGAL_HA_CREATE_OPTION,
+                    "InnoDB: Tablespace `%s` cannot contain an"
+                    " ENCRYPTED table.",
+                    MYF(0), tablespace_name);
+    return (false);
+  }
+
+  if (!table_is_encrypted && tablespace_is_encrypted) {
+    my_printf_error(ER_ILLEGAL_HA_CREATE_OPTION,
+                    "InnoDB: Tablespace `%s` can contain only an"
+                    " ENCRYPTED tables.",
+                    MYF(0), tablespace_name);
+    return (false);
+  }
+
+  return (true);
+}
+
 /** Validate the create options. Check that the options KEY_BLOCK_SIZE,
 ROW_FORMAT, DATA DIRECTORY, TEMPORARY & TABLESPACE are compatible with
 each other and other settings.  These CREATE OPTIONS are not validated
@@ -13310,6 +13372,9 @@ const char *create_table_info_t::create_options_are_invalid() {
   if (!create_option_tablespace_is_valid()) {
     return ("TABLESPACE");
   }
+
+  /* Validate encryption parameter even if strict_mode is OFF. */
+  if (!create_option_encryption_is_valid()) return ("ENCRYPTION");
 
   /* If innodb_strict_mode is not set don't do any more validation.
   Also, if this table is being put into a shared general tablespace
