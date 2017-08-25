@@ -165,6 +165,7 @@ static inline dberr_t pfs_os_aio_func(IORequest &type, AIO_mode aio_mode,
                                       void *buf, os_offset_t offset, ulint n,
                                       bool read_only, fil_node_t *m1, void *m2,
                                       space_id_t space_id, trx_t *trx,
+                                      bool should_buffer,
                                       ut::Location src_location) {
   PSI_file_locker_state state;
   struct PSI_file_locker *locker = nullptr;
@@ -177,7 +178,7 @@ static inline dberr_t pfs_os_aio_func(IORequest &type, AIO_mode aio_mode,
                              src_location);
 
   dberr_t result = os_aio_func(type, aio_mode, name, file, buf, offset, n,
-                               read_only, m1, m2, space_id, trx);
+                               read_only, m1, m2, space_id, trx, should_buffer);
 
   register_pfs_file_io_end(locker, n);
 
