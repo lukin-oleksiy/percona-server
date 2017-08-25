@@ -1412,6 +1412,16 @@ static SHOW_VAR innodb_status_variables[] = {
     {"ahi_drop_lookups", (char *)&export_vars.innodb_ahi_drop_lookups,
      SHOW_LONG, SHOW_SCOPE_GLOBAL},
 #endif /* UNIV_DEBUG */
+    {"secondary_index_triggered_cluster_reads",
+     (char *)&export_vars.innodb_sec_rec_cluster_reads, SHOW_LONG,
+     SHOW_SCOPE_GLOBAL},
+    {"secondary_index_triggered_cluster_reads_avoided",
+     (char *)&export_vars.innodb_sec_rec_cluster_reads_avoided, SHOW_LONG,
+     SHOW_SCOPE_GLOBAL},
+    {"buffered_aio_submitted",
+     (char *)&export_vars.innodb_buffered_aio_submitted, SHOW_LONG,
+     SHOW_SCOPE_GLOBAL},
+
     {NullS, NullS, SHOW_LONG, SHOW_SCOPE_GLOBAL}};
 
 /** Handling the shared INNOBASE_SHARE structure that is needed to provide table
