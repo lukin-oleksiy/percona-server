@@ -1086,6 +1086,8 @@ class Rdb_ddl_manager {
     return m_sequence.get_and_update_next_number(dict);
   }
 
+  const std::string safe_get_table_name(const GL_INDEX_ID &gl_index_id);
+
   /* Walk the data dictionary */
   int scan_for_tables(Rdb_tables_scanner *tables_scanner);
 
