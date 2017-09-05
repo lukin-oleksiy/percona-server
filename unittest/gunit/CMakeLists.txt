@@ -113,7 +113,6 @@ SET(TESTS
   charset_bug32788301
   collation_loader
   cost_estimate
-  dbug
   decimal
   dns_srv_data
   dphyp
@@ -483,6 +482,7 @@ ADD_SUBDIRECTORY(ddl_rewriter)
 ADD_SUBDIRECTORY(innodb)
 ADD_SUBDIRECTORY(components/mysql_server)
 ADD_SUBDIRECTORY(components/keyring_common)
+ADD_SUBDIRECTORY(components/keyring_vault)
 ADD_SUBDIRECTORY(xplugin)
 ADD_SUBDIRECTORY(group_replication)
 ADD_SUBDIRECTORY(libmysqlgcs)
