@@ -1183,9 +1183,9 @@ c1	c2	right(c3, 20)
 0	aaaaa	AAAAAAAAAAAAAAAAAAAA
 0	aaaaa	AAAAAAAAAAAAAAAAAAAA
 0	aaaaa	AAAAAAAAAAAAAAAAAAAA
+DROP TABLE tde_db.t_encrypt;
 DROP USER encryptnonprivuser@localhost;
 DROP USER encryptprivuser@localhost;
-DROP TABLE tde_db.t_encrypt;
 SET GLOBAL innodb_file_per_table=1;
 DROP DATABASE IF EXISTS tde_db;
 CREATE DATABASE tde_db;
