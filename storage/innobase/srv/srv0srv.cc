@@ -180,6 +180,9 @@ bool srv_undo_log_encrypt = false;
 /** Maximum size of undo tablespace. */
 unsigned long long srv_max_undo_tablespace_size;
 
+/** Enable or disable encryption of temporary tablespace.*/
+bool srv_tmp_tablespace_encrypt;
+
 /** Maximum number of recently truncated undo tablespace IDs for
 the same undo number. */
 const size_t CONCURRENT_UNDO_TRUNCATE_LIMIT =
@@ -2624,6 +2627,95 @@ static bool srv_master_do_shutdown_tasks(
   return (n_bytes_merged != 0);
 }
 
+/** Set temporary tablespace to be encrypted if global variable
+innodb_temp_tablespace_encrypt is TRUE
+@param[in]	enable	true to enable encryption, false to disable
+@return DB_SUCCESS on success, DB_ERROR on failure */
+dberr_t srv_temp_encryption_update(bool enable) {
+  ut_ad(!srv_read_only_mode);
+
+  fil_space_t *const space = fil_space_get(srv_tmp_space.space_id());
+  bool is_encrypted = FSP_FLAGS_GET_ENCRYPTION(space->flags);
+
+  ut_ad(fsp_is_system_temporary(space->id));
+
+  if (enable) {
+    if (is_encrypted) {
+      /* Encryption already enabled */
+      return (DB_SUCCESS);
+    } else {
+      /* Enable encryption now */
+      dberr_t err = fil_temp_update_encryption(space);
+      if (err == DB_SUCCESS) {
+        srv_tmp_space.set_flags(space->flags);
+      }
+      return (err);
+    }
+
+  } else {
+    if (!is_encrypted) {
+      /* Encryption already disabled */
+      return (DB_SUCCESS);
+    } else {
+      // TODO: Disabling encryption is not allowed yet
+      return (DB_SUCCESS);
+    }
+  }
+}
+
+void undo_rotate_default_master_key() {
+  fil_space_t *space;
+
+  if (srv_shutdown_state.load() >= SRV_SHUTDOWN_CLEANUP) {
+    return;
+  }
+
+  /* If the undo log space is using default key, rotate
+  it. We need the server_uuid initialized, otherwise,
+  the keyname will not contains server uuid. */
+  if (Encryption::get_master_key_id() != 0 || srv_read_only_mode ||
+      strlen(server_uuid) == 0) {
+    return;
+  }
+
+  DBUG_EXECUTE_IF("skip_rotating_default_master_key", return;);
+
+  undo::spaces->s_lock();
+  for (auto undo_space : undo::spaces->m_spaces) {
+    ut_ad(fsp_is_undo_tablespace(undo_space->id()));
+
+    space = fil_space_get(undo_space->id());
+
+    if (space == nullptr ||
+        space->m_encryption_metadata.m_type != Encryption::AES) {
+      continue;
+    }
+
+    byte encrypt_info[Encryption::INFO_SIZE];
+    mtr_t mtr;
+
+    ut_ad(FSP_FLAGS_GET_ENCRYPTION(space->flags));
+
+    /* Make sure that there is enough reusable
+    space in the redo log files. */
+    log_free_check();
+
+    mtr_start(&mtr);
+
+    mtr_x_lock_space(space, &mtr);
+
+    memset(encrypt_info, 0, Encryption::INFO_SIZE);
+
+    if (!fsp_header_rotate_encryption(space, encrypt_info, &mtr)) {
+      ib::error(ER_IB_MSG_1056, undo_space->space_name());
+    } else {
+      ib::info(ER_IB_MSG_1057, undo_space->space_name());
+    }
+    mtr_commit(&mtr);
+  }
+  undo::spaces->s_unlock();
+}
+
 /* Enable REDO tablespace encryption */
 bool srv_enable_redo_encryption() {
   log_t &log = *log_sys;
@@ -2824,6 +2916,9 @@ static void srv_master_main_loop(srv_slot_t *slot) {
     } else {
       srv_master_do_idle_tasks();
     }
+
+    /* Enable undo log encryption if it is set */
+    undo_rotate_default_master_key();
 
     /* Purge any deleted tablespace pages. */
     fil_purge();

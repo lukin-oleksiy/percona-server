@@ -11974,6 +11974,34 @@ void innodb_base_col_setup_for_stored(const dict_table_t *table,
   }
 }
 
+/** If encryption is requested, check for master key availability
+and set the encryption flag in table flags
+@param[in,out]	table	table object
+@return on success DB_SUCCESS else DB_UNSPPORTED on failure */
+dberr_t create_table_info_t::enable_encryption(dict_table_t *table) {
+  const char *encrypt = m_create_info->encrypt_type.str;
+
+  if (Encryption::is_none(encrypt)) return (DB_SUCCESS);
+
+  /* Set the encryption flag. */
+  byte *master_key = nullptr;
+  uint32_t master_key_id;
+
+  /* Check if keyring is ready. */
+  Encryption::get_master_key(&master_key_id, &master_key);
+
+  dberr_t err = DB_SUCCESS;
+  if (master_key == nullptr) {
+    my_error(ER_CANNOT_FIND_KEY_IN_KEYRING, MYF(0));
+    err = DB_UNSUPPORTED;
+  } else {
+    my_free(master_key);
+    DICT_TF2_FLAG_SET(table, DICT_TF2_ENCRYPTION_FILE_PER_TABLE);
+  }
+
+  return (err);
+}
+
 /** Create a table definition to an InnoDB database.
 @param[in]      dd_table        dd::Table or nullptr for intrinsic table
 @param[in]      old_part_table  dd::Table from an old partition for partitioned
@@ -12364,6 +12392,13 @@ void innodb_base_col_setup_for_stored(const dict_table_t *table,
   /* Add the FTS doc_id hidden column. */
   if (m_flags2 & (DICT_TF2_FTS | DICT_TF2_FTS_ADD_DOC_ID) && !has_doc_id_col) {
     fts_add_doc_id_column(table, heap);
+  }
+
+  err = enable_encryption(table);
+  if (err != DB_SUCCESS) {
+    dict_mem_table_free(table);
+    mem_heap_free(heap);
+    goto error_ret;
   }
 
   if (table->is_temporary()) {
@@ -22935,6 +22970,34 @@ static void innodb_log_checksums_update(THD *, SYS_VAR *, void *var_ptr,
   innodb_log_checksums_func_update(check);
 }
 
+/** Enable or disable encryption of temporary tablespace
+@param[in]	thd	thread handle
+@param[in]	var	system variable
+@param[out]	var_ptr	current value
+@param[in]	save	immediate result from check function */
+static void innodb_temp_tablespace_encryption_update(THD *thd, SYS_VAR *var,
+                                                     void *var_ptr,
+                                                     const void *save) {
+  if (srv_read_only_mode) {
+    push_warning_printf(thd, Sql_condition::SL_WARNING, ER_WRONG_ARGUMENTS,
+                        " Temporary tablespace cannot be"
+                        " encrypted in innodb_read_only mode");
+    return;
+  }
+
+  bool check = *static_cast<const bool *>(save);
+
+  dberr_t err = srv_temp_encryption_update(check);
+  if (err != DB_SUCCESS) {
+    push_warning_printf(thd, Sql_condition::SL_WARNING, ER_WRONG_ARGUMENTS,
+                        " Temporary tablespace couldn't be"
+                        " encrypted. Check if keyring plugin"
+                        " is loaded.");
+  } else {
+    *static_cast<bool *>(var_ptr) = *static_cast<const bool *>(save);
+  }
+}
+
 static SHOW_VAR innodb_status_variables_export[] = {
     {"Innodb", (char *)&show_innodb_vars, SHOW_FUNC, SHOW_SCOPE_GLOBAL},
     {NullS, NullS, SHOW_LONG, SHOW_SCOPE_GLOBAL}};
@@ -23977,6 +24040,11 @@ static MYSQL_SYSVAR_STR(temp_data_file_path, innobase_temp_data_file_path,
                         "Path to files and their sizes making temp-tablespace.",
                         nullptr, nullptr, (char *)"ibtmp1:12M:autoextend");
 
+static MYSQL_SYSVAR_BOOL(
+    temp_tablespace_encrypt, srv_tmp_tablespace_encrypt, PLUGIN_VAR_OPCMDARG,
+    "Enable or disable encryption of temporary tablespace.", nullptr,
+    innodb_temp_tablespace_encryption_update, false);
+
 static MYSQL_SYSVAR_STR(
     undo_directory, srv_undo_dir,
     PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY | PLUGIN_VAR_NOPERSIST,
@@ -24392,6 +24460,7 @@ static SYS_VAR *innobase_system_variables[] = {
     MYSQL_SYSVAR(ddl_threads),
     MYSQL_SYSVAR(data_file_path),
     MYSQL_SYSVAR(temp_data_file_path),
+    MYSQL_SYSVAR(temp_tablespace_encrypt),
     MYSQL_SYSVAR(data_home_dir),
     MYSQL_SYSVAR(extend_and_initialize),
     MYSQL_SYSVAR(doublewrite),

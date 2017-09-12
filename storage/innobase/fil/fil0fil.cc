@@ -7497,6 +7497,14 @@ void fil_io_set_encryption(IORequest &req_type, const page_id_t &page_id,
     return;
   }
 
+  /* For writing temporary tablespace, if encryption for temporary
+  tablespace is disabled, skip setting encryption. */
+  if (fsp_is_system_temporary(space->id) && !srv_tmp_tablespace_encrypt &&
+      req_type.is_write()) {
+    req_type.clear_encrypted();
+    return;
+  }
+
   /* For writing undo log, if encryption for undo log is disabled,
   skip set encryption. */
   if (fsp_is_undo_tablespace(space->id) && !srv_undo_log_encrypt &&
@@ -8940,6 +8948,33 @@ dberr_t fil_set_encryption(space_id_t space_id, Encryption::Type algorithm,
   shard->mutex_release();
 
   return DB_SUCCESS;
+}
+
+/** Enable encryption of temporary tablespace
+@param[in,out]	space	tablespace object
+@return DB_SUCCESS on success, DB_ERROR on failure */
+dberr_t fil_temp_update_encryption(fil_space_t *space) {
+  /* Make sure the keyring is loaded. */
+  if (!Encryption::check_keyring()) {
+    ib::error() << "Can't set temporary tablespace"
+                << " to be encrypted because"
+                << " keyring plugin is not"
+                << " available.";
+    return (DB_ERROR);
+  }
+
+  if (!fsp_enable_encryption(space)) {
+    ib::error() << "Can't set temporary tablespace"
+                << " to be encrypted.";
+    return (DB_ERROR);
+  }
+
+  const dberr_t err =
+      fil_set_encryption(space->id, Encryption::AES, nullptr, nullptr);
+
+  ut_ad(err == DB_SUCCESS);
+
+  return (err);
 }
 
 /** Reset the encryption type for the tablespace
