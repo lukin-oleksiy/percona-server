@@ -509,6 +509,7 @@ static std::unique_ptr<rocksdb::DBOptions> rdb_init_rocksdb_db_options(void) {
   o->listeners.push_back(std::make_shared<Rdb_event_listener>(&ddl_manager));
   o->info_log_level = rocksdb::InfoLogLevel::INFO_LEVEL;
   o->max_subcompactions = DEFAULT_SUBCOMPACTIONS;
+  o->max_open_files = -2; // auto-tune to 50% open_files_limit
 
   o->concurrent_prepare = true;
   o->manual_wal_flush = true;
@@ -861,7 +862,7 @@ static MYSQL_SYSVAR_INT(max_open_files, rocksdb_db_options->max_open_files,
                         PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
                         "DBOptions::max_open_files for RocksDB", nullptr,
                         nullptr, rocksdb_db_options->max_open_files,
-                        /* min */ -1, /* max */ INT_MAX, 0);
+                        /* min */ -2, /* max */ INT_MAX, 0);
 
 static MYSQL_SYSVAR_ULONG(max_total_wal_size,
                           rocksdb_db_options->max_total_wal_size,
@@ -1154,7 +1155,9 @@ static MYSQL_SYSVAR_BOOL(
 
 static MYSQL_SYSVAR_STR(default_cf_options, rocksdb_default_cf_options,
                         PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
-                        "default cf options for RocksDB", nullptr, nullptr, "");
+                        "default cf options for RocksDB", nullptr, nullptr,
+                        "compression=kLZ4Compression;"
+                        "bottommost_compression=kLZ4Compression");
 
 static MYSQL_SYSVAR_STR(override_cf_options, rocksdb_override_cf_options,
                         PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
@@ -3584,6 +3587,16 @@ static int rocksdb_init_func(void *const p) {
 
   DBUG_ASSERT(!mysqld_embedded);
 
+  if (rocksdb_db_options->max_open_files > (long) open_files_limit) {
+    sql_print_information("RocksDB: rocksdb_max_open_files should not be "
+                          "greater than the open_files_limit, effective value "
+                          "of rocksdb_max_open_files is being set to "
+                          "open_files_limit / 2.");
+    rocksdb_db_options->max_open_files = open_files_limit / 2;
+  } else if (rocksdb_db_options->max_open_files == -2) {
+    rocksdb_db_options->max_open_files = open_files_limit / 2;
+  }
+
   rocksdb_stats = rocksdb::CreateDBStatistics();
   rocksdb_db_options->statistics = rocksdb_stats;
 
@@ -4338,6 +4351,10 @@ bool ha_rocksdb::init_with_fields() {
   cached_table_flags = table_flags();
 
   DBUG_RETURN(false); /* Ok */
+}
+
+bool ha_rocksdb::rpl_can_handle_stm_event() const {
+  return !(rpl_skip_tx_api_var && !super_read_only);
 }
 
 /*
@@ -10916,9 +10933,9 @@ struct rocksdb_status_counters_t {
   uint64_t bloom_filter_prefix_checked;
   uint64_t bloom_filter_prefix_useful;
   uint64_t number_reseeks_iteration;
-  uint64_t getupdatessince_calls;
-  uint64_t block_cachecompressed_miss;
-  uint64_t block_cachecompressed_hit;
+  uint64_t get_updates_since_calls;
+  uint64_t block_cache_compressed_miss;
+  uint64_t block_cache_compressed_hit;
   uint64_t wal_synced;
   uint64_t wal_bytes;
   uint64_t write_self;
@@ -10992,9 +11009,9 @@ DEF_SHOW_FUNC(number_merge_failures, NUMBER_MERGE_FAILURES)
 DEF_SHOW_FUNC(bloom_filter_prefix_checked, BLOOM_FILTER_PREFIX_CHECKED)
 DEF_SHOW_FUNC(bloom_filter_prefix_useful, BLOOM_FILTER_PREFIX_USEFUL)
 DEF_SHOW_FUNC(number_reseeks_iteration, NUMBER_OF_RESEEKS_IN_ITERATION)
-DEF_SHOW_FUNC(getupdatessince_calls, GET_UPDATES_SINCE_CALLS)
-DEF_SHOW_FUNC(block_cachecompressed_miss, BLOCK_CACHE_COMPRESSED_MISS)
-DEF_SHOW_FUNC(block_cachecompressed_hit, BLOCK_CACHE_COMPRESSED_HIT)
+DEF_SHOW_FUNC(get_updates_since_calls, GET_UPDATES_SINCE_CALLS)
+DEF_SHOW_FUNC(block_cache_compressed_miss, BLOCK_CACHE_COMPRESSED_MISS)
+DEF_SHOW_FUNC(block_cache_compressed_hit, BLOCK_CACHE_COMPRESSED_HIT)
 DEF_SHOW_FUNC(wal_synced, WAL_FILE_SYNCED)
 DEF_SHOW_FUNC(wal_bytes, WAL_FILE_BYTES)
 DEF_SHOW_FUNC(write_self, WRITE_DONE_BY_SELF)
@@ -11225,9 +11242,9 @@ static SHOW_VAR rocksdb_status_vars[] = {
     DEF_STATUS_VAR(bloom_filter_prefix_checked),
     DEF_STATUS_VAR(bloom_filter_prefix_useful),
     DEF_STATUS_VAR(number_reseeks_iteration),
-    DEF_STATUS_VAR(getupdatessince_calls),
-    DEF_STATUS_VAR(block_cachecompressed_miss),
-    DEF_STATUS_VAR(block_cachecompressed_hit),
+    DEF_STATUS_VAR(get_updates_since_calls),
+    DEF_STATUS_VAR(block_cache_compressed_miss),
+    DEF_STATUS_VAR(block_cache_compressed_hit),
     DEF_STATUS_VAR(wal_synced),
     DEF_STATUS_VAR(wal_bytes),
     DEF_STATUS_VAR(write_self),
