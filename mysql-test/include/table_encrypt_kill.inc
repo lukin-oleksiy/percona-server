@@ -10,12 +10,13 @@
 --source include/no_valgrind_without_big.inc
 # Avoid CrashReporter popup on Mac
 --source include/not_crashrep.inc
+--source include/have_component_keyring_file.inc
 
 #suppress warning
 -- disable_query_log
 call mtr.add_suppression("does not exist in the InnoDB internal data dictionary though MySQL is trying to drop it");
 
-call mtr.add_suppression("Can't generate new master key for tablespace encryption, please check the keyring plugin is loaded.");
+call mtr.add_suppression("Can't generate new master key for tablespace encryption, please check the keyring is loaded.");
 call mtr.add_suppression("Operating system error number");
 call mtr.add_suppression("The error means the system cannot find the path specified");
 call mtr.add_suppression("If you are installing InnoDB, remember that you must create directories yourself, InnoDB does not create them");
@@ -26,20 +27,14 @@ call mtr.add_suppression("Cannot open table tde_db/t_encrypt.* from the internal
 call mtr.add_suppression("\\[Warning\\] .* Please refer to .* for how to resolve the issue");
 call mtr.add_suppression("\\[Warning\\] .* Database page corruption or a failed file read of page");
 call mtr.add_suppression("\\[Warning\\] .* Cannot calculate statistics for table");
-call mtr.add_suppression("\\[ERROR\\] .* Encryption can't find master key, please check the keyring plugin is loaded.");
+call mtr.add_suppression("\\[ERROR\\] .* Encryption can't find master key, please check the keyring is loaded.");
 call mtr.add_suppression("\\[ERROR\\] .* Table tde_db/t_encrypt.* in the InnoDB data dictionary has tablespace id .*, but tablespace with that id or name does not exist");
 -- enable_query_log
 
 let $innodb_file_per_table = `SELECT @@innodb_file_per_table`;
 
---echo # Starting server with keyring plugin
---exec echo "wait" > $MYSQLTEST_VARDIR/tmp/mysqld.1.expect
--- send_shutdown
--- source include/wait_until_disconnected.inc
---exec echo "$KEYRING_RESTART_PARAM" > $MYSQLTEST_VARDIR/tmp/mysqld.1.expect
---enable_reconnect
---source include/wait_until_connected_again.inc
---disable_reconnect
+--echo # Starting server with keyring component
+--source suite/component_keyring_file/inc/setup_component.inc
 
 
 #------------------------------------------------------------------------------
@@ -177,16 +172,14 @@ send call tde_db.populate_t_non_encrypt();
 
 --connection default
 --echo # kill and restart the server
---let $restart_parameters = $KEYRING_RESTART_PARAM
+--let $restart_parameters = $keyring_restart_param
 --sleep 3
 --let $_server_id= `SELECT @@server_id`
 --let $_expect_file_name= $MYSQLTEST_VARDIR/tmp/mysqld.$_server_id.expect
 --exec echo "$restart_parameters" > $_expect_file_name
 --shutdown_server 0
 --source include/wait_until_disconnected.inc
---enable_reconnect
 --source include/wait_until_connected_again.inc
---disable_reconnect
 
 --disconnect con1
 --disconnect con2
@@ -235,7 +228,7 @@ send call tde_db.delete_t_encrypt();
 
 --connection default
 --echo # kill and restart the server
---let $restart_parameters = $KEYRING_RESTART_PARAM
+--let $restart_parameters = $keyring_restart_param
 --sleep 3
 
 --let $_server_id= `SELECT @@server_id`
@@ -243,9 +236,7 @@ send call tde_db.delete_t_encrypt();
 --exec echo "$restart_parameters" > $_expect_file_name
 --shutdown_server 0
 --source include/wait_until_disconnected.inc
---enable_reconnect
 --source include/wait_until_connected_again.inc
---disable_reconnect
 
 
 --disconnect con1
@@ -291,8 +282,8 @@ send call tde_db.read_t_encrypt();
 
 --connection default
 --echo # kill and restart the server
---let $restart_parameters = $KEYRING_RESTART_PARAM
---let $restart_hide_args = 1
+--let $restart_parameters = $keyring_restart_param
+--let $do_not_echo_parameters = 1
 --sleep 1
 --source include/kill_and_restart_mysqld.inc
 
@@ -341,6 +332,6 @@ DROP DATABASE tde_db;
 
 # Cleanup
 --echo # restart server without keyring
---let $restart_parameters = restart:
---source include/restart_mysqld.inc
+--source suite/component_keyring_file/inc/teardown_component.inc
+
 eval SET GLOBAL innodb_file_per_table=$innodb_file_per_table;

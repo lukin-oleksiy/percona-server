@@ -162,6 +162,18 @@ struct srv_stats_t {
 
   /** Number of buffered aio requests submitted */
   ulint_ctr_64_t n_aio_submitted;
+
+  /* Number of merge blocks encrypted */
+  ulint_ctr_64_t n_merge_blocks_encrypted;
+
+  /* Number of merge blocks decrypted */
+  ulint_ctr_64_t n_merge_blocks_decrypted;
+
+  /* Number of row log blocks encrypted */
+  ulint_ctr_64_t n_rowlog_blocks_encrypted;
+
+  /* Number of row log blocks decrypted */
+  ulint_ctr_64_t n_rowlog_blocks_decrypted;
 };
 
 /** Structure which keeps shared future objects for InnoDB background
@@ -767,6 +779,8 @@ extern std::atomic<int> srv_fatal_semaphore_wait_extend;
 
 extern ulint srv_dml_needed_delay;
 
+extern bool srv_encrypt_online_alter_logs;
+
 #ifdef UNIV_HOTBACKUP
 // MAHI: changed from 130 to 1 assuming the apply-log is single threaded
 constexpr uint32_t SRV_MAX_N_IO_THREADS = 1;
@@ -1318,6 +1332,14 @@ struct export_var_t {
   trx_id_t innodb_oldest_view_low_limit_trx_id;
   trx_id_t innodb_purge_trx_id;
   undo_no_t innodb_purge_undo_no;
+  uint64_t
+      innodb_n_merge_blocks_encrypted; /*!< Number of merge blocks encrypted */
+  uint64_t
+      innodb_n_merge_blocks_decrypted; /*!< Number of merge blocks decrypted */
+  uint64_t innodb_n_rowlog_blocks_encrypted; /*!< Number of row log blocks
+                                                   encrypted */
+  uint64_t innodb_n_rowlog_blocks_decrypted; /*!< Number of row log blocks
+                                                   decrypted */
 
   ulint innodb_sec_rec_cluster_reads; /*!< srv_sec_rec_cluster_reads */
   ulint

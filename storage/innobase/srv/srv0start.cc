@@ -2273,6 +2273,9 @@ void srv_start_threads() {
     return;
   }
 
+  /* Enable row log encryption if it is set */
+  log_tmp_enable_encryption_if_set();
+
   /* Create the master thread which does purge and other utility
   operations */
   srv_threads.m_master =
