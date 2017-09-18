@@ -1438,6 +1438,18 @@ static SHOW_VAR innodb_status_variables[] = {
     {"scan_deleted_recs_size",
      (char *)&export_vars.innodb_fragmentation_stats.scan_deleted_recs_size,
      SHOW_LONG, SHOW_SCOPE_GLOBAL},
+    {"encryption_n_merge_blocks_encrypted",
+     (char *)&export_vars.innodb_n_merge_blocks_encrypted, SHOW_LONGLONG,
+     SHOW_SCOPE_GLOBAL},
+    {"encryption_n_merge_blocks_decrypted",
+     (char *)&export_vars.innodb_n_merge_blocks_decrypted, SHOW_LONGLONG,
+     SHOW_SCOPE_GLOBAL},
+    {"encryption_n_rowlog_blocks_encrypted",
+     (char *)&export_vars.innodb_n_rowlog_blocks_encrypted, SHOW_LONGLONG,
+     SHOW_SCOPE_GLOBAL},
+    {"encryption_n_rowlog_blocks_decrypted",
+     (char *)&export_vars.innodb_n_rowlog_blocks_decrypted, SHOW_LONGLONG,
+     SHOW_SCOPE_GLOBAL},
     {NullS, NullS, SHOW_LONG, SHOW_SCOPE_GLOBAL}};
 
 /** Handling the shared INNOBASE_SHARE structure that is needed to provide table
@@ -24430,6 +24442,11 @@ static MYSQL_SYSVAR_ULONG(
     "Compress column data if its length exceeds this value. Default is 96",
     nullptr, nullptr, 96, 1, ~0UL, 0);
 
+static MYSQL_SYSVAR_BOOL(encrypt_online_alter_logs,
+                         srv_encrypt_online_alter_logs,
+                         PLUGIN_VAR_NOCMDARG | PLUGIN_VAR_READONLY,
+                         "Encrypt online alter logs.", nullptr, nullptr, false);
+
 static SYS_VAR *innobase_system_variables[] = {
     MYSQL_SYSVAR(api_trx_level),
     MYSQL_SYSVAR(api_bk_commit_interval),
@@ -24663,6 +24680,7 @@ static SYS_VAR *innobase_system_variables[] = {
     MYSQL_SYSVAR(compressed_columns_zip_level),
     MYSQL_SYSVAR(compressed_columns_threshold),
     MYSQL_SYSVAR(ft_ignore_stopwords),
+    MYSQL_SYSVAR(encrypt_online_alter_logs),
     MYSQL_SYSVAR(encrypt_tables),
     nullptr};
 
