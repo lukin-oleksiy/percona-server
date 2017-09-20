@@ -245,7 +245,7 @@ static int binlog_start_consistent_snapshot(handlerton *hton, THD *thd);
 static int binlog_clone_consistent_snapshot(handlerton *hton, THD *thd,
                                             THD *from_thd);
 
-ulonglong binlog_space_limit;
+ulong max_binlog_files;
 
 // The last published global binlog position
 static char binlog_global_snapshot_file[FN_REFLEN];
@@ -4892,8 +4892,6 @@ bool MYSQL_BIN_LOG::open_binlog(
 
   DBUG_PRINT("info", ("generated filename: %s", log_file_name));
 
-  DEBUG_SYNC(current_thd, "after_log_file_name_initialized");
-
   if (m_binlog_index_monitor.open_purge_index_file(true) ||
       m_binlog_index_monitor.register_create_index_entry(log_file_name) ||
       m_binlog_index_monitor.sync_purge_index_file() ||
@@ -5547,6 +5545,66 @@ int MYSQL_BIN_LOG::purge_index_entry(THD *thd, ulonglong *decrease_log_space,
                                      bool need_lock_index) {
   return m_binlog_index_monitor.purge_index_entry(
       thd, decrease_log_space, m_key_file_log, need_lock_index);
+}
+
+/**
+  Purge old logs so that we have a maximum of max_nr_files logs.
+
+  @param max_nr_files	Maximum number of logfiles to have
+
+  @note
+  If any of the logs before the deleted one is in use,
+  only purge logs up to this one.
+
+  @retval
+  0				ok
+  @retval
+  LOG_INFO_PURGE_NO_ROTATE	Binary file that can't be rotated
+  LOG_INFO_FATAL              if any other than ENOENT error from
+  mysql_file_stat() or mysql_file_delete()
+*/
+
+int MYSQL_BIN_LOG::purge_logs_maximum_number(ulong max_nr_files) {
+  int error;
+  char to_log[FN_REFLEN];
+  Log_info log_info;
+  ulong current_number_of_logs = 1;
+
+  DBUG_ENTER("purge_logs_maximum_number");
+
+  m_binlog_index_monitor.lock();
+  to_log[0] = 0;
+
+  if ((error = find_log_pos(&log_info, NullS, 0 /*no mutex*/))) goto err;
+
+  while (!find_next_log(&log_info, 0)) current_number_of_logs++;
+
+  if (current_number_of_logs <= max_nr_files) {
+    error = 0;
+    goto err; /* No logs to expire */
+  }
+
+  if ((error = find_log_pos(&log_info, NullS, 0 /*no mutex*/))) goto err;
+
+  while (strcmp(log_file_name, log_info.log_file_name) &&
+         !is_active(log_info.log_file_name) &&
+         !log_in_use(log_info.log_file_name) &&
+         current_number_of_logs > max_nr_files) {
+    current_number_of_logs--;
+    strmake(to_log, log_info.log_file_name, sizeof(log_info.log_file_name) - 1);
+
+    if (find_next_log(&log_info, 0)) {
+      break;
+    }
+  }
+
+  error =
+      (to_log[0] ? purge_logs(to_log, true, false, true, (ulonglong *)0, true)
+                 : 0);
+
+err:
+  m_binlog_index_monitor.unlock();
+  DBUG_RETURN(error);
 }
 
 /**
@@ -6361,6 +6419,8 @@ bool MYSQL_BIN_LOG::write_event(Log_event *event_info) {
             thd->first_successful_insert_id_in_prev_stmt_for_binlog,
             event_info->event_cache_type, event_info->event_logging_type);
         if (cache_data->write_event(&e)) goto err;
+        if (event_info->is_using_immediate_logging())
+          thd->binlog_bytes_written += e.header()->data_written;
       }
       if (thd->auto_inc_intervals_in_cur_stmt_for_binlog.nb_elements() > 0) {
         DBUG_PRINT(
@@ -6372,12 +6432,16 @@ bool MYSQL_BIN_LOG::write_event(Log_event *event_info) {
             thd->auto_inc_intervals_in_cur_stmt_for_binlog.minimum(),
             event_info->event_cache_type, event_info->event_logging_type);
         if (cache_data->write_event(&e)) goto err;
+        if (event_info->is_using_immediate_logging())
+          thd->binlog_bytes_written += e.header()->data_written;
       }
       if (thd->rand_used) {
         Rand_log_event e(thd, thd->rand_saved_seed1, thd->rand_saved_seed2,
                          event_info->event_cache_type,
                          event_info->event_logging_type);
         if (cache_data->write_event(&e)) goto err;
+        if (event_info->is_using_immediate_logging())
+          thd->binlog_bytes_written += e.header()->data_written;
       }
       if (!thd->user_var_events.empty()) {
         for (size_t i = 0; i < thd->user_var_events.size(); i++) {
@@ -6395,6 +6459,8 @@ bool MYSQL_BIN_LOG::write_event(Log_event *event_info) {
               user_var_event->type, user_var_event->charset_number, flags,
               event_info->event_cache_type, event_info->event_logging_type);
           if (cache_data->write_event(&e)) goto err;
+          if (event_info->is_using_immediate_logging())
+            thd->binlog_bytes_written += e.header()->data_written;
         }
       }
     }
@@ -6405,6 +6471,8 @@ bool MYSQL_BIN_LOG::write_event(Log_event *event_info) {
     if (cache_data->write_event(event_info)) goto err;
 
     if (DBUG_EVALUATE_IF("injecting_fault_writing", 1, 0)) goto err;
+    if (event_info->is_using_immediate_logging())
+      thd->binlog_bytes_written += event_info->common_header->data_written;
 
     /*
       After writing the event, if the trx-cache was used and any unsafe
@@ -6519,6 +6587,7 @@ void MYSQL_BIN_LOG::auto_purge() {
   */
   ha_flush_logs();
   purge_logs_before_date(purge_time, auto_purge);
+  if (max_binlog_files) purge_logs_maximum_number(max_binlog_files);
 }
 
 /**
@@ -10778,7 +10847,7 @@ void THD::issue_unsafe_warnings() {
         lex->query_block->select_limit) {
       ORDER *order = (ORDER *)((lex->query_block->order_list.elements)
                                    ? lex->query_block->order_list.first
-                                   : NULL);
+                                   : nullptr);
       if ((lex->query_block->select_limit &&
            lex->query_block->select_limit->fixed &&
            lex->query_block->select_limit->val_int() == 0) ||
@@ -11007,8 +11076,8 @@ mysql_declare_plugin(binlog){
     nullptr,       /* Plugin Check uninstall */
     binlog_deinit, /* Plugin Deinit */
     0x0100 /* 1.0 */,
-    nullptr, /* status variables                */
-    nullptr, /* system variables                */
-    nullptr, /* config options                  */
+    binlog_status_vars_top, /* status variables                */
+    nullptr,                /* system variables                */
+    nullptr,                /* config options                  */
     0,
 } mysql_declare_plugin_end;
