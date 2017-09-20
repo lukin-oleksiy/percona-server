@@ -5911,7 +5911,13 @@ extern "C" void *handle_slave_io(void *arg) {
             });
         DBUG_EXECUTE_IF(
             "stop_io_after_reading_unknown_event",
-            if (ev_type >= mysql::binlog::event::ENUM_END_EVENT) {
+            /*
+             * Cast to uchar, because of Percona's events
+             * which have values > 128. This causes ENUM_END_EVENT to be > 128
+             * but event_buf is char, so comparison does not work.
+             */
+            if (static_cast<uchar>(ev_type) >=
+                mysql::binlog::event::ENUM_END_EVENT) {
               thd->killed = THD::KILLED_NO_VALUE;
             });
         DBUG_EXECUTE_IF("stop_io_after_queuing_event",
@@ -7740,9 +7746,14 @@ int heartbeat_queue_event(bool is_valid, Master_info *&mi,
       to the last skipped transaction. Note that,
       we update only the positions and not the file names, as a ROTATE
       EVENT from the master prior to this will update the file name.
+
+      When source binlog is PS 5_7 encrypted it will also send heartbeat
+      event after reading Start_encryption_event from the binlog.
+      As Start_encryption_event is not sent to replica, the source
+      informs the replica to update it's master_log_pos by sending
+      heartbeat event.
     */
-    if ((mi->is_auto_position() == false ||
-         mi->get_master_log_pos() >= position || mi_log_filename.empty()))
+    if (mi->get_master_log_pos() >= position || mi_log_filename.empty())
       return 0;
 
     DBUG_EXECUTE_IF("reached_heart_beat_queue_event",
@@ -7910,7 +7921,8 @@ QUEUE_EVENT_RESULT queue_event(Master_info *mi, const char *buf,
   ulonglong compressed_transaction_bytes = 0;
   ulonglong uncompressed_transaction_bytes = 0;
   auto compression_type = mysql::binlog::event::compression::type::NONE;
-  Log_event_type event_type = (Log_event_type)buf[EVENT_TYPE_OFFSET];
+  Log_event_type event_type =
+      (Log_event_type) static_cast<uchar>(buf[EVENT_TYPE_OFFSET]);
 
   assert(checksum_alg == mysql::binlog::event::BINLOG_CHECKSUM_ALG_OFF ||
          checksum_alg == mysql::binlog::event::BINLOG_CHECKSUM_ALG_UNDEF ||
@@ -8403,7 +8415,8 @@ QUEUE_EVENT_RESULT queue_event(Master_info *mi, const char *buf,
       "simulate_unknown_ignorable_log_event",
       if (event_type == mysql::binlog::event::WRITE_ROWS_EVENT ||
           event_type == mysql::binlog::event::PREVIOUS_GTIDS_LOG_EVENT) {
-        char *event_buf = const_cast<char *>(buf);
+        uchar *event_buf =
+            const_cast<uchar *>(reinterpret_cast<const uchar *>(buf));
         /* Overwrite the log event type with an unknown type. */
         event_buf[EVENT_TYPE_OFFSET] = mysql::binlog::event::ENUM_END_EVENT + 1;
         /* Set LOG_EVENT_IGNORABLE_F for the log event. */
