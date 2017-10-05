@@ -1448,4 +1448,8 @@ struct Rdb_hton_init_state {
   mysql_rwlock_t m_rwlock;
   bool m_initialized;
 };
+
+// file name indicating RocksDB data corruption
+std::string rdb_corruption_marker_file_name();
+
 }  // namespace myrocks
