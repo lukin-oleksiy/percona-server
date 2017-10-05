@@ -37,6 +37,9 @@ class Rdb_event_listener : public rocksdb::EventListener {
       rocksdb::DB *db,
       const rocksdb::ExternalFileIngestionInfo &ingestion_info) override;
 
+  void OnBackgroundError(rocksdb::BackgroundErrorReason reason,
+                         rocksdb::Status *status) override;
+
  private:
   Rdb_ddl_manager *m_ddl_manager;
 
