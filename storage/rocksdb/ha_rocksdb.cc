@@ -563,8 +563,9 @@ static bool rocksdb_force_compute_memtable_stats = true;
 static uint32_t rocksdb_force_compute_memtable_stats_cachetime =
     RDB_DEFAULT_FORCE_COMPUTE_MEMTABLE_STATS_CACHETIME;
 static bool rocksdb_debug_optimizer_no_zero_cardinality = true;
+static uint32_t rocksdb_debug_cardinality_multiplier = 0;
 static uint32_t rocksdb_wal_recovery_mode =
-    static_cast<uint32_t>(rocksdb::WALRecoveryMode::kAbsoluteConsistency);
+    static_cast<uint32_t>(rocksdb::WALRecoveryMode::kPointInTimeRecovery);
 static uint32_t rocksdb_stats_level = 0;
 static uint32_t rocksdb_access_hint_on_compaction_start =
     rocksdb::Options::AccessHint::NORMAL;
@@ -1237,9 +1238,9 @@ static MYSQL_THDVAR_INT(
 
 static MYSQL_SYSVAR_UINT(
     wal_recovery_mode, rocksdb_wal_recovery_mode, PLUGIN_VAR_RQCMDARG,
-    "DBOptions::wal_recovery_mode for RocksDB. Default is kAbsoluteConsistency",
+    "DBOptions::wal_recovery_mode for RocksDB. Default is kPointInTimeRecovery",
     nullptr, nullptr,
-    /* default */ (uint)rocksdb::WALRecoveryMode::kAbsoluteConsistency,
+    /* default */ (uint)rocksdb::WALRecoveryMode::kPointInTimeRecovery,
     /* min */ (uint)rocksdb::WALRecoveryMode::kTolerateCorruptedTailRecords,
     /* max */ (uint)rocksdb::WALRecoveryMode::kSkipAnyCorruptedRecords, 0);
 
@@ -1691,6 +1692,13 @@ static MYSQL_SYSVAR_BOOL(
     rocksdb_debug_optimizer_no_zero_cardinality, PLUGIN_VAR_RQCMDARG,
     "In case if cardinality is zero, overrides it with some value", nullptr,
     nullptr, true);
+
+static MYSQL_SYSVAR_UINT(debug_cardinality_multiplier,
+                         rocksdb_debug_cardinality_multiplier,
+                         PLUGIN_VAR_RQCMDARG,
+                         "Cardinality multiplier used in tests", nullptr,
+                         nullptr, /* default */ 2,
+                         /* min */ 0, /* max */ INT_MAX, 0);
 
 static MYSQL_SYSVAR_STR(compact_cf, rocksdb_compact_cf_name,
                         PLUGIN_VAR_RQCMDARG, "Compact column family",
@@ -2144,6 +2152,7 @@ static struct SYS_VAR *rocksdb_system_variables[] = {
     MYSQL_SYSVAR(force_compute_memtable_stats),
     MYSQL_SYSVAR(force_compute_memtable_stats_cachetime),
     MYSQL_SYSVAR(debug_optimizer_no_zero_cardinality),
+    MYSQL_SYSVAR(debug_cardinality_multiplier),
 
     MYSQL_SYSVAR(compact_cf),
     MYSQL_SYSVAR(delete_cf),
@@ -10485,34 +10494,50 @@ int ha_rocksdb::info(uint flag) {
         continue;
       }
       KEY *const k = &table->key_info[i];
+      auto records = stats.records;
       for (uint j = 0; j < k->actual_key_parts; j++) {
         const Rdb_index_stats &k_stats = m_key_descr_arr[i]->m_stats;
-        uint x;
+        rec_per_key_t x = REC_PER_KEY_UNKNOWN;
 
-        if (k_stats.m_distinct_keys_per_prefix.size() > j &&
-            k_stats.m_distinct_keys_per_prefix[j] > 0) {
-          x = k_stats.m_rows / k_stats.m_distinct_keys_per_prefix[j];
-          /*
-            If the number of rows is less than the number of prefixes (due to
-            sampling), the average number of rows with the same prefix is 1.
-           */
-          if (x == 0) {
-            x = 1;
+        // Doesn't make sense to calculate cardinality if there are no records
+        if (records > 0) {
+          if (k_stats.m_distinct_keys_per_prefix.size() > j &&
+              k_stats.m_distinct_keys_per_prefix[j] > 0) {
+            x = (rec_per_key_t)k_stats.m_rows /
+                k_stats.m_distinct_keys_per_prefix[j];
+
+            /*
+              If the number of rows is less than the number of prefixes (due to
+              sampling), the average number of rows with the same prefix is 1.
+             */
+            if (x < 1) {
+              x = 1;
+            }
           }
-        } else {
-          x = 0;
+
+          if ((x == REC_PER_KEY_UNKNOWN &&
+               rocksdb_debug_optimizer_no_zero_cardinality) ||
+              rocksdb_debug_optimizer_n_rows > 0) {
+            // Fake cardinality implementation. For example, (idx1, idx2, idx3)
+            // index
+            // will have rec_per_key for (idx1)=4, (idx1,2)=2, and (idx1,2,3)=1.
+            // rec_per_key for the whole index is 1, and multiplied by 2^n if
+            // n suffix columns of the index are not used.
+            if (rocksdb_debug_cardinality_multiplier == 2) {
+              x = 1 << (k->actual_key_parts - j - 1);
+            } else {
+              x = 1;
+              for (uint kp = 1; kp <= k->actual_key_parts - j - 1; kp++) {
+                x *= rocksdb_debug_cardinality_multiplier;
+              }
+            }
+          }
+
+          if (x > records) x = records;
         }
-        if (x > stats.records) x = stats.records;
-        if ((x == 0 && rocksdb_debug_optimizer_no_zero_cardinality) ||
-            rocksdb_debug_optimizer_n_rows > 0) {
-          // Fake cardinality implementation. For example, (idx1, idx2, idx3)
-          // index
-          // will have rec_per_key for (idx1)=4, (idx1,2)=2, and (idx1,2,3)=1.
-          // rec_per_key for the whole index is 1, and multiplied by 2^n if
-          // n suffix columns of the index are not used.
-          x = 1 << (k->actual_key_parts - j - 1);
-        }
-        k->rec_per_key[j] = x;
+
+        // 1 <= x <= records, or x = REC_PER_KEY_UNKNOWN
+        k->set_records_per_key(j, x);
       }
     }
   }

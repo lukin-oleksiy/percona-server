@@ -927,6 +927,7 @@ rocksdb_datadir	./.rocksdb
 rocksdb_db_write_buffer_size	0
 rocksdb_deadlock_detect	OFF
 rocksdb_deadlock_detect_depth	50
+rocksdb_debug_cardinality_multiplier	2
 rocksdb_debug_manual_compaction_delay	0
 rocksdb_debug_optimizer_no_zero_cardinality	ON
 rocksdb_debug_ttl_ignore_pk	OFF
@@ -1030,7 +1031,7 @@ rocksdb_validate_tables	1
 rocksdb_verify_row_debug_checksums	OFF
 rocksdb_wal_bytes_per_sync	0
 rocksdb_wal_dir	
-rocksdb_wal_recovery_mode	1
+rocksdb_wal_recovery_mode	2
 rocksdb_wal_size_limit_mb	0
 rocksdb_wal_ttl_seconds	0
 rocksdb_whole_key_filtering	ON
