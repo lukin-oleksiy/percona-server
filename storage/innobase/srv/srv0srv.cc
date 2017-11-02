@@ -78,6 +78,7 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #include "pars0pars.h"
 #include "que0que.h"
 #include "row0mysql.h"
+#include "sql/current_thd.h"
 #include "sql/sql_class.h"
 #include "sql_thd_internal_api.h"
 #include "srv0mon.h"
@@ -1870,6 +1871,9 @@ void srv_export_innodb_status(void) {
       srv_sec_rec_cluster_reads_avoided.load(std::memory_order_relaxed);
 
   export_vars.innodb_buffered_aio_submitted = srv_stats.n_aio_submitted;
+
+  thd_get_fragmentation_stats(current_thd,
+                              &export_vars.innodb_fragmentation_stats);
 
   mutex_exit(&srv_innodb_monitor_mutex);
 }
