@@ -570,6 +570,9 @@ bool srv_print_all_deadlocks = false;
 /** Print all DDL logs to mysqld stderr */
 bool srv_print_ddl_logs = false;
 
+/** Print lock wait timeout info to mysqld stderr */
+bool srv_print_lock_wait_timeout_info = false;
+
 /** Enable INFORMATION_SCHEMA.innodb_cmp_per_index */
 bool srv_cmp_per_index_enabled = false;
 
