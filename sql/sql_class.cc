@@ -2334,6 +2334,15 @@ err_max:
   return 1;
 }
 
+/**
+   Return the query id of a thread
+   @param thd user thread
+   @return query id
+*/
+extern "C" int64_t thd_get_query_id(const MYSQL_THD thd) {
+  return (thd->query_id);
+}
+
 Prepared_statement *Prepared_statement_map::find_by_name(
     const LEX_CSTRING &name) {
   return find_or_nullptr(names_hash, to_string(name));

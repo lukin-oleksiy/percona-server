@@ -24152,6 +24152,12 @@ static MYSQL_SYSVAR_BOOL(
     "Print all deadlocks to MySQL error log (off by default)", nullptr, nullptr,
     false);
 
+static MYSQL_SYSVAR_BOOL(
+    print_lock_wait_timeout_info, srv_print_lock_wait_timeout_info,
+    PLUGIN_VAR_OPCMDARG,
+    "Print lock wait timeout info to MySQL error log (off by default)", nullptr,
+    nullptr, false);
+
 static MYSQL_SYSVAR_ULONG(
     compression_failure_threshold_pct, zip_failure_threshold_pct,
     PLUGIN_VAR_OPCMDARG,
@@ -24525,6 +24531,7 @@ static SYS_VAR *innobase_system_variables[] = {
     MYSQL_SYSVAR(cleaner_lsn_age_factor),
     MYSQL_SYSVAR(empty_free_list_algorithm),
     MYSQL_SYSVAR(print_all_deadlocks),
+    MYSQL_SYSVAR(print_lock_wait_timeout_info),
     MYSQL_SYSVAR(cmp_per_index_enabled),
     MYSQL_SYSVAR(max_undo_log_size),
     MYSQL_SYSVAR(purge_rseg_truncate_frequency),
