@@ -3705,6 +3705,9 @@ int handler::ha_index_next(uchar *buf) {
   if (likely(!result)) {
     update_index_stats(active_index);
   }
+
+  DEBUG_SYNC(ha_thd(), "handler_ha_index_next_end");
+
   return result;
 }
 
