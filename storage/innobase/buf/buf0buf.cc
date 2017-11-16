@@ -4345,15 +4345,8 @@ buf_block_t *Buf_fetch<T>::single_page() {
 
     if (is_optimistic()) {
       const auto bpage = &block->page;
-      auto block_mutex = buf_page_get_mutex(bpage);
 
-      mutex_enter(block_mutex);
-
-      const auto state = buf_page_get_io_fix(bpage);
-
-      mutex_exit(block_mutex);
-
-      if (state == BUF_IO_READ) {
+      if (bpage->was_io_fix_read()) {
         /* The page is being read to buffer pool, but we cannot wait around for
         the read to complete. */
 
@@ -4361,6 +4354,12 @@ buf_block_t *Buf_fetch<T>::single_page() {
 
         return (nullptr);
       }
+    }
+
+    if (UNIV_UNLIKELY(block->page.is_corrupt && srv_pass_corrupt_table <= 1)) {
+      buf_block_unfix(block);
+
+      return (nullptr);
     }
 
     switch (check_state(block)) {

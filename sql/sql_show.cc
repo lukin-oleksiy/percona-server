@@ -52,6 +52,7 @@
 #include "my_command.h"
 #include "my_compiler.h"
 #include "my_dbug.h"
+#include "my_default.h"
 #include "my_hostname.h"
 #include "my_io.h"
 #include "my_macros.h"
@@ -6126,6 +6127,25 @@ ST_FIELD_INFO engines_fields_info[] = {
     {"SAVEPOINTS", 3, MYSQL_TYPE_STRING, 0, 1, "Savepoints", 0},
     {nullptr, 0, MYSQL_TYPE_STRING, 0, 0, nullptr, 0}};
 
+static ST_FIELD_INFO temporary_table_fields_info[] = {
+    {"SESSION_ID", 4, MYSQL_TYPE_LONGLONG, 0, 0, "Session", 0},
+    {"TABLE_SCHEMA", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, "Db", 0},
+    {"TABLE_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, "Temp_tables_in_",
+     0},
+    {"ENGINE", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, "Engine", 0},
+    {"NAME", FN_REFLEN, MYSQL_TYPE_STRING, 0, 0, "Name", 0},
+    {"TABLE_ROWS", MY_INT64_NUM_DECIMAL_DIGITS, MYSQL_TYPE_LONGLONG, 0,
+     MY_I_S_UNSIGNED, "Rows", 0},
+    {"AVG_ROW_LENGTH", MY_INT64_NUM_DECIMAL_DIGITS, MYSQL_TYPE_LONGLONG, 0,
+     MY_I_S_UNSIGNED, "Avg Row", 0},
+    {"DATA_LENGTH", MY_INT64_NUM_DECIMAL_DIGITS, MYSQL_TYPE_LONGLONG, 0,
+     MY_I_S_UNSIGNED, "Data Length", 0},
+    {"INDEX_LENGTH", MY_INT64_NUM_DECIMAL_DIGITS, MYSQL_TYPE_LONGLONG, 0,
+     MY_I_S_UNSIGNED, "Index Size", 0},
+    {"CREATE_TIME", 0, MYSQL_TYPE_DATETIME, 0, 1, "Create Time", 0},
+    {"UPDATE_TIME", 0, MYSQL_TYPE_DATETIME, 0, 1, "Update Time", 0},
+    {0, 0, MYSQL_TYPE_STRING, 0, 0, 0, 0}};
+
 ST_FIELD_INFO tmp_table_keys_fields_info[] = {
     {"TABLE_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, "Table", 0},
     {"NON_UNIQUE", 1, MYSQL_TYPE_LONGLONG, 0, 0, "Non_unique", 0},
@@ -6169,25 +6189,6 @@ ST_FIELD_INFO schema_privileges_fields_info[] = {
     {"PRIVILEGE_TYPE", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, nullptr, 0},
     {"IS_GRANTABLE", 3, MYSQL_TYPE_STRING, 0, 0, nullptr, 0},
     {nullptr, 0, MYSQL_TYPE_STRING, 0, 0, nullptr, 0}};
-
-static ST_FIELD_INFO temporary_table_fields_info[] = {
-    {"SESSION_ID", 4, MYSQL_TYPE_LONGLONG, 0, 0, "Session", 0},
-    {"TABLE_SCHEMA", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, "Db", 0},
-    {"TABLE_NAME", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, "Temp_tables_in_",
-     0},
-    {"ENGINE", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 0, "Engine", 0},
-    {"NAME", FN_REFLEN, MYSQL_TYPE_STRING, 0, 0, "Name", 0},
-    {"TABLE_ROWS", MY_INT64_NUM_DECIMAL_DIGITS, MYSQL_TYPE_LONGLONG, 0,
-     MY_I_S_UNSIGNED, "Rows", 0},
-    {"AVG_ROW_LENGTH", MY_INT64_NUM_DECIMAL_DIGITS, MYSQL_TYPE_LONGLONG, 0,
-     MY_I_S_UNSIGNED, "Avg Row", 0},
-    {"DATA_LENGTH", MY_INT64_NUM_DECIMAL_DIGITS, MYSQL_TYPE_LONGLONG, 0,
-     MY_I_S_UNSIGNED, "Data Length", 0},
-    {"INDEX_LENGTH", MY_INT64_NUM_DECIMAL_DIGITS, MYSQL_TYPE_LONGLONG, 0,
-     MY_I_S_UNSIGNED, "Index Size", 0},
-    {"CREATE_TIME", 0, MYSQL_TYPE_DATETIME, 0, 1, "Create Time", 0},
-    {"UPDATE_TIME", 0, MYSQL_TYPE_DATETIME, 0, 1, "Update Time", 0},
-    {0, 0, MYSQL_TYPE_STRING, 0, 0, 0, 0}};
 
 ST_FIELD_INFO table_privileges_fields_info[] = {
     {"GRANTEE", GRANTEE_MAX_CHAR_LENGTH, MYSQL_TYPE_STRING, 0, 0, nullptr, 0},

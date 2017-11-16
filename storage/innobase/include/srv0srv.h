@@ -176,6 +176,9 @@ struct srv_stats_t {
 
   /* Number of row log blocks decrypted */
   ulint_ctr_64_t n_rowlog_blocks_decrypted;
+
+  /** Number of times page 0 is read from tablespace */
+  ulint_ctr_64_t page0_read;
 };
 
 /** Structure which keeps shared future objects for InnoDB background
@@ -1336,6 +1339,7 @@ struct export_var_t {
   ulint innodb_master_thread_idle_loops;   /*!< srv_main_idle_loops */
   trx_id_t innodb_max_trx_id;
   trx_id_t innodb_oldest_view_low_limit_trx_id;
+  ulint innodb_page0_read; /*!< srv_stats.page0_read */
   trx_id_t innodb_purge_trx_id;
   undo_no_t innodb_purge_undo_no;
   uint64_t

@@ -2,6 +2,7 @@
 
 Copyright (c) 1995, 2026, Oracle and/or its affiliates.
 Copyright (c) 2009, Percona Inc.
+Copyright (c) 2009, 2016, Percona Inc.
 
 Portions of this file contain modifications contributed and copyrighted
 by Percona Inc.. Those modifications are
@@ -40,6 +41,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA
  *******************************************************/
 
 #include "os0file.h"
+#include "btr0types.h"
 #include "fil0fil.h"
 #include "ha_prototypes.h"
 #include "log0write.h"
@@ -2939,10 +2941,7 @@ static ulint os_file_get_last_error_low(bool report_all_errors,
       }
       break;
     case EINTR:
-      if (srv_use_native_aio) {
-        return OS_FILE_AIO_INTERRUPTED;
-      }
-      break;
+      return OS_FILE_AIO_INTERRUPTED;
     case EACCES:
       return OS_FILE_ACCESS_VIOLATION;
     case ENAMETOOLONG:
@@ -5282,7 +5281,6 @@ NUM_RETRIES_ON_PARTIAL_IO times to read/write the complete data.
 @param[in]      n               number of bytes to read, starting from offset
 @param[out]     o               number of bytes actually read
 @param[in]      exit_on_err     if true then exit on error
-@param[in,out]	trx		transaction to account the read to, or NULL
 @return DB_SUCCESS or error code */
 [[nodiscard]] static dberr_t os_file_read_page(
     IORequest &type, const char *file_name, os_file_t file, void *buf,
@@ -5294,7 +5292,6 @@ NUM_RETRIES_ON_PARTIAL_IO times to read/write the complete data.
 
   meb_mutex.lock();
 #endif /* UNIV_HOTBACKUP */
-
   os_bytes_read_since_printout += n;
 #ifdef UNIV_HOTBACKUP
   meb_mutex.unlock();
@@ -5756,6 +5753,9 @@ dberr_t os_file_read_first_page_func(IORequest &type, const char *file_name,
     ut_ad(read_size > 0);
     err = os_file_read_page(type, file_name, file, buf, 0, read_size, nullptr,
                             true, nullptr);
+    if (err == DB_SUCCESS) {
+      srv_stats.page0_read.add(1);
+    }
   }
   return (err);
 }

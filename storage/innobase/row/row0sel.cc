@@ -69,6 +69,7 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #include "row0upd.h"
 #include "row0vers.h"
 #include "srv0mon.h"
+#include "srv0start.h"
 #include "trx0trx.h"
 #include "trx0undo.h"
 #include "ut0new.h"
@@ -4603,7 +4604,6 @@ dberr_t row_search_mvcc(byte *buf, page_cur_mode_t mode,
 
   } else if (prebuilt->table->ibd_file_missing) {
     return DB_TABLESPACE_NOT_FOUND;
-
   } else if (!prebuilt->index_usable) {
     return DB_MISSING_HISTORY;
 

@@ -1610,6 +1610,7 @@ specified.
 @param[in]      end_ptr         End of buffer
 @param[in]      space_id        Tablespace identifier
 @param[in]      page_no         Page number
+@param[in]	apply		Whether to apply the record
 @param[in,out]  block           Buffer block, or nullptr if
                                 a page log record should not be applied
                                 or if it is a MLOG_FILE_ operation
