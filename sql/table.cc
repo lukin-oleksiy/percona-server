@@ -311,6 +311,12 @@ char *fn_rext(char *name) {
   return name + strlen(name);
 }
 
+const char *fn_rext(const char *name) {
+  const char *res = strrchr(name, '.');
+  if (res && !strcmp(res, reg_ext)) return res;
+  return name + strlen(name);
+}
+
 TABLE_CATEGORY get_table_category(const LEX_CSTRING &db,
                                   const LEX_CSTRING &name) {
   assert(db.str != nullptr);
@@ -2346,6 +2352,8 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share,
 err:
   my_free(disk_buff);
   my_free(extra_segment_buff);
+  share->fields = 0;
+  share->field = 0;
   if (handler_file != nullptr) ::destroy_at(handler_file);
 
   open_table_error(thd, share, error, my_errno());

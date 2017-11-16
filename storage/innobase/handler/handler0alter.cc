@@ -991,11 +991,11 @@ enum_alter_inplace_result ha_innobase::check_if_supported_inplace_alter(
   }
 
   /* We don't support change encryption attribute with inplace algorithm. */
-  char *old_encryption = this->table->s->encrypt_type.str;
+  const bool currently_encrypted =
+      m_prebuilt->table->flags2 & DICT_TF2_ENCRYPTION_FILE_PER_TABLE;
   char *new_encryption = altered_table->s->encrypt_type.str;
 
-  if (Encryption::is_none(old_encryption) !=
-      Encryption::is_none(new_encryption)) {
+  if (currently_encrypted == Encryption::is_none(new_encryption)) {
     ha_alter_info->unsupported_reason =
         innobase_get_err_msg(ER_UNSUPPORTED_ALTER_ENCRYPTION_INPLACE);
     return HA_ALTER_INPLACE_NOT_SUPPORTED;
@@ -2302,7 +2302,7 @@ void innobase_rec_to_mysql(struct TABLE *table, const rec_t *rec,
 
     field->reset();
 
-    ipos = index->get_col_pos(i, true, false);
+    ipos = index->get_col_pos(i, true, false, nullptr);
 
     if (ipos == ULINT_UNDEFINED || rec_offs_nth_extern(index, offsets, ipos)) {
     null_field:
@@ -2352,7 +2352,7 @@ void innobase_fields_to_mysql(struct TABLE *table, const dict_index_t *index,
       col_n = i - num_v;
     }
 
-    ipos = index->get_col_pos(col_n, true, innobase_is_v_fld(field));
+    ipos = index->get_col_pos(col_n, true, innobase_is_v_fld(field), nullptr);
 
     if (ipos == ULINT_UNDEFINED || dfield_is_ext(&fields[ipos]) ||
         dfield_is_null(&fields[ipos])) {
@@ -4802,28 +4802,7 @@ template <typename Table>
       compression = nullptr;
     }
 
-    const char *encrypt;
-    encrypt = ha_alter_info->create_info->encrypt_type.str;
-    /* If encryption option is specified, then it must be
-    innodb-file-per-table tablespace. Otherwise case would
-    have already been blocked at
-    create_option_tablespace_is_valid(). */
-    if (encrypt) {
-      ut_ad(flags2 & DICT_TF2_USE_FILE_PER_TABLE);
-      ut_ad(!DICT_TF_HAS_SHARED_SPACE(flags));
-    }
-
-    if (!(ctx->new_table->flags2 & DICT_TF2_USE_FILE_PER_TABLE) &&
-        ha_alter_info->create_info->encrypt_type.length > 0 &&
-        !Encryption::is_none(encrypt) &&
-        !DICT_TF2_FLAG_IS_SET(ctx->old_table,
-                              DICT_TF2_ENCRYPTION_FILE_PER_TABLE)) {
-      dict_mem_table_free(ctx->new_table);
-      my_error(ER_TABLESPACE_CANNOT_ENCRYPT, MYF(0));
-      goto new_clustered_failed;
-    } else if (!Encryption::is_none(encrypt)) {
-      /* Set the encryption flag. */
-
+    if (!Encryption::is_none(ha_alter_info->create_info->encrypt_type.str)) {
       /* Check if keyring is ready. */
       if (!Encryption::check_keyring()) {
         dict_mem_table_free(ctx->new_table);
@@ -7997,6 +7976,21 @@ rollback_trx:
   }
 
   DBUG_EXECUTE_IF("ib_ddl_crash_before_update_stats", DBUG_SUICIDE(););
+
+  /* Rebuild index translation table now for temporary tables if we are
+  restoring secondary keys, as ha_innobase::open will not be called for
+  the next access.  */
+  if (DICT_TF2_FLAG_IS_SET(ctx0->new_table, DICT_TF2_TEMPORARY) &&
+      ctx0->num_to_add_index) {
+    ut_ad(!ctx0->num_to_drop_index);
+    ut_ad(!ctx0->num_to_rename);
+    ut_ad(!ctx0->num_to_drop_fk);
+    if (!innobase_build_index_translation(altered_table, ctx0->new_table,
+                                          m_share)) {
+      MONITOR_ATOMIC_DEC(MONITOR_PENDING_ALTER_TABLE);
+      return true;
+    }
+  }
 
   /* TODO: The following code could be executed
   while allowing concurrent access to the table

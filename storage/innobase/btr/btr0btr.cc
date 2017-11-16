@@ -226,7 +226,7 @@ page_t *btr_root_get(const dict_index_t *index, /*!< in: index tree */
 ulint btr_height_get(dict_index_t *index, /*!< in: index tree */
                      mtr_t *mtr)          /*!< in/out: mini-transaction */
 {
-  ulint height;
+  ulint height = 0;
   buf_block_t *root_block;
 
   ut_ad(srv_read_only_mode ||

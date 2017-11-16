@@ -59,6 +59,8 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #include "usr0sess.h"
 #include "ut0vec.h"
 
+#include "fil0fil.h"
+
 dberr_t dict_build_table_def(dict_table_t *table,
                              const HA_CREATE_INFO *create_info, trx_t *trx) {
   std::string db_name;

@@ -1957,14 +1957,6 @@ struct dict_table_t {
   /** Unlock the table handle. */
   inline void unlock();
 
-  /** @return whether this table is readable
-  @retval true  normally
-  @retval false if this is a single-table tablespace
-                and the .ibd file is missing, or a
-                page cannot be read or decrypted */
-
-  bool is_readable() const { return (UNIV_LIKELY(!ibd_file_missing)); }
-
 #ifndef UNIV_HOTBACKUP
   /** Get schema and table name in system character set.
   @param[out]   schema  schema name
