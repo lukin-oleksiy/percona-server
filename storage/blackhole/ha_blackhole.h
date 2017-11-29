@@ -27,8 +27,9 @@
 #include "my_inttypes.h"
 #include "sql/handler.h" /* handler */
 #include "sql/key.h"
-#include "sql/table.h" /* TABLE_SHARE */
-#include "thr_lock.h"  /* THR_LOCK */
+#include "sql/sql_const.h" /* MAX_KEY */
+#include "sql/table.h"     /* TABLE_SHARE */
+#include "thr_lock.h"      /* THR_LOCK */
 
 class String;
 class THD;
@@ -79,9 +80,9 @@ class ha_blackhole : public handler {
                       HA_KEYREAD_ONLY);
   }
   /* The following defines can be increased if necessary */
-#define BLACKHOLE_MAX_KEY 64          /* Max allowed keys */
+#define BLACKHOLE_MAX_KEY MAX_KEY     /* Max allowed keys */
 #define BLACKHOLE_MAX_KEY_SEG 16      /* Max segments for key */
-#define BLACKHOLE_MAX_KEY_LENGTH 3072 /* Keep compatible with innoDB */
+#define BLACKHOLE_MAX_KEY_LENGTH 3500 /* Like in InnoDB */
   uint max_supported_keys() const override { return BLACKHOLE_MAX_KEY; }
   uint max_supported_key_length() const override {
     return BLACKHOLE_MAX_KEY_LENGTH;
