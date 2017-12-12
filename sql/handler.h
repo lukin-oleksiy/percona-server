@@ -5978,10 +5978,17 @@ class handler {
     return index_read_last(buf, key, key_len);
   }
 
+ public:
   /**
     Query storage engine to see if it supports gap locks on this table.
   */
   virtual bool has_gap_locks() const noexcept { return false; }
+
+  /**
+    Query storage engine to see if it can support handling specific replication
+    method in its current configuration.
+  */
+  virtual bool rpl_can_handle_stm_event() const noexcept { return true; }
 
  protected:
   static bool is_using_full_key(key_part_map keypart_map,
