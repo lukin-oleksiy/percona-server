@@ -2808,6 +2808,13 @@ bool Encryption::is_none(const char *algorithm) noexcept {
   return (false);
 }
 
+/** Check if the NO algorithm was explicitly specified.
+@param[in]      algorithm       Encryption algorithm to check
+@return true if no algorithm explicitly requested */
+bool Encryption::none_explicitly_specified(const char *algorithm) noexcept {
+  return (algorithm != nullptr && innobase_strcasecmp(algorithm, "n") == 0);
+}
+
 dberr_t Encryption::validate(const char *option) noexcept {
   return (is_none(option) || (innobase_strcasecmp(option, "y") == 0))
              ? DB_SUCCESS
@@ -13312,14 +13319,19 @@ bool create_table_info_t::create_option_compression_is_valid() {
   return (true);
 }
 
+enum srv_encrypt_tables_values {
+  SRV_ENCRYPT_TABLES_OFF = 0,
+  SRV_ENCRYPT_TABLES_ON = 1,
+  SRV_ENCRYPT_TABLES_FORCE = 2,
+};
+
+static const char *srv_encrypt_tables_names[] = {"OFF", "ON", "FORCE", nullptr};
+
 /** Validate ENCRYPTION option.
 @return true if valid, false if not. */
 bool create_table_info_t::create_option_encryption_is_valid() const {
-  space_id_t space_id;
-
   if (m_create_info->encrypt_type.length > 0) {
     dberr_t err = Encryption::validate(m_create_info->encrypt_type.str);
-
     if (err == DB_UNSUPPORTED) {
       my_error(ER_INVALID_ENCRYPTION_OPTION, MYF(0));
       return (false);
@@ -13329,31 +13341,32 @@ bool create_table_info_t::create_option_encryption_is_valid() const {
   const bool table_is_encrypted =
       !Encryption::is_none(m_create_info->encrypt_type.str);
 
-  if ((m_create_info->options & HA_LEX_CREATE_TMP_TABLE) &&
-      table_is_encrypted) {
-    my_printf_error(ER_ILLEGAL_HA_CREATE_OPTION,
-                    "InnoDB: Unsupported encryption option for"
-                    " temporary tables.",
+  if (srv_encrypt_tables == SRV_ENCRYPT_TABLES_FORCE &&
+      Encryption::none_explicitly_specified(m_create_info->encrypt_type.str)) {
+    my_printf_error(ER_INVALID_ENCRYPTION_OPTION,
+                    "InnoDB: Only ENCRYPTED tables can be created with "
+                    "innodb_encrypt_tables=FORCE.",
                     MYF(0));
     return (false);
-  } else if (m_use_shared_space) {
-    space_id = fil_space_get_id_by_name(m_create_info->tablespace);
+  }
 
-    /* Space id already validated by
-    create_option_tablespace_is_valid */
-    ut_a(space_id != SPACE_UNKNOWN);
+  ulint space_id;
+  if (m_use_shared_space) {
+    space_id = fil_space_get_id_by_name(m_create_info->tablespace);
+  } else if (m_create_info->options & HA_LEX_CREATE_TMP_TABLE) {
+    space_id = srv_tmp_space.space_id();
   } else if (!m_use_file_per_table) {
     space_id = TRX_SYS_SPACE;
   } else {
     return (true);
   }
 
-  const uint32_t fsp_flags = fil_space_get_flags(space_id);
+  fil_space_t *space = fil_space_get(space_id);
+  const auto fsp_flags = space->flags;
 
   const bool tablespace_is_encrypted = FSP_FLAGS_GET_ENCRYPTION(fsp_flags);
-  const char *tablespace_name = m_create_info->tablespace != nullptr
-                                    ? m_create_info->tablespace
-                                    : dict_sys_t::s_sys_space_name;
+  const char *const tablespace_name =
+      m_create_info->tablespace ? m_create_info->tablespace : space->name;
 
   if (table_is_encrypted && !tablespace_is_encrypted) {
     my_printf_error(ER_ILLEGAL_HA_CREATE_OPTION,
@@ -23244,6 +23257,18 @@ static MYSQL_SYSVAR_ULONG(autoextend_increment,
                           "Data file autoextend increment in megabytes",
                           nullptr, nullptr, 64L, 1L, 1000L, 0);
 
+static TYPELIB srv_encrypt_tables_typelib = {
+    array_elements(srv_encrypt_tables_names) - 1, 0, srv_encrypt_tables_names,
+    nullptr};
+static MYSQL_SYSVAR_ENUM(
+    encrypt_tables, srv_encrypt_tables, PLUGIN_VAR_OPCMDARG,
+    "Enable encryption for tables. "
+    "When turned ON, all tables are created encrypted unless otherwise "
+    "specified. When it's set to FORCE, only encrypted tables can be created."
+    "The FORCE setting also disables non inplace alteration of unencrypted,"
+    " tables without encrypting them in the process.",
+    nullptr, nullptr, 0, &srv_encrypt_tables_typelib);
+
 static MYSQL_SYSVAR_BOOL(
     dedicated_server, srv_dedicated_server,
     PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_NOPERSIST | PLUGIN_VAR_READONLY,
@@ -24569,6 +24594,7 @@ static SYS_VAR *innobase_system_variables[] = {
     MYSQL_SYSVAR(compressed_columns_zip_level),
     MYSQL_SYSVAR(compressed_columns_threshold),
     MYSQL_SYSVAR(ft_ignore_stopwords),
+    MYSQL_SYSVAR(encrypt_tables),
     nullptr};
 
 mysql_declare_plugin(innobase){
