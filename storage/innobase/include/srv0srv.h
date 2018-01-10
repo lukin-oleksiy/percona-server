@@ -826,8 +826,6 @@ extern bool srv_cmp_per_index_enabled;
 
 extern ulong srv_encrypt_tables;
 
-extern ulong srv_encrypt_tables;
-
 /** Number of times secondary index lookup triggered cluster lookup */
 extern std::atomic<ulint> srv_sec_rec_cluster_reads;
 /** Number of times prefix optimization avoided triggering cluster lookup */
