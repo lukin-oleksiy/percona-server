@@ -676,7 +676,7 @@ bool FTS::Parser::doc_tokenize(doc_id_t doc_id, fts_doc_t *doc,
     } else {
       inc = innobase_mysql_fts_get_token(
           doc->charset, doc->text.f_str + t_ctx->m_processed_len,
-          doc->text.f_str + doc->text.f_len, &str);
+          doc->text.f_str + doc->text.f_len, false, &str);
 
       ut_a(inc > 0);
     }

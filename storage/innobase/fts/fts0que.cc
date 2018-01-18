@@ -693,6 +693,10 @@ static void fts_query_union_doc_id(
     query->total_size +=
         SIZEOF_RBT_NODE_ADD + sizeof(fts_ranking_t) + RANKING_WORDS_INIT_LEN;
   }
+
+  if (query->limit != ULONG_UNDEFINED) {
+    query->n_docs++;
+  }
 }
 
 /** Remove the doc id from the query set only if it's not in the
@@ -1458,6 +1462,7 @@ static bool fts_query_match_phrase_terms(
   byte *ptr = *start;
   const ib_vector_t *tokens = phrase->tokens;
   ulint distance = phrase->distance;
+  const bool extra_word_chars = thd_get_ft_query_extra_word_chars();
 
   /* We check only from the second term onwards, since the first
   must have matched otherwise we wouldn't be here. */
@@ -1469,7 +1474,8 @@ static bool fts_query_match_phrase_terms(
     ulint ret;
 
     ret = innobase_mysql_fts_get_token(phrase->charset, ptr,
-                                       const_cast<byte *>(end), &match);
+                                       const_cast<byte *>(end),
+                                       extra_word_chars, &match);
 
     if (match.f_len > 0) {
       /* Get next token to match. */
@@ -1534,6 +1540,8 @@ static bool fts_proximity_is_word_in_range(
   ut_ad(proximity_pos->n_pos == proximity_pos->min_pos.size());
   ut_ad(proximity_pos->n_pos == proximity_pos->max_pos.size());
 
+  const bool extra_word_chars = thd_get_ft_query_extra_word_chars();
+
   /* Search each matched position pair (with min and max positions)
   and count the number of words in the range */
   for (ulint i = 0; i < proximity_pos->n_pos; i++) {
@@ -1548,7 +1556,8 @@ static bool fts_proximity_is_word_in_range(
       fts_string_t str;
 
       len = innobase_mysql_fts_get_token(phrase->charset, start + cur_pos,
-                                         start + total_len, &str);
+                                         start + total_len, extra_word_chars,
+                                         &str);
 
       if (len == 0) {
         break;
@@ -1692,6 +1701,9 @@ static bool fts_query_match_phrase(fts_phrase_t *phrase, byte *start,
 
   ut_a(phrase->match->start < ib_vector_size(positions));
 
+  const bool extra_word_chars =
+      phrase->parser ? false : thd_get_ft_query_extra_word_chars();
+
   for (i = phrase->match->start; i < ib_vector_size(positions); ++i) {
     ulint pos;
     byte *ptr = start;
@@ -1736,7 +1748,8 @@ static bool fts_query_match_phrase(fts_phrase_t *phrase, byte *start,
 
       match.f_str = ptr;
       ret = innobase_mysql_fts_get_token(phrase->charset, start + pos,
-                                         const_cast<byte *>(end), &match);
+                                         const_cast<byte *>(end),
+                                         extra_word_chars, &match);
 
       if (match.f_len == 0) {
         break;
@@ -2410,6 +2423,9 @@ static void fts_query_phrase_split(fts_query_t *query,
     term_node = node->list.head;
   }
 
+  const bool extra_word_chars =
+      node->type == FTS_AST_TEXT ? thd_get_ft_query_extra_word_chars() : false;
+
   while (true) {
     fts_cache_t *cache = query->index->table->fts->cache;
     ulint cur_len;
@@ -2423,7 +2439,8 @@ static void fts_query_phrase_split(fts_query_t *query,
       cur_len = innobase_mysql_fts_get_token(
           query->fts_index_table.charset,
           reinterpret_cast<const byte *>(phrase.f_str) + cur_pos,
-          reinterpret_cast<const byte *>(phrase.f_str) + len, &result_str);
+          reinterpret_cast<const byte *>(phrase.f_str) + len, extra_word_chars,
+          &result_str);
 
       if (cur_len == 0) {
         break;
@@ -3052,7 +3069,7 @@ static dberr_t fts_query_filter_doc_ids(
       fts_query_add_word_to_document(query, doc_id, word);
     }
 
-    if (query->limit != ULONG_UNDEFINED && query->limit <= ++query->n_docs) {
+    if (query->limit != ULONG_UNDEFINED && query->limit <= query->n_docs) {
       goto func_exit;
     }
   }
@@ -3064,7 +3081,6 @@ func_exit:
   if (query->total_size > fts_result_cache_limit) {
     return (DB_FTS_EXCEED_RESULT_CACHE_LIMIT);
   } else {
-    query->n_docs = 0;
     return (DB_SUCCESS);
   }
 }
@@ -3589,6 +3605,10 @@ static void fts_query_can_optimize(
   fts_ast_node_t *node = query->root;
 
   if (flags & FTS_EXPAND) {
+    return;
+  }
+
+  if (query->limit != ULONG_UNDEFINED) {
     return;
   }
 

@@ -37,6 +37,8 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #include <atomic>
 #include <set>
 
+#include "mysql/plugin.h"
+
 #include "ha_prototypes.h"
 
 #include "dict0types.h"
