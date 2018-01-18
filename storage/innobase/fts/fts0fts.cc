@@ -4718,7 +4718,8 @@ static ulint fts_process_token(fts_doc_t *doc, fts_doc_t *result,
   /* The length of a string in characters is set here only. */
 
   ret = innobase_mysql_fts_get_token(doc->charset, doc->text.f_str + start_pos,
-                                     doc->text.f_str + doc->text.f_len, &str);
+                                     doc->text.f_str + doc->text.f_len, false,
+                                     &str);
 
   position = start_pos + ret - str.f_len + add_pos;
 
@@ -4773,10 +4774,10 @@ int fts_tokenize_document_internal(
   str.f_str = buf;
 
   for (ulint i = 0, inc = 0; i < static_cast<ulint>(len); i += inc) {
-    inc =
-        innobase_mysql_fts_get_token(const_cast<CHARSET_INFO *>(param->cs),
-                                     reinterpret_cast<byte *>(doc) + i,
-                                     reinterpret_cast<byte *>(doc) + len, &str);
+    inc = innobase_mysql_fts_get_token(const_cast<CHARSET_INFO *>(param->cs),
+                                       reinterpret_cast<byte *>(doc) + i,
+                                       reinterpret_cast<byte *>(doc) + len,
+                                       false, &str);
 
     if (str.f_len > 0) {
       bool_info.position = static_cast<int>(i + inc - str.f_len);
