@@ -9323,6 +9323,8 @@ int mysqld_main(int argc, char **argv)
   //  Init error log subsystem. This does not actually open the log yet.
   if (init_error_log()) unireg_abort(MYSQLD_ABORT_EXIT);
   if (!opt_validate_config) adjust_related_options(&requested_open_files);
+  // moved signal initialization here so that PFS thread inherited signal mask
+  my_init_signals();
 
 #ifdef WITH_PERFSCHEMA_STORAGE_ENGINE
   if (heo_error == 0) {
@@ -9643,7 +9645,6 @@ int mysqld_main(int argc, char **argv)
 
   keyring_lockable_init();
 
-  my_init_signals();
   /*
     Install server's my_abort routine to assure my_aborts prints signal info
     sequentially without sudden termination.
