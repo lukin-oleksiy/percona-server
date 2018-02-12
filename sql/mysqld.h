@@ -62,6 +62,7 @@
 #include "mysql/status_var.h"
 #include "mysql/strings/m_ctype.h"
 #include "mysql_com.h"  // SERVER_VERSION_LENGTH
+#include "sql/handler.h"
 #ifdef _WIN32
 #include "sql/nt_servc.h"
 #endif  // _WIN32
