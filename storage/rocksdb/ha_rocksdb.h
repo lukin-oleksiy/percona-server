@@ -1318,9 +1318,6 @@ class ha_rocksdb : public my_core::handler {
       MY_ATTRIBUTE((__warn_unused_result__));
   int analyze(THD *const thd, HA_CHECK_OPT *const check_opt) override
       MY_ATTRIBUTE((__warn_unused_result__));
-  int calculate_stats(const TABLE *const table_arg, THD *const thd,
-                      HA_CHECK_OPT *const check_opt)
-      MY_ATTRIBUTE((__warn_unused_result__));
 
   enum_alter_inplace_result check_if_supported_inplace_alter(
       TABLE *altered_table,
