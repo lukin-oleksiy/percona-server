@@ -8327,7 +8327,9 @@ int innobase_fts_nocase_compare(const CHARSET_INFO *cs, const fts_string_t *s1,
                                 const fts_string_t *s2) {
   ulint newlen;
 
-  my_casedn_str(cs, (char *)s2->f_str);
+  if (!my_binary_compare(cs)) {
+    my_casedn_str(cs, (char *)s2->f_str);
+  }
 
   newlen = strlen((const char *)s2->f_str);
 
