@@ -1,4 +1,5 @@
 /* Copyright (c) 2000, 2026, Oracle and/or its affiliates.
+   Copyright (c) 2018, Percona and/or its affiliates.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License, version 2.0,
@@ -401,8 +402,8 @@ static int merge_many_buff(MI_SORT_PARAM *info, uint keys, uchar **sort_keys,
   from_file = t_file;
   to_file = &t_file2;
   while (*maxbuffer >= MERGEBUFF2) {
-    reinit_io_cache(from_file, READ_CACHE, 0L, false, false);
-    reinit_io_cache(to_file, WRITE_CACHE, 0L, false, false);
+    if (reinit_io_cache(from_file, READ_CACHE, 0L, false, false)) goto cleanup;
+    if (reinit_io_cache(to_file, WRITE_CACHE, 0L, false, false)) goto cleanup;
     lastbuff = buffpek;
     for (i = 0; i <= *maxbuffer - MERGEBUFF * 3 / 2; i += MERGEBUFF) {
       if (merge_buffers(info, keys, from_file, to_file, sort_keys, lastbuff++,
