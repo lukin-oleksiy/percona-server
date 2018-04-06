@@ -33,14 +33,17 @@
 #include <vector>
 
 /* MySQL includes */
-#include "debug_sync.h"
 #include "my_stacktrace.h"
 #include "my_sys.h"
-#include "mysql/psi/mysql_table.h"
 #include "mysql/thread_pool_priv.h"
 #include "mysys_err.h"
-#include "sql_audit.h"
-#include "sql_table.h"
+#include "sql/debug_sync.h"
+#include "sql/mysqld.h"
+#include "sql/sql_audit.h"
+#include "sql/sql_lex.h"
+#include "sql/sql_table.h"
+#include "sql/sql_thd_internal_api.h"
+#include "sql/table.h"
 
 // Both MySQL and RocksDB define the same constant. To avoid compilation errors
 // till we make the fix in RocksDB, we'll temporary undefine it here.
@@ -72,23 +75,6 @@
 #include "./rdb_mutex_wrapper.h"
 #include "./rdb_psi.h"
 #include "./rdb_threads.h"
-
-// Internal MySQL APIs not exposed in any header.
-extern "C" {
-/**
- *   Get the user thread's binary logging format
- *   @param thd  user thread
- *   @return Value to be used as index into the binlog_format_names array
-*/
-int thd_binlog_format(const MYSQL_THD thd);
-
-/**
- *   Check if binary logging is filtered for thread's current db.
- *   @param  thd   Thread handle
- *   @retval 1 the query is not filtered, 0 otherwise.
-*/
-bool thd_binlog_filter_ok(const MYSQL_THD thd);
-}
 
 namespace myrocks {
 
@@ -550,7 +536,7 @@ static void rocksdb_set_rocksdb_info_log_level(
   RDB_MUTEX_LOCK_CHECK(rdb_sysvars_mutex);
   rocksdb_info_log_level = *static_cast<const uint64_t *>(save);
   rocksdb_db_options->info_log->SetInfoLogLevel(
-      static_cast<const rocksdb::InfoLogLevel>(rocksdb_info_log_level));
+      static_cast<rocksdb::InfoLogLevel>(rocksdb_info_log_level));
   RDB_MUTEX_UNLOCK_CHECK(rdb_sysvars_mutex);
 }
 

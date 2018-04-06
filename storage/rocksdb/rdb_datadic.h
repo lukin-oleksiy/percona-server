@@ -881,10 +881,10 @@ extern std::array<const Rdb_collation_codec *, MY_ALL_CHARSETS_SIZE>
     rdb_collation_data;
 
 class Rdb_field_packing {
-public:
-  Rdb_field_packing(const Rdb_field_packing &) = delete;
+ public:
+  Rdb_field_packing(const Rdb_field_packing &);
   Rdb_field_packing &operator=(const Rdb_field_packing &) = delete;
-  Rdb_field_packing() = default;
+  Rdb_field_packing();
 
   /* Length of mem-comparable image of the field, in bytes */
   int m_max_image_len;
