@@ -18,7 +18,6 @@
 
 /* MySQL header files */
 #include "sql/handler.h" /* handler */
-#include "sql/log.h"
 
 /* C++ standard header files */
 #include <queue>
@@ -64,7 +63,7 @@ class Rdb_index_merge {
     ulonglong m_curr_offset; /* offset of the record pointer for the block */
     ulonglong m_disk_start_offset; /* where the chunk starts on disk */
     ulonglong m_disk_curr_offset;  /* current offset on disk */
-    ulonglong m_total_size;        /* total # of data bytes in chunk */
+    uint64 m_total_size;           /* total # of data bytes in chunk */
 
     void store_key_value(const rocksdb::Slice &key, const rocksdb::Slice &val)
         MY_ATTRIBUTE((__nonnull__));
