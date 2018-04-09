@@ -10,10 +10,10 @@ log_path = sys.argv[1]
 desired_filters = sys.argv[2]
 
 all_filters = [
-  ('rollback', re.compile('(\[Note\] rollback xid .+)')),
-  ('commit', re.compile('(\[Note\] commit xid .+)')),
+  ('rollback', re.compile('(\[Server\] Rolling back XID:.+)')),
+  ('commit', re.compile('(\[Server\] Committing XID:.+)')),
   ('prepare',
-    re.compile('(\[Note\] Found \d+ prepared transaction\(s\) in \w+)')),
+    re.compile('(\[Server\] Found \d+ prepared transaction\(s\) in \w+)')),
 ]
 
 active_filters = filter(lambda f: f[0] in desired_filters, all_filters)
