@@ -239,7 +239,7 @@ set global rocksdb_compact_cf='default';
 SELECT COUNT(*) FROM t1;
 DROP TABLE t1;
 
-# TTL test where you compact (values still exist), real_sleep, then compact again,
+# TTL test where you compact (values still exist), sleep, then compact again,
 # values should now be gone.
 CREATE TABLE t1 (
 a INT NOT NULL,
@@ -487,6 +487,9 @@ INSERT INTO t1 values (3, UNIX_TIMESTAMP());
 INSERT INTO t1 values (5, UNIX_TIMESTAMP());
 INSERT INTO t1 values (7, UNIX_TIMESTAMP());
 
+# wait for unix timestamp value changed to make sure ttl column b update
+let $wait_condition= SELECT UNIX_TIMESTAMP() != max(b) FROM t1;
+--source include/wait_condition.inc
 set global rocksdb_debug_ttl_rec_ts = 300;
 UPDATE t1 SET b=UNIX_TIMESTAMP() WHERE a < 4;
 set global rocksdb_debug_ttl_rec_ts = 0;
