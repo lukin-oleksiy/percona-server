@@ -471,6 +471,15 @@ class Query_arena {
     if ((ptr = mem_root->Alloc(size))) memset(ptr, 0, size);
     return ptr;
   }
+  inline void *mem_aligned_calloc(size_t size, size_t alignment) {
+    size_t unaligned_size = size + alignment;
+    void *ptr = mem_root->Alloc(unaligned_size);
+    if (!ptr) return nullptr;
+    ptr = reinterpret_cast<void *>(
+        MY_ALIGN(reinterpret_cast<std::uintptr_t>(ptr), alignment));
+    memset(ptr, 0, size);
+    return ptr;
+  }
   template <typename T>
   T *alloc_typed() {
     void *m = alloc(sizeof(T));
@@ -515,6 +524,7 @@ class Prepared_statement;
 
 /**
   Container for all prepared statements created/used in a connection.
+
   Prepared statements in Prepared_statement_map have unique id
   (guaranteed by id assignment in Prepared_statement::Prepared_statement).
 
@@ -653,7 +663,6 @@ class Open_tables_state {
     intermediate tables used in ALTER TABLE implementation.
   */
   TABLE *temporary_tables;
-
   /*
     During a MySQL session, one can lock tables in two modes: automatic
     or manual. In automatic mode all necessary tables are locked just before
@@ -985,6 +994,57 @@ extern "C" void my_message_sql(uint error, const char *str, myf MyFlags);
 struct QUERY_START_TIME_INFO {
   struct timeval start_time;
   ulonglong start_utime;
+};
+
+/**
+   A single-hash-function bloom filter for approximate accessed page
+   counter.
+*/
+class Bloom_filter final {
+ private:
+  /** Bloom filter size, and a prime number for the calculation below */
+  static const constexpr auto SIZE = 8191;
+
+  typedef std::bitset<SIZE> Bit_set;
+
+  /** The bit set, which is allocated in a MEM_ROOT */
+  Bit_set *bit_set;
+
+  // Non-copyable
+  Bloom_filter(const Bloom_filter &);
+  Bloom_filter &operator=(const Bloom_filter &);
+
+ public:
+  Bloom_filter() : bit_set(nullptr) {}
+
+  ~Bloom_filter() = default;
+
+  void clear() noexcept {
+    if (bit_set != nullptr) bit_set->reset();
+  }
+
+  /**
+     Check whether key is maybe a member of a set
+
+     @param[in] key key whose presence to check
+     @return if true, the key might be a member of the set. If false, the key
+     is definitely not a member of the set.
+  */
+  bool test_and_set(MEM_ROOT *mem_root, ulong key) {
+    if (bit_set == nullptr) {
+      void *bit_set_place = mem_root->Alloc(sizeof(Bit_set));
+      // FIXME: memory allocation failure is eaten silently. Nonexact stats are
+      // the least of the concerns then.
+      if (bit_set_place == nullptr) return false;
+      bit_set = new (bit_set_place) Bit_set();
+    }
+    // Duplicating ut_hash_ulint calculation
+    const ulong pos = (key ^ 1653893711) % SIZE;
+    assert(pos < SIZE);
+    if (bit_set->test(pos)) return false;
+    bit_set->set(pos);
+    return true;
+  }
 };
 
 /**
@@ -1815,11 +1875,34 @@ class THD : public MDL_context_owner,
   ulong innodb_io_reads_wait_timer;
   ulong innodb_lock_que_wait_timer;
   ulong innodb_innodb_que_wait_timer;
-  ulong innodb_page_access;
+
+ private:
   /*
     Variable innodb_was_used shows used or not InnoDB engine in current query.
   */
   bool innodb_was_used;
+  Bloom_filter approx_distinct_pages;
+
+ public:
+  ulong innodb_page_access;
+
+  void mark_innodb_used(ulonglong trx_id) noexcept {
+    assert(innodb_slow_log_enabled());
+    if (trx_id && !is_attachable_transaction_active()) innodb_trx_id = trx_id;
+    innodb_was_used = true;
+  }
+
+  void access_distinct_page(ulong page_id) {
+    if (approx_distinct_pages.test_and_set(&main_mem_root, page_id))
+      innodb_page_access++;
+  }
+
+  bool innodb_slow_log_enabled() const noexcept {
+    return variables.log_slow_verbosity & (1ULL << SLOG_V_INNODB);
+  }
+
+  bool innodb_slow_log_data_logged() const noexcept { return innodb_was_used; }
+
   /*
     Variable query_plan_flags collects information about query plan entites
     used on query execution.
@@ -1916,7 +1999,7 @@ class THD : public MDL_context_owner,
     mysql_mutex_unlock(&this->LOCK_thd_data);
   }
 
-  bool order_deterministic;
+  bool order_deterministic{false};
 
   /*
     Position of first event in Binlog
@@ -3059,9 +3142,9 @@ class THD : public MDL_context_owner,
     variables are reset to 0.
   */
   // Time when the current thread connected to MySQL.
-  ulonglong current_connect_time;
+  time_t current_connect_time;
   // Last time when THD stats were updated in global_user_stats.
-  ulonglong last_global_update_time;
+  time_t last_global_update_time;
   // Busy (non-idle) time for just one command.
   double busy_time{0.0};
   // Busy time not updated in global_user_stats yet.
@@ -3274,6 +3357,7 @@ class THD : public MDL_context_owner,
   inline void set_active_vio(Vio *vio) {
     mysql_mutex_lock(&LOCK_thd_data);
     active_vio = vio;
+    vio_set_thread_id(vio, pthread_self());
     mysql_mutex_unlock(&LOCK_thd_data);
   }
 
@@ -5265,7 +5349,7 @@ inline bool secondary_engine_lock_tables_mode(const THD &cthd) {
 /* Returns string as 'IP' for the client-side of the connection represented by
    'client'. Does not allocate memory. May return "".
 */
-const char *get_client_host(const THD &client);
+const char *get_client_host(const THD &client) noexcept;
 
 /** A short cut for thd->get_stmt_da()->set_ok_status(). */
 void my_ok(THD *thd, ulonglong affected_rows = 0, ulonglong id = 0,

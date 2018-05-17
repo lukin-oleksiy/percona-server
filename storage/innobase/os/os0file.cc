@@ -5241,7 +5241,6 @@ NUM_RETRIES_ON_PARTIAL_IO times to read/write the complete data.
 @param[out]     buf             buffer where to read
 @param[in]      offset          file offset from the start where to read
 @param[in]      n               number of bytes to read, starting from offset
-@param[in,out]	trx		transaction to account the read to, or NULL
 @param[out]     err             DB_SUCCESS or error code
 @return number of bytes read, -1 if error */
 [[nodiscard]] static ssize_t os_file_pread(IORequest &type, os_file_t file,
@@ -5253,36 +5252,19 @@ NUM_RETRIES_ON_PARTIAL_IO times to read/write the complete data.
 
   meb_mutex.lock();
 #endif /* UNIV_HOTBACKUP */
-  uint64_t start_time;
-  uint64_t finish_time;
-
   ++os_n_file_reads;
 #ifdef UNIV_HOTBACKUP
   meb_mutex.unlock();
 #endif /* UNIV_HOTBACKUP */
 
-  if (UNIV_LIKELY_NULL(trx)) {
-    ut_ad(trx->take_stats);
-    trx->io_reads++;
-    trx->io_read += n;
-    start_time = std::chrono::duration_cast<std::chrono::microseconds>(
-                     std::chrono::steady_clock::now().time_since_epoch())
-                     .count();
-  } else {
-    start_time = 0;
-  }
+  const auto start_time = trx_stats::start_io_read(trx, n);
 
   os_n_pending_reads.fetch_add(1);
   MONITOR_ATOMIC_INC(MONITOR_OS_PENDING_READS);
 
   ssize_t n_bytes = os_file_io(type, file, buf, n, offset, err, nullptr);
 
-  if (UNIV_UNLIKELY(start_time != 0)) {
-    finish_time = std::chrono::duration_cast<std::chrono::microseconds>(
-                      std::chrono::steady_clock::now().time_since_epoch())
-                      .count();
-    trx->io_reads_wait_timer += (ulint)(finish_time - start_time);
-  }
+  trx_stats::end_io_read(trx, start_time);
 
   os_n_pending_reads.fetch_sub(1);
   MONITOR_ATOMIC_DEC(MONITOR_OS_PENDING_READS);
@@ -5312,7 +5294,6 @@ NUM_RETRIES_ON_PARTIAL_IO times to read/write the complete data.
 
   meb_mutex.lock();
 #endif /* UNIV_HOTBACKUP */
-  ut_ad(!trx || trx->take_stats);
 
   os_bytes_read_since_printout += n;
 #ifdef UNIV_HOTBACKUP
@@ -5742,7 +5723,6 @@ dberr_t os_file_read_func(IORequest &type, const char *file_name,
                           os_file_t file, void *buf, os_offset_t offset,
                           ulint n, trx_t *trx) {
   ut_ad(type.is_read());
-  ut_ad(!trx || trx->take_stats);
 
   return (os_file_read_page(type, file_name, file, buf, offset, n, nullptr,
                             true, trx));
@@ -7118,10 +7098,7 @@ dberr_t os_aio_func(IORequest &type, AIO_mode aio_mode, const char *name,
                                       e_block, space_id);
       if (srv_use_native_aio) {
         if (type.is_read()) {
-          if (trx) {
-            trx->io_reads++;
-            trx->io_read += n;
-          }
+          trx_stats::bump_io_read(trx, n);
 
           ++os_n_file_reads;
 
@@ -7177,10 +7154,7 @@ dberr_t os_aio_func(IORequest &type, AIO_mode aio_mode, const char *name,
           ut_error;
         }
       } else {
-        if (type.is_read() && trx) {
-          trx->io_reads++;
-          trx->io_read += n;
-        }
+        if (type.is_read()) trx_stats::bump_io_read(trx, n);
         /* For simulated AIO the fact of reserving of the slot is effectively
         the dispatching. */
         io_dispatched = true;
