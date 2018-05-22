@@ -372,6 +372,8 @@ The following options may be given as the first argument:
  optimizer may fetchstatistics from the secondary engine,
  if available
  (Defaults to on; use --skip-enable-secondary-engine-statistics to disable.)
+ --encrypt-tmp-files Encrypt temporary files (created for filesort, Group
+ Replication, etc)
  --end-markers-in-json 
  In JSON output ("EXPLAIN FORMAT=JSON" and optimizer
  trace), if variable is set to 1, repeats the structure's
@@ -1808,6 +1810,7 @@ disconnect-on-expired-password TRUE
 div-precision-increment 4
 enable-cascade-triggers FALSE
 enable-secondary-engine-statistics TRUE
+encrypt-tmp-files FALSE
 end-markers-in-json FALSE
 enforce-gtid-consistency ON
 enforce-storage-engine (No default value)
@@ -1998,7 +2001,7 @@ performance-schema-max-file-handles 32768
 performance-schema-max-file-instances -1
 performance-schema-max-index-stat -1
 performance-schema-max-logger-classes 80
-performance-schema-max-memory-classes 470
+performance-schema-max-memory-classes 530
 performance-schema-max-metadata-locks -1
 performance-schema-max-meter-classes 30
 performance-schema-max-metric-classes 600
@@ -2012,7 +2015,7 @@ performance-schema-max-socket-classes 10
 performance-schema-max-socket-instances -1
 performance-schema-max-sql-text-length 1024
 performance-schema-max-stage-classes 175
-performance-schema-max-statement-classes 234
+performance-schema-max-statement-classes 242
 performance-schema-max-statement-stack 10
 performance-schema-max-table-handles -1
 performance-schema-max-table-instances -1

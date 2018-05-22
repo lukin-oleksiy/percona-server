@@ -2253,8 +2253,9 @@ int mi_repair_by_sort(MI_CHECK *param, MI_INFO *info, const char *name,
       info->state->data_file_length = sort_param.max_pos;
 
     param->read_cache.file = info->dfile; /* re-init read cache */
-    reinit_io_cache(&param->read_cache, READ_CACHE, share->pack.header_length,
-                    true, true);
+    if (reinit_io_cache(&param->read_cache, READ_CACHE,
+                        share->pack.header_length, true, true))
+      goto err;
   }
 
   if (param->testflag & T_WRITE_LOOP) {
