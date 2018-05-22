@@ -1,4 +1,5 @@
 /* Copyright (c) 2000, 2026, Oracle and/or its affiliates.
+   Copyright (c) 2018, Percona and/or its affiliates.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License, version 2.0,
@@ -521,7 +522,7 @@ inline int my_b_get(IO_CACHE *info) {
   return _my_b_get(info);
 }
 
-inline my_off_t my_b_tell(const IO_CACHE *info) {
+[[nodiscard]] inline my_off_t my_b_tell(const IO_CACHE *info) {
   return info->pos_in_file + *info->current_pos - info->request_pos;
 }
 
@@ -738,10 +739,12 @@ extern bool array_append_string_unique(const char *str, const char **array,
 
 void my_store_ptr(uchar *buff, size_t pack_length, my_off_t pos);
 my_off_t my_get_ptr(uchar *ptr, size_t pack_length);
-extern int init_io_cache_ext(IO_CACHE *info, File file, size_t cachesize,
-                             enum cache_type type, my_off_t seek_offset,
-                             bool use_async_io, myf cache_myflags,
-                             PSI_file_key file_key);
+[[nodiscard]] extern int init_io_cache_ext(IO_CACHE *info, File file,
+                                           size_t cachesize,
+                                           enum cache_type type,
+                                           my_off_t seek_offset,
+                                           bool use_async_io, myf cache_myflags,
+                                           PSI_file_key file_key);
 extern int init_io_cache(IO_CACHE *info, File file, size_t cachesize,
                          enum cache_type type, my_off_t seek_offset,
                          bool use_async_io, myf cache_myflags);
@@ -749,14 +752,18 @@ extern bool reinit_io_cache(IO_CACHE *info, enum cache_type type,
                             my_off_t seek_offset, bool use_async_io,
                             bool clear_cache);
 extern void setup_io_cache(IO_CACHE *info);
-extern int _my_b_read(IO_CACHE *info, uchar *Buffer, size_t Count);
-extern int _my_b_read_r(IO_CACHE *info, uchar *Buffer, size_t Count);
+[[nodiscard]] extern int _my_b_read(IO_CACHE *info, uchar *Buffer,
+                                    size_t Count);
+[[nodiscard]] extern int _my_b_read_r(IO_CACHE *info, uchar *Buffer,
+                                      size_t Count);
 extern void init_io_cache_share(IO_CACHE *read_cache, IO_CACHE_SHARE *cshare,
                                 IO_CACHE *write_cache, uint num_threads);
 extern void remove_io_thread(IO_CACHE *info);
-extern int _my_b_seq_read(IO_CACHE *info, uchar *Buffer, size_t Count);
+[[nodiscard]] extern int _my_b_seq_read(IO_CACHE *info, uchar *Buffer,
+                                        size_t Count);
 extern int _my_b_net_read(IO_CACHE *info, uchar *Buffer, size_t Count);
-extern int _my_b_write(IO_CACHE *info, const uchar *Buffer, size_t Count);
+[[nodiscard]] extern int _my_b_write(IO_CACHE *info, const uchar *Buffer,
+                                     size_t Count);
 extern int my_b_append(IO_CACHE *info, const uchar *Buffer, size_t Count);
 extern int my_b_safe_write(IO_CACHE *info, const uchar *Buffer, size_t Count);
 
@@ -777,6 +784,9 @@ extern size_t my_b_vprintf(IO_CACHE *info, const char *fmt, va_list ap);
 extern bool open_cached_file(IO_CACHE *cache, const char *dir,
                              const char *prefix, size_t cache_size,
                              myf cache_myflags);
+extern bool open_cached_file_encrypted(IO_CACHE *cache, const char *dir,
+                                       const char *prefix, size_t cache_size,
+                                       myf cache_myflags, bool encrypted);
 extern bool real_open_cached_file(IO_CACHE *cache);
 extern void close_cached_file(IO_CACHE *cache);
 
@@ -1024,4 +1034,31 @@ size_t mysql_encryption_file_read(IO_CACHE *cache, uchar *buffer, size_t count,
 */
 size_t mysql_encryption_file_write(IO_CACHE *cache, const uchar *buffer,
                                    size_t count, myf flags);
+
+/**
+   This is a wrapper around mysql_file_pread. Read data from the specified
+   offset in a file and take care of decrypting the data if encryption is on.
+
+   @param cache The handler of a file cache to read.
+   @param[out] buffer The memory buffer to write to.
+   @param count The length of data in the file to be read in bytes.
+   @param offset The offset in the file to read from.
+   @param flags The bitmap of different flags
+                MY_WME | MY_FAE | MY_NABP | MY_FNABP |
+                MY_DONT_CHECK_FILESIZE and so on.
+
+   if (flags & (MY_NABP | MY_FNABP)) {
+     @retval 0 if count == 0
+     @retval 0 success
+     @retval MY_FILE_ERROR error
+   } else {
+     @retval 0 if count == 0
+     @retval The number of bytes read.
+     @retval MY_FILE_ERROR error
+   }
+*/
+
+size_t mysql_encryption_file_pread(IO_CACHE *cache, uchar *buffer, size_t count,
+                                   my_off_t offset, myf flags);
+
 #endif /* _my_sys_h */
