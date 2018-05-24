@@ -36,6 +36,7 @@ target_include_directories(component_keyring_vault_test PUBLIC
 set(TESTS
   vault_backend
   vault_config
+  vault_parser
 )
 
 set(ALL_COMPONENT_KEYRING_VAULT_TESTS)
