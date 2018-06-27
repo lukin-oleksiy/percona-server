@@ -296,6 +296,9 @@ class Rdb_key_def {
            m_kv_format_version >= SECONDARY_FORMAT_VERSION_UPDATE3;
   }
 
+  /* Indicates that all key parts can be unpacked to cover a secondary lookup */
+  bool can_cover_lookup() const;
+
   /*
     Return true if the passed mem-comparable key
     - is from this index, and

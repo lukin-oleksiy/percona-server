@@ -79,13 +79,13 @@ class Rdb_compact_filter : public rocksdb::CompactionFilter {
             m_snapshot_timestamp = static_cast<uint64_t>(std::time(nullptr));
           }
 
-#ifndef NDEBUG
+#if !defined(NDEBUG)
           int snapshot_ts = rdb_dbug_set_ttl_snapshot_ts();
           if (snapshot_ts) {
             m_snapshot_timestamp =
                 static_cast<uint64_t>(std::time(nullptr)) + snapshot_ts;
           }
-#endif
+#endif  // !defined(NDEBUG)
         }
       }
 
@@ -138,13 +138,13 @@ class Rdb_compact_filter : public rocksdb::CompactionFilter {
                       gl_index_id.cf_id, gl_index_id.index_id);
     }
 
-#ifndef NDEBUG
+#if !defined(NDEBUG)
     if (rdb_dbug_set_ttl_ignore_pk() &&
         index_info.m_index_type == Rdb_key_def::INDEX_TYPE_PRIMARY) {
       *ttl_duration = 0;
       return;
     }
-#endif
+#endif  // !defined(NDEBUG)
 
     *ttl_duration = index_info.m_ttl_duration;
     if (Rdb_key_def::has_index_flag(index_info.m_index_flags,
