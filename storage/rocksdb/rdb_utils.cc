@@ -38,10 +38,9 @@ namespace myrocks {
 /*
   Skip past any spaces in the input
 */
-const char *rdb_skip_spaces(const struct charset_info_st *const cs,
-                            const char *str) {
-  DBUG_ASSERT(cs != nullptr);
-  DBUG_ASSERT(str != nullptr);
+const char *rdb_skip_spaces(const CHARSET_INFO *const cs, const char *str) {
+  assert(cs != nullptr);
+  assert(str != nullptr);
 
   while (my_isspace(cs, *str)) {
     str++;
@@ -124,8 +123,8 @@ const char *rdb_find_in_string(const char *str, const char *pattern,
 /*
   See if the next valid token matches the specified string
 */
-const char *rdb_check_next_token(const struct charset_info_st *const cs,
-                                 const char *str, const char *const pattern,
+const char *rdb_check_next_token(const CHARSET_INFO *const cs, const char *str,
+                                 const char *const pattern,
                                  bool *const succeeded) {
   assert(cs != nullptr);
   assert(str != nullptr);
@@ -148,10 +147,10 @@ const char *rdb_check_next_token(const struct charset_info_st *const cs,
 /*
   Parse id
 */
-const char *rdb_parse_id(const struct charset_info_st *const cs,
-                         const char *str, std::string *const id) {
-  DBUG_ASSERT(cs != nullptr);
-  DBUG_ASSERT(str != nullptr);
+const char *rdb_parse_id(const CHARSET_INFO *const cs, const char *str,
+                         std::string *const id) {
+  assert(cs != nullptr);
+  assert(str != nullptr);
 
   // Move past any spaces
   str = rdb_skip_spaces(cs, str);
@@ -210,10 +209,9 @@ const char *rdb_parse_id(const struct charset_info_st *const cs,
 /*
   Skip id
 */
-const char *rdb_skip_id(const struct charset_info_st *const cs,
-                        const char *str) {
-  DBUG_ASSERT(cs != nullptr);
-  DBUG_ASSERT(str != nullptr);
+const char *rdb_skip_id(const CHARSET_INFO *const cs, const char *str) {
+  assert(cs != nullptr);
+  assert(str != nullptr);
 
   return rdb_parse_id(cs, str, nullptr);
 }
@@ -284,7 +282,7 @@ std::string rdb_hexdump(const char *data, const std::size_t data_len,
 bool rdb_database_exists(const std::string &db_name) {
   const std::string dir =
       std::string(mysql_real_data_home) + FN_DIRSEP + db_name;
-  struct st_my_dir *const dir_info =
+  MY_DIR *const dir_info =
       my_dir(dir.c_str(), MYF(MY_DONT_SORT | MY_WANT_STAT));
   if (dir_info == nullptr) {
     return false;
