@@ -48,6 +48,10 @@
 #include "./rdb_psi.h"
 #include "./rdb_utils.h"
 
+extern CHARSET_INFO my_charset_utf16_bin;
+extern CHARSET_INFO my_charset_utf16le_bin;
+extern CHARSET_INFO my_charset_utf32_bin;
+
 namespace myrocks {
 
 void get_mem_comparable_space(const CHARSET_INFO *cs,
@@ -2656,7 +2660,8 @@ void Rdb_key_def::pack_with_varchar_encoding(
                                   : uint2korr(field->ptr);
   size_t xfrm_len = charset->coll->strnxfrm(
       charset, buf, fpi->m_max_image_len, field_var->char_length(),
-      field_var->ptr + field_var->length_bytes, value_length, 0);
+      field_var->ptr + field_var->length_bytes, value_length,
+      MY_STRXFRM_NOPAD_WITH_SPACE);
 
   /* Got a mem-comparable image in 'buf'. Now, produce varlength encoding */
   if (use_legacy_varbinary_format()) {
@@ -2763,16 +2768,23 @@ void Rdb_key_def::pack_with_varchar_space_pad(
   const CHARSET_INFO *const charset = field->charset();
   const auto field_var = static_cast<Field_varstring *>(field);
 
+  const char *src =
+      reinterpret_cast<const char *>(field_var->ptr + field_var->length_bytes);
+
   const size_t value_length = (field_var->length_bytes == 1)
                                   ? (uint)*field->ptr
                                   : uint2korr(field->ptr);
 
-  const size_t trimmed_len = charset->cset->lengthsp(
-      charset, (const char *)field_var->ptr + field_var->length_bytes,
-      value_length);
+  const size_t trimmed_len =
+      charset->cset->lengthsp(charset, src, value_length);
+
+  const size_t max_xfrm_len = charset->cset->charpos(
+      charset, src, src + trimmed_len, field_var->char_length());
+
   const size_t xfrm_len = charset->coll->strnxfrm(
       charset, buf, fpi->m_max_image_len, field_var->char_length(),
-      field_var->ptr + field_var->length_bytes, trimmed_len, 0);
+      reinterpret_cast<const uchar *>(src),
+      std::min<size_t>(trimmed_len, max_xfrm_len), MY_STRXFRM_NOPAD_WITH_SPACE);
 
   /* Got a mem-comparable image in 'buf'. Now, produce varlength encoding */
   uchar *const buf_end = buf + xfrm_len;
@@ -3468,8 +3480,9 @@ static void rdb_get_mem_comparable_space(const CHARSET_INFO *const cs,
 
       uchar space[20];  // mem-comparable image of the space character
 
-      const size_t space_len = cs->coll->strnxfrm(cs, space, sizeof(space), 1,
-                                                  space_mb, space_mb_len, 0);
+      const size_t space_len =
+          cs->coll->strnxfrm(cs, space, sizeof(space), 1, space_mb,
+                             space_mb_len, MY_STRXFRM_NOPAD_WITH_SPACE);
       Rdb_charset_space_info *const info = new Rdb_charset_space_info;
       info->space_xfrm_len = space_len;
       info->space_mb_len = space_mb_len;
@@ -3860,12 +3873,16 @@ bool Rdb_field_packing::setup(const Rdb_key_def *const key_descr,
         // either.
         // Currently we handle these collations as NO_PAD, even if they have
         // PAD_SPACE attribute.
-        if (cs->levels_for_order == 1) {
+        // 8.0 removes levels_for_order but leaves levels_for_compare which
+        // seems to be identical in value and extremely similar in
+        // purpose/indication for our needs here.
+        if (cs->levels_for_compare == 1) {
           m_pack_func = &Rdb_key_def::pack_with_varchar_space_pad;
           m_skip_func = &Rdb_key_def::skip_variable_space_pad;
           m_segment_size = get_segment_size_from_collation(cs);
           m_max_image_len =
-              (max_image_len_before_chunks / (m_segment_size - 1) + 1) *
+              (max_image_len_before_chunks / (m_segment_size - 1) +
+               cs->mbmaxlen) *
               m_segment_size;
           rdb_get_mem_comparable_space(cs, &space_xfrm, &space_xfrm_len,
                                        &space_mb_len);
