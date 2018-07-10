@@ -325,6 +325,7 @@ static void rocksdb_drop_index_wakeup_thread(
 
 static bool rocksdb_pause_background_work = false;
 static mysql_mutex_t rdb_sysvars_mutex;
+static mysql_mutex_t rdb_block_cache_resize_mutex;
 
 static void rocksdb_set_pause_background_work(
     my_core::THD *const thd MY_ATTRIBUTE((__unused__)),
@@ -391,6 +392,10 @@ static void rocksdb_set_bytes_per_sync(THD *thd, struct SYS_VAR *const var,
 static void rocksdb_set_wal_bytes_per_sync(THD *thd, struct SYS_VAR *const var,
                                            void *const var_ptr,
                                            const void *const save);
+static int rocksdb_validate_set_block_cache_size(THD *thd,
+                                                 struct SYS_VAR *const var,
+                                                 void *var_ptr,
+                                                 struct st_mysql_value *value);
 //////////////////////////////////////////////////////////////////////////////
 // Options definitions
 //////////////////////////////////////////////////////////////////////////////
@@ -1084,8 +1089,9 @@ static MYSQL_SYSVAR_BOOL(
     "DBOptions::enable_thread_tracking for RocksDB", nullptr, nullptr, true);
 
 static MYSQL_SYSVAR_LONGLONG(block_cache_size, rocksdb_block_cache_size,
-                             PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
-                             "block_cache size for RocksDB", nullptr, nullptr,
+                             PLUGIN_VAR_RQCMDARG,
+                             "block_cache size for RocksDB",
+                             rocksdb_validate_set_block_cache_size, nullptr,
                              /* default */ RDB_DEFAULT_BLOCK_CACHE_SIZE,
                              /* min */ RDB_MIN_BLOCK_CACHE_SIZE,
                              /* max */ LLONG_MAX,
@@ -2790,6 +2796,13 @@ class Rdb_writebatch_impl : public Rdb_transaction {
   get_for_update(rocksdb::ColumnFamilyHandle *const column_family,
                  const rocksdb::Slice &key, rocksdb::PinnableSlice *const value,
                  bool exclusive) override {
+    if (value == nullptr) {
+      rocksdb::PinnableSlice pin_val;
+      rocksdb::Status s = get(column_family, key, &pin_val);
+      pin_val.Reset();
+      return s;
+    }
+
     return get(column_family, key, value);
   }
 
@@ -3877,6 +3890,8 @@ static int rocksdb_init_func(void *const p) {
 
   mysql_mutex_init(rdb_sysvars_psi_mutex_key, &rdb_sysvars_mutex,
                    MY_MUTEX_INIT_FAST);
+  mysql_mutex_init(rdb_block_cache_resize_mutex_key,
+                   &rdb_block_cache_resize_mutex, MY_MUTEX_INIT_FAST);
   Rdb_transaction::init_mutex();
 
   rocksdb_hton->state = SHOW_OPTION_YES;
@@ -4309,6 +4324,7 @@ static int rocksdb_done_func(void *const p) {
 
   mysql_mutex_destroy(&rdb_open_tables.m_mutex);
   mysql_mutex_destroy(&rdb_sysvars_mutex);
+  mysql_mutex_destroy(&rdb_block_cache_resize_mutex);
 
   delete rdb_collation_exceptions;
   mysql_mutex_destroy(&rdb_collation_data_mutex);
@@ -8461,8 +8477,7 @@ int ha_rocksdb::check_and_lock_unique_pk(const uint &key_id,
     /*
       If the keys are the same, then no lock is needed
     */
-    if (!Rdb_pk_comparator::bytewise_compare(row_info.new_pk_slice,
-                                             row_info.old_pk_slice)) {
+    if (!row_info.new_pk_slice.compare(row_info.old_pk_slice)) {
       *found = false;
       return HA_EXIT_SUCCESS;
     }
@@ -8570,7 +8585,7 @@ int ha_rocksdb::check_and_lock_sk(const uint &key_id,
       If the old and new keys are the same we're done since we've already taken
       the lock on the old key
     */
-    if (!Rdb_pk_comparator::bytewise_compare(new_slice, old_slice)) {
+    if (!new_slice.compare(old_slice)) {
       return HA_EXIT_SUCCESS;
     }
   }
@@ -12531,6 +12546,42 @@ static void rocksdb_set_wal_bytes_per_sync(
   }
 
   RDB_MUTEX_UNLOCK_CHECK(rdb_sysvars_mutex);
+}
+
+/*
+  Validating and updating block cache size via sys_var::check path.
+  SetCapacity may take seconds when reducing block cache, and
+  sys_var::update holds LOCK_global_system_variables mutex, so
+  updating block cache size is done at check path instead.
+*/
+static int rocksdb_validate_set_block_cache_size(
+    THD *thd MY_ATTRIBUTE((__unused__)),
+    struct SYS_VAR *const var MY_ATTRIBUTE((__unused__)), void *var_ptr,
+    struct st_mysql_value *value) {
+  assert(value != nullptr);
+
+  long long new_value;
+
+  /* value is NULL */
+  if (value->val_int(value, &new_value)) {
+    return HA_EXIT_FAILURE;
+  }
+
+  if (new_value < RDB_MIN_BLOCK_CACHE_SIZE ||
+      (uint64_t)new_value > (uint64_t)LLONG_MAX) {
+    return HA_EXIT_FAILURE;
+  }
+
+  RDB_MUTEX_LOCK_CHECK(rdb_block_cache_resize_mutex);
+  const rocksdb::BlockBasedTableOptions &table_options =
+      rdb_get_table_options();
+
+  if (rocksdb_block_cache_size != new_value && table_options.block_cache) {
+    table_options.block_cache->SetCapacity(new_value);
+  }
+  *static_cast<int64_t *>(var_ptr) = static_cast<int64_t>(new_value);
+  RDB_MUTEX_UNLOCK_CHECK(rdb_block_cache_resize_mutex);
+  return HA_EXIT_SUCCESS;
 }
 
 static int rocksdb_validate_update_cf_options(
