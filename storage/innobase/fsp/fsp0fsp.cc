@@ -3055,7 +3055,7 @@ buf_block_t *fseg_alloc_free_page_general(fseg_header_t *seg_header,
                                           mtr_t *init_mtr) {
   fseg_inode_t *inode;
   space_id_t space_id;
-  buf_block_t *iblock;
+  buf_block_t *iblock = nullptr;
   buf_block_t *block;
   ulint n_reserved = 0;
 
@@ -3583,7 +3583,7 @@ static void fseg_free_page_low(fseg_inode_t *seg_inode,
 void fseg_free_page(fseg_header_t *seg_header, space_id_t space_id,
                     page_no_t page, bool ahi, mtr_t *mtr) {
   fseg_inode_t *seg_inode;
-  buf_block_t *iblock;
+  buf_block_t *iblock = nullptr;
 
   fil_space_t *space = fil_space_get(space_id);
 
@@ -3820,7 +3820,7 @@ bool fseg_free_step_not_header(
   mtr_x_lock_space(space, mtr);
 
   const page_size_t page_size(space->flags);
-  buf_block_t *iblock;
+  buf_block_t *iblock = nullptr;
 
   inode = fseg_inode_get(header, space_id, page_size, mtr, &iblock);
   SRV_CORRUPT_TABLE_CHECK(inode, {

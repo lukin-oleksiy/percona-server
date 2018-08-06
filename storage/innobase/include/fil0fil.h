@@ -43,6 +43,7 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #ifndef UNIV_HOTBACKUP
 #include "ibuf0types.h"
 #endif /* !UNIV_HOTBACKUP */
+#include "trx0types.h"
 #include "ut0new.h"
 
 #include "mysql/strings/m_ctype.h"
