@@ -59,6 +59,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA
 #include <locale>
 #include <string>
 #endif /* !_WIN32 */
+#include "page0types.h"
 
 #include <functional>
 #include <stack>
@@ -338,7 +339,10 @@ class IORequest {
     /** We optimise cases where punch hole is not done if the compressed length
     of the page is the same as the original size of the page. Ignore such
     optimisations if this flag is set. */
-    DISABLE_PUNCH_HOLE_OPTIMISATION = 2048
+    DISABLE_PUNCH_HOLE_OPTIMISATION = 2048,
+
+    /** Force write of decrypted pages in encrypted tablespace. */
+    NO_ENCRYPTION = 4096
   };
 
   /** Default constructor */
@@ -502,9 +506,16 @@ class IORequest {
     return ((m_type & NO_COMPRESSION) == 0);
   }
 
+  /** @return true if the page write should not be encrypted */
+  [[nodiscard]] bool is_encryption_disabled() const noexcept {
+    return ((m_type & NO_ENCRYPTION) != 0);
+  }
+
   /** Disable transformations. */
   void disable_compression() { m_type |= NO_COMPRESSION; }
 
+  /** Disable encryption of a page in encrypted tablespace */
+  void disable_encryption() noexcept { m_type |= NO_ENCRYPTION; }
   /** Get the encryption algorithm.
   @return the encryption algorithm */
   [[nodiscard]] Encryption encryption_algorithm() const {

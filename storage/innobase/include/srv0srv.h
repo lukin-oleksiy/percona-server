@@ -160,6 +160,8 @@ struct srv_stats_t {
   /** Number of sampled pages skipped */
   ulint_ctr_64_t n_sampled_pages_skipped;
 
+  ulint_ctr_1_t n_lock_max_wait_time;
+
   /** Number of buffered aio requests submitted */
   ulint_ctr_64_t n_aio_submitted;
 
@@ -430,6 +432,9 @@ extern bool srv_undo_log_encrypt;
 
 /** Enable or disable encryption of temporary tablespace.*/
 extern bool srv_tmp_tablespace_encrypt;
+
+/** Enable this option to encrypt system tablespace at bootstrap. */
+extern bool srv_sys_tablespace_encrypt;
 
 /** Maximum number of recently truncated undo tablespace IDs for
 the same undo number. */
@@ -722,6 +727,7 @@ extern bool srv_stats_include_delete_marked;
 extern ulong srv_checksum_algorithm;
 
 extern double srv_max_buf_pool_modified_pct;
+
 extern ulong srv_max_purge_lag;
 extern ulong srv_max_purge_lag_delay;
 
