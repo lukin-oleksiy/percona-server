@@ -8959,10 +8959,33 @@ dberr_t fil_set_encryption(space_id_t space_id, Encryption::Type algorithm,
 
   Encryption::set_or_generate(algorithm, key, iv, space->m_encryption_metadata);
 
+  fsp_flags_set_encryption(space->flags);
+
+  shard->mutex_release();
+
+  return DB_SUCCESS;
+}
+
+/** Reset the encryption type for the tablespace
+@param[in] space_id             Space ID of tablespace for which to set
+@return DB_SUCCESS or error code */
+dberr_t fil_reset_encryption(space_id_t space_id) {
+  ut_ad(space_id != TRX_SYS_SPACE);
+
+  auto shard = fil_system->shard_by_id(space_id);
+
+  shard->mutex_acquire();
+
+  fil_space_t *space = shard->get_space_by_id(space_id);
+
   if (space == nullptr) {
     shard->mutex_release();
     return DB_NOT_FOUND;
   }
+
+  space->m_encryption_metadata = {};
+
+  shard->mutex_release();
 
   return DB_SUCCESS;
 }
@@ -8992,34 +9015,6 @@ dberr_t fil_temp_update_encryption(fil_space_t *space) {
   ut_ad(err == DB_SUCCESS);
 
   return (err);
-}
-
-/** Reset the encryption type for the tablespace
-@param[in] space_id             Space ID of tablespace for which to set
-@return DB_SUCCESS or error code */
-dberr_t fil_reset_encryption(space_id_t space_id) {
-  ut_ad(space_id != TRX_SYS_SPACE);
-
-  if (fsp_is_system_or_temp_tablespace(space_id)) {
-    return DB_IO_NO_ENCRYPT_TABLESPACE;
-  }
-
-  auto shard = fil_system->shard_by_id(space_id);
-
-  shard->mutex_acquire();
-
-  fil_space_t *space = shard->get_space_by_id(space_id);
-
-  if (space == nullptr) {
-    shard->mutex_release();
-    return DB_NOT_FOUND;
-  }
-
-  space->m_encryption_metadata = {};
-
-  shard->mutex_release();
-
-  return DB_SUCCESS;
 }
 
 #ifndef UNIV_HOTBACKUP
