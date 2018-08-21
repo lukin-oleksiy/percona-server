@@ -25,22 +25,17 @@
  For the general description, see the top comment in auth_pam_common.c.
 */
 
-/* Define these macros ourselves, so we don't have to include my_global.h and
-can compile against unconfigured MySQL source tree.  */
-#define STDCALL
-
 #include <security/pam_appl.h>
 #include <security/pam_modules.h>
-#if HAVE_SECURITY_PAM_MISC_H
+#ifdef HAVE_SECURITY_PAM_MISC_H
 #include <security/pam_misc.h>
-#elif HAVE_SECURITY_OPENPAM_H
+#elif defined(HAVE_SECURITY_OPENPAM_H)
 #include <security/openpam.h>
 #endif
 
-#include <my_global.h>
-#include <mysql/client_plugin.h>
-#include <mysql/plugin.h>
-#include <mysql/plugin_auth.h>
+#include "mysql/client_plugin.h"
+#include "mysql/plugin.h"
+#include "mysql/plugin_auth.h"
 
 #ifdef __cplusplus
 extern "C" {
