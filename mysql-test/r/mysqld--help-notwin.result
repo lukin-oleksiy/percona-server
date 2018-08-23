@@ -222,6 +222,9 @@ The following options may be given as the first argument:
  of big documents may need significantly less space.
  --binlog-rows-query-log-events 
  Allow writing of Rows_query_log events into binary log.
+ --binlog-space-limit=# 
+ Maximum space to use for all binary logs. Default is 0,
+ this feature is disabled.
  --binlog-stmt-cache-size=# 
  The size of the statement cache for updates to
  non-transactional engines for the binary log. If you
@@ -650,8 +653,8 @@ The following options may be given as the first argument:
  --log-slow-filter=name 
  Log only the queries that followed certain execution
  plan. Multiple flags allowed in a comma-separated string.
- [qc_miss, full_scan, full_join, tmp_table,
- tmp_table_on_disk, filesort, filesort_on_disk]
+ [full_scan, full_join, tmp_table, tmp_table_on_disk,
+ filesort, filesort_on_disk]
  --log-slow-rate-limit=# 
  Rate limit statement writes to slow log to only those
  from every (1/log_slow_rate_limit) session.
@@ -732,11 +735,6 @@ The following options may be given as the first argument:
  --max-binlog-dump-events=# 
  Option used by mysql-test for debugging and testing of
  replication.
- --max-binlog-files=# 
- Maximum number of binlog files. Used with
- --max-binlog-size this can be used to limit the total
- amount of disk space used for the binlog. Default is 0,
- don't limit.
  --max-binlog-size=# Binary log will be rotated automatically when the size
  exceeds this value. Will also apply to relay logs if
  max_relay_log_size is 0
@@ -776,15 +774,6 @@ The following options may be given as the first argument:
  --max-seeks-for-key=# 
  Limit assumed max number of seeks when looking up rows
  based on a key
- --max-slowlog-files=# 
- Maximum number of slow query log files. Used with
- --max-slowlog-size this can be used to limit the total
- amount of disk space used for the slow query log. Default
- is 0, don't limit.
- --max-slowlog-size=# 
- Slow query log will be rotated automatically when the
- size exceeds this value. The default is 0, don't limit
- the size.
  --max-sort-length=# The number of bytes to use when sorting long values with
  PAD SPACE collations (only the first max_sort_length
  bytes of each value are used; the rest are ignored)
@@ -1159,10 +1148,6 @@ The following options may be given as the first argument:
  networks and must the only directive on the line.
  --query-alloc-block-size=# 
  Allocation block size for query parsing and execution
- --query-cache-strip-comments 
- Enable and disable optimisation "strip comment for query
- cache" - optimisation strip all comments from query while
- search query result in query cache
  --query-prealloc-size=# 
  Persistent buffer for query parsing and execution
  --range-alloc-block-size=# 
@@ -1723,7 +1708,6 @@ The following options may be given as the first argument:
  only safe choice for replication.
  (Defaults to on; use --skip-xa-detach-on-prepare to disable.)
 
-
 Variables (--variable-name=value)
 activate-all-roles-on-login FALSE
 activate-mandatory-roles TRUE
@@ -1765,6 +1749,7 @@ binlog-row-image FULL
 binlog-row-metadata MINIMAL
 binlog-row-value-options 
 binlog-rows-query-log-events FALSE
+binlog-space-limit 0
 binlog-stmt-cache-size 32768
 binlog-transaction-compression FALSE
 binlog-transaction-compression-level-zstd 3
@@ -1909,7 +1894,6 @@ master-verify-checksum FALSE
 max-allowed-packet 67108864
 max-binlog-cache-size 18446744073709547520
 max-binlog-dump-events 0
-max-binlog-files 0
 max-binlog-size 1073741824
 max-binlog-stmt-cache-size 18446744073709547520
 max-connect-errors 100
@@ -1925,8 +1909,6 @@ max-points-in-geometry 65536
 max-prepared-stmt-count 16382
 max-relay-log-size 0
 max-seeks-for-key 18446744073709551615
-max-slowlog-files 0
-max-slowlog-size 0
 max-sort-length 1024
 max-sp-recursion-depth 0
 max-user-connections 0
@@ -2039,7 +2021,6 @@ profiling-history-size 15
 protocol-compression-algorithms zlib,zstd,uncompressed
 proxy-protocol-networks 
 query-alloc-block-size 8192
-query-cache-strip-comments FALSE
 query-prealloc-size 8192
 range-alloc-block-size 4096
 range-optimizer-max-mem-size 8388608
