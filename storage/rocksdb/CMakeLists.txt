@@ -1,5 +1,4 @@
 # TODO: Copyrights
-SET(CMAKE_CXX_STANDARD 11)
 
 # by default MyRocks is not built
 IF (NOT DEFINED WITH_ROCKSDB)
@@ -28,18 +27,16 @@ IF (NOT CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
   RETURN ()
 ENDIF ()
 
-# check compiler version, 4.8.0 is minimal accepted
-IF ((CMAKE_CXX_COMPILER_ID STREQUAL GNU) AND
-    (CMAKE_CXX_COMPILER_VERSION VERSION_LESS "4.8.0"))
-  MESSAGE (${MYROCKS_STATUS_MODE} "GCC >= 4.8.0 required. ${CMAKE_CXX_COMPILER_VERSION} found. Not building MyRocks")
-  RETURN ()
-ENDIF ()
+# Suppress warnings for gcc-9
+IF(CMAKE_COMPILER_IS_GNUCXX AND
+   (CMAKE_CXX_COMPILER_VERSION VERSION_EQUAL 9.0 OR CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 9.0))
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-copy -Wno-redundant-move -Wno-pessimizing-move -Wno-sign-compare")
+ENDIF()
 
-# Relax unused variable warnings for release modes
-MY_CHECK_CXX_COMPILER_FLAG("-Wunused-variable" HAVE_UNUSED_VARIABLE)
-IF(HAVE_UNUSED_VARIABLE)
-  SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Wno-unused-variable")
-  SET(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -Wno-unused-variable")
+# Suppress warnings for clang-8
+IF((CMAKE_CXX_COMPILER_ID MATCHES "Clang") AND
+   (CMAKE_CXX_COMPILER_VERSION VERSION_EQUAL 8.0 OR CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 8.0))
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-defaulted-function-deleted")
 ENDIF()
 
 # Relax fallthrough warnings we have no control over, as it's in zstd
@@ -52,15 +49,19 @@ IF(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 ENDIF()
 
 # Relax unused variable warnings
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-variable")
-SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-variable")
+MY_CHECK_CXX_COMPILER_FLAG("-Wno-unused-variable" HAVE_NO_UNUSED_VARIABLE)
+IF(HAVE_NO_UNUSED_VARIABLE)
+  ADD_COMPILE_FLAGS(ha_rocksdb.cc COMPILE_FLAGS "-Wno-unused-variable")
+ENDIF()
 
-# check that compiler supports cxx11 and set options
-INCLUDE (check_stdcxx11)
-IF (!HAVE_STDCXX11)
-  MESSAGE (${MYROCKS_STATUS_MODE} "${CMAKE_CXX_COMPILER} doesn't support -std=c++11, you need one that does. Not building MyRocks")
-  RETURN ()
-ENDIF ()
+# Relax undefined definition warnings for 8.0 until RocksDB catches up
+remove_compile_flags(-Wundef)
+
+# Relax unused parameter warnings for 8.0 until RocksDB catches up
+append_cflags_if_supported(-Wno-unused-parameter)
+
+# Relax suggest-attribute=format warnings for 8.0 until RocksDB catches up
+append_cflags_if_supported(-Wno-suggest-attribute=format)
 
 IF (NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/rocksdb/Makefile")
   MESSAGE(SEND_ERROR "Missing Makefile in rocksdb directory. Try \"git submodule update\".")
@@ -83,7 +84,7 @@ int main() {
   const auto a = _mm_set_epi64x(0, 0);
   const auto b = _mm_set_epi64x(0, 0);
   const auto c = _mm_clmulepi64_si128(a, b, 0x00);
-  auto d = _mm_cvtsi128_si64(c);
+  auto d __attribute__((unused)) = _mm_cvtsi128_si64(c);
 }
 " HAVE_SSE42)
 IF (HAVE_SSE42)
@@ -174,6 +175,10 @@ ELSE()
   SET(PIC_EXT "")
 ENDIF()
 
+IF(DEFINED WITH_UBSAN)
+  add_definitions(-DROCKSDB_UBSAN_RUN)
+ENDIF()
+
 SET(ROCKSDB_SOURCES
   ha_rocksdb.cc ha_rocksdb.h ha_rocksdb_proto.h
   logger.h
@@ -191,6 +196,7 @@ SET(ROCKSDB_SOURCES
   rdb_sst_info.cc rdb_sst_info.h
   rdb_utils.cc rdb_utils.h rdb_buff.h
   rdb_threads.cc rdb_threads.h
+  ha_rockspart.cc ha_rockspart.h
   ${ROCKSDB_LIB_SOURCES}
 )
 
@@ -199,10 +205,6 @@ SET(rocksdb_static_libs ${rocksdb_static_libs} ${ZLIB_LIBRARY} "-lrt" "-ldl")
 MYSQL_ADD_PLUGIN(rocksdb ${ROCKSDB_SOURCES} STORAGE_ENGINE DEFAULT MODULE_ONLY
   LINK_LIBRARIES ${rocksdb_static_libs}
 )
-
-IF(WITH_EMBEDDED_SERVER)
-  ADD_SUBDIRECTORY(unittest)
-ENDIF()
 
 # TODO: read this file list from src.mk:TOOL_SOURCES
 SET(ROCKSDB_TOOL_SOURCES
