@@ -3832,7 +3832,7 @@ class Field_vector : public Field_blob {
     return new (mem_root) Field_vector(*this);
   }
   uint32 max_data_length() const override { return field_length; }
-  uint32 char_length() const override { return field_length; }
+  uint32 char_length() const noexcept override { return field_length; }
   enum_field_types type() const final { return MYSQL_TYPE_VECTOR; }
   enum_field_types real_type() const final { return MYSQL_TYPE_VECTOR; }
   void make_send_field(Send_field *field) const override;
