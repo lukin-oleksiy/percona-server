@@ -291,7 +291,7 @@ class sys_var {
     @return true if the variable can be set using SET_VAR hint,
             false otherwise.
   */
-  bool is_hint_updateable() const { return flags & HINT_UPDATEABLE; }
+  virtual bool is_hint_updateable() const { return flags & HINT_UPDATEABLE; }
   /**
     the following is only true for keycache variables,
     that support the syntax @@keycache_name.variable_name
@@ -344,14 +344,14 @@ class sys_var {
   }
   void do_deprecated_warning(THD *thd);
   /**
-    Create item from system variable value.
+    Create item from system variable session value.
 
     @param  thd  pointer to THD object
 
     @return pointer to Item object or NULL if it's
             impossible to obtain the value.
   */
-  Item *copy_value(THD *thd);
+  virtual Item *copy_value(THD *thd);
 
   void save_default(THD *thd, set_var *var) { global_save_default(thd, var); }
 
@@ -1146,7 +1146,8 @@ bool set_global_variable_attribute(const System_variable_tracker &var_tracker,
 extern bool get_sysvar_source(const char *name, uint length,
                               enum enum_variable_source *source);
 
-int sql_set_variables(THD *thd, List<set_var_base> *var_list, bool opened);
+[[nodiscard]] int sql_set_variables(THD *thd, List<set_var_base> *var_list,
+                                    bool opened);
 bool keyring_access_test();
 bool fix_delay_key_write(sys_var *self, THD *thd, enum_var_type type);
 
