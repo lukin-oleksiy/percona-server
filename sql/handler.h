@@ -2202,6 +2202,17 @@ typedef bool (*rotate_encryption_master_key_t)(void);
 
 /**
   @brief
+  Fix empty UUID of tablespaces of an engine. This is used when engine encrypts
+  tablespaces as part of initialization. These tablespaces will have empty UUID
+  because UUID is generated after all plugins are initialized. This API will be
+  called by server only after UUID is available.
+  @returns false on success,
+           true on failure
+*/
+using fix_tablespaces_empty_uuid_t = bool (*)(void);
+
+/**
+  @brief
   Enable or Disable SE write ahead logging.
 
   @param[in] thd    server thread handle
@@ -3083,6 +3094,7 @@ struct handlerton {
   notify_rename_table_t notify_rename_table;
   notify_truncate_table_t notify_truncate_table;
   rotate_encryption_master_key_t rotate_encryption_master_key;
+  fix_tablespaces_empty_uuid_t fix_tablespaces_empty_uuid;
   redo_log_set_state_t redo_log_set_state;
 
   get_table_statistics_t get_table_statistics;

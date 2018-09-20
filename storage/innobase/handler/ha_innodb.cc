@@ -301,7 +301,7 @@ static mysql_mutex_t commit_cond_m;
 mysql_cond_t resume_encryption_cond;
 mysql_mutex_t resume_encryption_cond_m;
 os_event_t recovery_lock_taken;
-static bool innodb_inited = false;
+bool innodb_inited = false;
 
 [[maybe_unused]] static inline bool EQ_CURRENT_THD(THD *thd) {
   return thd == current_thd;
@@ -4643,6 +4643,67 @@ error_exit:
   return (ret);
 }
 
+/** Fix the empty UUID of tablespaces like system, temp etc by generating
+a new master key and do key rotation. These tablespaces if encrypted
+during startup, will be encrypted with tablespace key which has empty UUID
+@return false on success, true on failure */
+bool innobase_fix_tablespaces_empty_uuid() {
+  /* If we are in read only mode, we cannot do rotation but it
+  is OK */
+  if (srv_read_only_mode) {
+    return (false);
+  }
+
+  /* We only need to handle the case when an encrypted tablespace
+  is created at startup. If it is 0, there is no encrypted tablespace,
+  If it is > 1, it means we already have fixed the UUID */
+  if (Encryption::get_master_key_id() != 1) {
+    return (false);
+  }
+
+  byte *master_key = nullptr;
+  uint32_t master_key_id;
+  Encryption::get_master_key(&master_key_id, &master_key);
+
+  if (master_key == nullptr) {
+    my_error(ER_CANNOT_FIND_KEY_IN_KEYRING, MYF(0));
+    return (true);
+  }
+  my_free(master_key);
+
+  master_key = nullptr;
+
+  /* Generate the new master key. */
+  Encryption::create_master_key(&master_key);
+
+  if (master_key == nullptr) {
+    my_error(ER_CANNOT_FIND_KEY_IN_KEYRING, MYF(0));
+    return (true);
+  }
+
+  /** Check if sys, temp need rotation to fix the empty uuid */
+  space_id_vec space_ids;
+
+  space_ids.push_back(srv_sys_space.space_id());
+  space_ids.push_back(srv_tmp_space.space_id());
+
+  undo::spaces->s_lock();
+  for (auto undo_space : undo::spaces->m_spaces) {
+    /* We already added system tablespace */
+    if (undo_space->id() == TRX_SYS_SPACE) {
+      continue;
+    }
+    space_ids.push_back(undo_space->id());
+  }
+  undo::spaces->s_unlock();
+
+  /* Rotate log tablespace */
+
+  my_free(master_key);
+
+  return (false);
+}
+
 /** Enable or Disable SE write ahead logging.
 @param[in]      thd     connection THD
 @param[in]      enable  enable/disable redo logging
@@ -5666,6 +5727,9 @@ static int innodb_init(void *p) {
 
   innobase_hton->rotate_encryption_master_key =
       innobase_encryption_key_rotation;
+
+  innobase_hton->fix_tablespaces_empty_uuid =
+      innobase_fix_tablespaces_empty_uuid;
 
   innobase_hton->redo_log_set_state = innobase_redo_set_state;
 
