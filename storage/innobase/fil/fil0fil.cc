@@ -9162,6 +9162,7 @@ size_t fil_encryption_rotate() { return (fil_system->encryption_rotate()); }
 void fil_encryption_reencrypt(std::vector<space_id_t> &sid_vector) {
   fil_system->encryption_reencrypt(sid_vector);
 }
+
 #endif /* !UNIV_HOTBACKUP */
 
 /** Constructor

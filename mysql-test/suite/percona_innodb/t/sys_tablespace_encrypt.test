@@ -248,7 +248,5 @@ disconnect con1;
 --source include/restart_mysqld.inc
 
 --remove_file $BOOTSTRAP_SQL
---let CLEANUP_FOLDER=$MYSQL_TMP_DIR/datadir1
---source include/cleanup_folder.inc
---remove_file $MYSQL_TMP_DIR/mysecret_keyring
+--force-rmdir $MYSQL_TMP_DIR/datadir1
 --remove_file $MYSQLTEST_VARDIR/tmp/boot.log
