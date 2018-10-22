@@ -406,6 +406,10 @@ static constexpr ulong RDB_MAX_LOCK_WAIT_SECONDS = 1024 * 1024 * 1024;
 static constexpr ulong RDB_MAX_ROW_LOCKS = 1024 * 1024 * 1024;
 static constexpr ulong RDB_DEFAULT_ROW_LOCKS = 1024 * 1024;
 static constexpr ulong RDB_DEFAULT_BULK_LOAD_SIZE = 1000;
+static constexpr int RDB_DEFAULT_MAX_BACKGROUND_JOBS = 2;
+static constexpr ulong RDB_DEFAULT_BLOCK_SIZE = 0x4000;              // 16K
+static constexpr ulong RDB_DEFAULT_MAX_TOTAL_WAL_SIZE = 0x80000000;  // 2GB
+static constexpr ulong RDB_DEFAULT_TABLE_CACHE_NUMSHARDBITS = 6;
 static constexpr ulong RDB_MAX_BULK_LOAD_SIZE = 1024 * 1024 * 1024;
 static constexpr size_t RDB_DEFAULT_MERGE_BUF_SIZE = 64 * 1024 * 1024;
 static constexpr size_t RDB_MIN_MERGE_BUF_SIZE = 100;
@@ -494,8 +498,11 @@ static std::unique_ptr<rocksdb::DBOptions> rdb_init_rocksdb_db_options(void) {
   o->create_if_missing = true;
   o->listeners.push_back(std::make_shared<Rdb_event_listener>(&ddl_manager));
   o->info_log_level = rocksdb::InfoLogLevel::INFO_LEVEL;
+  o->max_background_jobs = RDB_DEFAULT_MAX_BACKGROUND_JOBS;
   o->max_subcompactions = DEFAULT_SUBCOMPACTIONS;
-  o->max_open_files = -2; // auto-tune to 50% open_files_limit
+  o->max_open_files = -2;  // auto-tune to 50% open_files_limit
+  o->max_total_wal_size = RDB_DEFAULT_MAX_TOTAL_WAL_SIZE;
+  o->table_cache_numshardbits = RDB_DEFAULT_TABLE_CACHE_NUMSHARDBITS;
 
   o->two_write_queues = true;
   o->manual_wal_flush = true;
@@ -503,10 +510,17 @@ static std::unique_ptr<rocksdb::DBOptions> rdb_init_rocksdb_db_options(void) {
   return o;
 }
 
+static std::unique_ptr<rocksdb::BlockBasedTableOptions>
+rdb_init_rocksdb_tbl_options(void) {
+  auto o = std::unique_ptr<rocksdb::BlockBasedTableOptions>(
+      new rocksdb::BlockBasedTableOptions());
+  o->block_size = RDB_DEFAULT_BLOCK_SIZE;
+  return o;
+}
+
 /* DBOptions contains Statistics and needs to be destructed last */
 static std::unique_ptr<rocksdb::BlockBasedTableOptions> rocksdb_tbl_options =
-    std::unique_ptr<rocksdb::BlockBasedTableOptions>(
-        new rocksdb::BlockBasedTableOptions());
+    rdb_init_rocksdb_tbl_options();
 static std::unique_ptr<rocksdb::DBOptions> rocksdb_db_options =
     rdb_init_rocksdb_db_options();
 
@@ -1183,8 +1197,12 @@ static MYSQL_SYSVAR_BOOL(
 static MYSQL_SYSVAR_STR(default_cf_options, rocksdb_default_cf_options,
                         PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
                         "default cf options for RocksDB", nullptr, nullptr,
-                        "compression=kLZ4Compression;"
-                        "bottommost_compression=kLZ4Compression");
+                        "block_based_table_factory={cache_index_and_filter_"
+                        "blocks=1;filter_policy=bloomfilter:10:false;whole_key_"
+                        "filtering=1};level_compaction_dynamic_level_bytes="
+                        "true;optimize_filters_for_hits=true;compaction_pri="
+                        "kMinOverlappingRatio;compression=kLZ4Compression;"
+                        "bottommost_compression=kLZ4Compression;");
 
 static MYSQL_SYSVAR_STR(override_cf_options, rocksdb_override_cf_options,
                         PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
@@ -8386,13 +8404,13 @@ ha_rocksdb::generate_cf_name(const uint index, const TABLE *const table_arg,
     return "";
   }
 
-  // If we didn't find any partitioned/non-partitioned qualifiers, return the
-  // comment itself.  NOTE: this currently handles returning the cf name
-  // specified in the index comment in the case of no partitions, which doesn't
-  // use any qualifiers at the moment. (aka its a special case)
-  if (cf_name.empty() && !key_comment.empty()) {
-    return key_comment;
-  }
+  // If we didn't find any partitioned/non-partitioned qualifiers, DO NOT return
+  // the comment itself. FB 5.6 Behavior is exactly the opposite which then
+  // causes any index comment to create a new column family.
+
+  // Strip leading and trailing whitespace as that is not part of a valid name
+  if (!cf_name.empty())
+    rdb_trim_whitespace_from_edges(cf_name);
 
   return cf_name;
 }

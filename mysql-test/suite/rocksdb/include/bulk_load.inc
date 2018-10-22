@@ -16,7 +16,7 @@ eval CREATE TABLE t1(
   pk CHAR(5),
   a char(30),
   b char(30),
-  PRIMARY KEY(pk) COMMENT "$pk_cf",
+  PRIMARY KEY(pk) COMMENT "cfname=$pk_cf",
   KEY(a)
 ) ENGINE=ROCKSDB COLLATE 'latin1_bin';
 
@@ -26,7 +26,7 @@ eval CREATE TABLE t2(
   pk CHAR(5),
   a CHAR(30),
   b CHAR(30),
-  PRIMARY KEY(pk) COMMENT "$pk_cf",
+  PRIMARY KEY(pk) COMMENT "cfname=$pk_cf",
   KEY(a)
 ) ENGINE=ROCKSDB COLLATE 'latin1_bin';
 
@@ -36,7 +36,7 @@ eval CREATE TABLE t3(
   pk CHAR(5),
   a CHAR(30),
   b CHAR(30),
-  PRIMARY KEY(pk) COMMENT "$pk_cf",
+  PRIMARY KEY(pk) COMMENT "cfname=$pk_cf",
   KEY(a)
 ) ENGINE=ROCKSDB COLLATE 'latin1_bin' PARTITION BY KEY() PARTITIONS 4;
 
@@ -89,9 +89,10 @@ EOF
 # Make sure a snapshot held by another user doesn't block the bulk load
 connect (other,localhost,root,,);
 set session transaction isolation level repeatable read;
-select * from information_schema.rocksdb_dbstats where stat_type='DB_NUM_SNAPSHOTS';
 start transaction with consistent snapshot;
-select * from information_schema.rocksdb_dbstats where stat_type='DB_NUM_SNAPSHOTS';
+
+# Assert that there is a pending snapshot
+select VALUE > 0 as 'Has opened snapshots' from information_schema.rocksdb_dbstats where stat_type='DB_NUM_SNAPSHOTS';
 
 connection default;
 set rocksdb_bulk_load=1;
