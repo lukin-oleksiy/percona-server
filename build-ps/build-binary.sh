@@ -20,7 +20,6 @@ WITH_JEMALLOC=''
 WITH_MECAB_OPTION=''
 DEBUG_EXTRA=''
 WITH_SSL='/usr'
-WITH_SSL_TYPE='system'
 OPENSSL_INCLUDE=''
 OPENSSL_LIBRARY=''
 CRYPTO_LIBRARY=''
@@ -38,7 +37,7 @@ TAR=${TAR:-tar}
 if ! getopt --test
 then
     go_out="$(getopt --options=iqdvj:m:t: \
-        --longoptions=i686,quiet,debug,valgrind,with-jemalloc:,with-mecab:,with-yassl,with-ssl:,tag: \
+        --longoptions=i686,quiet,debug,valgrind,with-jemalloc:,with-mecab:,with-ssl:,tag: \
         --name="$(basename "$0")" -- "$@")"
     test $? -eq 0 || exit 1
     eval set -- $go_out
@@ -77,10 +76,6 @@ do
         shift
         WITH_MECAB_OPTION="-DWITH_MECAB=$1"
         shift
-        ;;
-    --with-yassl )
-        shift
-        WITH_SSL_TYPE="bundled"
         ;;
     --with-ssl )
         shift
@@ -251,10 +246,7 @@ fi
     cmake $SOURCEDIR ${CMAKE_OPTS:-} -DBUILD_CONFIG=mysql_release \
         -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE:-RelWithDebInfo} \
         $DEBUG_EXTRA \
-        -DWITH_EMBEDDED_SERVER=OFF \
         -DFEATURE_SET=community \
-        -DENABLE_DTRACE=OFF \
-        -DWITH_SSL="$WITH_SSL_TYPE" \
         -DWITH_ZLIB=system \
         -DCMAKE_INSTALL_PREFIX="/usr/local/$PRODUCT_FULL" \
         -DMYSQL_DATADIR="/usr/local/$PRODUCT_FULL/data" \
@@ -263,7 +255,6 @@ fi
         -DWITH_ROCKSDB=ON \
         -DWITH_INNODB_MEMCACHED=ON \
         -DDOWNLOAD_BOOST=1 \
-        -DWITH_SCALABILITY_METRICS=ON \
         -DWITH_BOOST="$WORKDIR_ABS/libboost" \
         $WITH_MECAB_OPTION $OPENSSL_INCLUDE $OPENSSL_LIBRARY $CRYPTO_LIBRARY
 
