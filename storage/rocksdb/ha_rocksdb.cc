@@ -25,7 +25,6 @@
 
 /* C++ standard header files */
 #include <algorithm>
-#include <inttypes.h>
 #include <limits>
 #include <map>
 #include <queue>
@@ -3049,6 +3048,10 @@ static bool rocksdb_flush_wal(handlerton *const hton MY_ATTRIBUTE((__unused__)),
 static int rocksdb_prepare(handlerton *const hton, THD *const thd,
                            bool prepare_tx) {
   Rdb_transaction *&tx = get_tx_from_thd(thd);
+  if (!tx->is_tx_started()) {
+    // nothing to prepare
+    return HA_EXIT_SUCCESS;
+  }
   if (!tx->can_prepare()) {
     return HA_EXIT_FAILURE;
   }
@@ -3408,7 +3411,6 @@ class Rdb_snapshot_status : public Rdb_tx_list_walker {
     if (!path_entry.path.empty() && !path_entry.limit_exceeded) {
       const auto &deadlocking_txn = *(path_entry.path.end() - 1);
       deadlock_info.victim_trx_id = deadlocking_txn.m_txn_id;
-      deadlock_info.deadlock_time = path_entry.deadlock_time;
     }
     return deadlock_info;
   }
@@ -4385,11 +4387,11 @@ static int rocksdb_done_func(void *const p) {
 // Disown the cache data since we're shutting down.
 // This results in memory leaks but it improved the shutdown time.
 // Don't disown when running under valgrind
-#ifndef HAVE_purify
+#ifndef HAVE_VALGRIND
   if (rocksdb_tbl_options->block_cache) {
     rocksdb_tbl_options->block_cache->DisownData();
   }
-#endif /* HAVE_purify */
+#endif  // HAVE_VALGRIND
 
   rocksdb_db_options = nullptr;
   rocksdb_tbl_options = nullptr;
