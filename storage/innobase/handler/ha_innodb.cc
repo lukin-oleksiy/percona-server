@@ -7626,74 +7626,6 @@ func_exit:
   return ret;
 }
 
-// Percona commented out until zip dictionaries reimplemented with the new DD
-#if 0
-
-/** This function checks if all the compression dictionaries referenced
-in table->fields exist in SYS_ZIP_DICT InnoDB system table.
-@param[in]	table		table in MySQL data dictionary
-@param[out]	dict_ids	identified zip dict ids
-@param[in]	trx		transaction
-@param[out]	err_dict_name	the name of the zip_dict which does not exist
-@return true if all referenced dictionaries exist */
-bool innobase_check_zip_dicts(const TABLE *table,
-			      zip_dict_id_container_t &dict_ids,
-			      trx_t *trx, const char **err_dict_name) {
-  DBUG_ENTER("innobase_check_zip_dicts");
-
-  dberr_t err = DB_SUCCESS;
-  const size_t n_fields = table->s->fields;
-  zip_dict_id_container_t local_dict_ids;
-
-  Field* field_ptr;
-  for (size_t field_idx = 0; err == DB_SUCCESS && field_idx < n_fields;
-       ++field_idx) {
-    field_ptr = table->field[field_idx];
-    if (field_ptr->has_associated_compression_dictionary()) {
-      ulint current_dict_id;
-      err = dict_create_get_zip_dict_id_by_name(
-	field_ptr->zip_dict_name.str, field_ptr->zip_dict_name.length,
-	  &current_dict_id, trx);
-      if (UNIV_LIKELY(err == DB_SUCCESS))
-	local_dict_ids[field_ptr->field_index] = current_dict_id;
-      else
-	ut_a(err == DB_RECORD_NOT_FOUND);
-    }
-  }
-
-  if (UNIV_LIKELY(err == DB_SUCCESS))
-    dict_ids.swap(local_dict_ids);
-  else
-    *err_dict_name = field_ptr->zip_dict_name.str;
-
-  DBUG_RETURN(err == DB_SUCCESS);
-}
-
-/** This function creates compression dictionary references in
-SYS_ZIP_DICT_COLS InnoDB system table for table_id based on info
-in table->fields and provided zip dict ids.
-@param[in]	table		table in MySQL data dictionary
-@param[in]	ib_table_id	table ID in InnoDB data dictionary
-@param[in]	dict_ids	zip dict ids
-@param[in]	trx		transaction */
-void
-innobase_create_zip_dict_references(const TABLE *table, table_id_t ib_table_id,
-				    const zip_dict_id_container_t &dict_ids,
-				    trx_t *trx) {
-  DBUG_ENTER("innobase_create_zip_dict_references");
-
-  for (const auto &it : dict_ids) {
-    ut_ad(it->first < table->s->fields);
-    const dberr_t err = dict_create_add_zip_dict_reference(ib_table_id,
-							   it->first,
-							   it->second, trx);
-    ut_a(err == DB_SUCCESS);
-  }
-
-  DBUG_VOID_RETURN;
-}
-#endif
-
 /** This function uses index translation table to quickly locate the
  requested index structure.
  Note we do not have mutex protection for the index translation table
@@ -14607,11 +14539,6 @@ int create_table_info_t::create_table(const dd::Table *dd_table,
   uint i;
   const char *stmt;
   size_t stmt_len;
-  // Percona commented out until zip dictionary reimplementation in the new DD
-#if 0
-  zip_dict_id_container_t	zip_dict_ids;
-  const char*		err_zip_dict_name = nullptr;
-#endif
 
   DBUG_TRACE;
   assert(m_form->s->keys <= MAX_KEY);
@@ -14643,18 +14570,6 @@ int create_table_info_t::create_table(const dd::Table *dd_table,
   /* Our function innobase_get_mysql_key_number_for_index assumes
   the primary key is always number 0, if it exists */
   ut_a(primary_key_no == MAX_KEY || primary_key_no == 0);
-
-  // Percona commented out until zip dict reimplementation in the new DD
-#if 0
-  error = innobase_check_zip_dicts(m_form, zip_dict_ids,
-				   m_trx, &err_zip_dict_name) ? 0 : -1;
-  if (trx_is_started(m_trx)) trx_commit(m_trx);
-  if (error) {
-    my_error(ER_COMPRESSION_DICTIONARY_DOES_NOT_EXIST,
-	     MYF(0), err_zip_dict_name);
-    DBUG_RETURN(error);
-  }
-#endif
 
   error = create_table_def(dd_table, old_part_table);
   if (error) {
@@ -14754,24 +14669,6 @@ int create_table_info_t::create_table(const dd::Table *dd_table,
 
     dict_table_get_all_fts_indexes(m_table, fts->indexes);
   }
-
-  // Percona commented out until zip dictionary reimplementation in new DD
-#if 0
-  /*
-  Adding compression dictionary <-> compressed table column links
-  to the SYS_ZIP_DICT_COLS table.
-  */
-  if (!zip_dict_ids.empty()) {
-    dict_table_t*	local_table = dict_table_open_on_name(
-      m_table_name, true, false, DICT_ERR_IGNORE_NONE);
-
-    ut_a(local_table);
-    table_id_t table_id = local_table->id;
-    dict_table_close(local_table, true, false);
-    innobase_create_zip_dict_references(m_form,
-					table_id, zip_dict_ids, m_trx);
-  }
-#endif
 
   stmt = innobase_get_stmt_unsafe(m_thd, &stmt_len);
 
@@ -21164,88 +21061,6 @@ bool ha_innobase::check_if_incompatible_data(HA_CREATE_INFO *info,
   }
 
   return (COMPATIBLE_DATA_YES);
-}
-
-/** This function reads zip dict-related info from SYS_ZIP_DICT
-and SYS_ZIP_DICT_COLS for all columns marked with
-COLUMN_FORMAT_TYPE_COMPRESSED flag and updates
-zip_dict_name / zip_dict_data for those which have associated
-compression dictionaries.
-
-@param	thd		Thread handle, used to determine whether it is
-necessary to lock dict_sys mutex
-@param	part_name	Full table name (including partition part).
-Must be non-NULL only if called from
-ha_partition.
-*/
-void ha_innobase::update_field_defs_with_zip_dict_info(THD *thd,
-                                                       const char *part_name) {
-  DBUG_ENTER("update_field_defs_with_zip_dict_info");
-
-  // Percona commented out until zip dict implementation in the new DD
-#if 0
-  char norm_name[FN_REFLEN];
-  normalize_table_name(norm_name, part_name ? part_name : table_share->normalized_path.str);
-
-  const innodb_session_t * const innodb_session = thd_to_innodb_session(thd);
-  bool dict_locked = innodb_session->is_dict_mutex_locked();
-  DBUG_EXECUTE_IF("ib_purge_virtual_index_callback",
-		  dict_locked = false; );
-
-  dict_table_t* const ib_table = dict_table_open_on_name(
-    norm_name, dict_locked, false, DICT_ERR_IGNORE_NONE);
-
-  /* if dict_table_open_on_name() returns NULL, then it means that
-  TABLE_SHARE is populated for a table being created and we can
-  skip filling zip dict info here */
-  if (ib_table == nullptr) DBUG_VOID_RETURN;
-
-  const table_id_t ib_table_id = ib_table->id;
-  dict_table_close(ib_table, dict_locked, false);
-  for (uint i = 0; i < table_share->fields; ++i) {
-    Field * const field = table_share->field[i];
-    if (field->column_format() == COLUMN_FORMAT_TYPE_COMPRESSED) {
-      bool reference_found = false;
-      ulint dict_id = 0;
-      switch (dict_get_dictionary_id_by_key(ib_table_id, i, &dict_id, dict_locked)) {
-      case DB_SUCCESS:
-	reference_found = true;
-	break;
-      case DB_RECORD_NOT_FOUND:
-	reference_found = false;
-	break;
-      default:
-	ut_error;
-      }
-      if (reference_found) {
-	char* local_name = nullptr;
-	ulint local_name_len = 0;
-	char* local_data = nullptr;
-	ulint local_data_len = 0;
-	if (dict_get_dictionary_info_by_id(dict_id,  &local_name,
-					   &local_name_len, &local_data,
-					   &local_data_len, dict_locked) !=
-	    DB_SUCCESS)
-	  ut_error;
-	else {
-	  field->zip_dict_name.str = local_name;
-	  field->zip_dict_name.length = local_name_len;
-	  field->zip_dict_data.str = local_data;
-	  field->zip_dict_data.length = local_data_len;
-	}
-      }
-      else {
-	field->zip_dict_name.str = nullptr;
-	field->zip_dict_name.length = 0;
-	field->zip_dict_data.str = nullptr;
-	field->zip_dict_data.length = 0;
-      }
-    }
-  }
-#else
-  ut_a(0);
-#endif
-  DBUG_VOID_RETURN;
 }
 
 /** Update the system variable innodb_io_capacity_max using the "saved"

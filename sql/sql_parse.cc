@@ -144,6 +144,8 @@
 #include "sql/sp.h"        // sp_create_routine
 #include "sql/sp_cache.h"  // sp_cache_enforce_limit
 #include "sql/sp_head.h"   // sp_head
+#include "sql/sp_instr.h"
+#include "sql/sp_rcontext.h"
 #include "sql/sql_admin.h"
 #include "sql/sql_alter.h"
 #include "sql/sql_audit.h"  // MYSQL_AUDIT_NOTIFY_CONNECTION_CHANGE_USER
@@ -1797,6 +1799,11 @@ bool dispatch_command(THD *thd, const COM_DATA *com_data,
   DBUG_TRACE;
   DBUG_PRINT("info", ("command: %d", command));
 
+  DBUG_EXECUTE_IF("crash_dispatch_command_before", {
+    DBUG_PRINT("crash_dispatch_command_before", ("now"));
+    DBUG_ABORT();
+  });
+
   Sql_cmd_clone *clone_cmd = nullptr;
 
   /* SHOW PROFILE instrumentation, begin */
@@ -2549,6 +2556,10 @@ done:
   THD_STAGE_INFO(thd, stage_cleaning_up);
   if (thd->lex->sql_command == SQLCOM_CREATE_TABLE) {
     DEBUG_SYNC(thd, "dispatch_create_table_command_before_thd_root_free");
+  }
+
+  if (thd->killed == THD::KILL_QUERY) {
+    thd->killed = THD::NOT_KILLED;
   }
 
   thd->reset_query();
@@ -4110,17 +4121,18 @@ int mysql_execute_command(THD *thd, bool first_level) {
         dict_data_ptr = &dict_data;
       }
 
-      if ((res = mysql_create_zip_dict(
+      if ((res = compression_dict::create_zip_dict(
                thd, lex->ident.str, lex->ident.length, dict_data_ptr->ptr(),
                dict_data_ptr->length(),
-               (lex->create_info->options & HA_LEX_CREATE_IF_NOT_EXISTS) !=
-                   0)) == 0)
+               (lex->create_info->options & HA_LEX_CREATE_IF_NOT_EXISTS) != 0,
+               false)) == 0)
         my_ok(thd);
       break;
     }
     case SQLCOM_DROP_COMPRESSION_DICTIONARY: {
-      if ((res = mysql_drop_zip_dict(thd, lex->ident.str, lex->ident.length,
-                                     lex->drop_if_exists)) == 0)
+      if ((res = compression_dict::drop_zip_dict(
+               thd, lex->ident.str, lex->ident.length, lex->drop_if_exists)) ==
+          0)
         my_ok(thd);
       break;
     }

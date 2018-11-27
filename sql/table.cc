@@ -547,19 +547,6 @@ void TABLE_SHARE::destroy() {
 
   DBUG_TRACE;
   DBUG_PRINT("info", ("db: %s table: %s", db.str, table_name.str));
-  if (field != 0) {
-    Field *current_field;
-    for (uint i = 0; i < fields; ++i) {
-      current_field = field[i];
-      if (current_field &&
-          current_field->has_associated_compression_dictionary()) {
-        my_free(const_cast<char *>(current_field->zip_dict_data.str));
-        current_field->zip_dict_data = null_lex_cstr;
-        my_free(const_cast<char *>(current_field->zip_dict_name.str));
-        current_field->zip_dict_name = null_lex_cstr;
-      }
-    }
-  }
   if (ha_share) {
     delete ha_share;
     ha_share = nullptr;
@@ -2095,9 +2082,27 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share,
   assert(share->fields >= frm_context->stored_fields);
   assert(share->reclength >= share->stored_rec_length);
 
-  /* update zip dict info (name + data) from the handler */
-  if (share->has_compressed_columns())
-    handler_file->update_field_defs_with_zip_dict_info(thd, NULL);
+  /* Use share mem root for zip dict name and data */
+  for (uint i2 = 0; i2 < share->fields; ++i2) {
+    Field *field = share->field[i2];
+    if (field->column_format() == COLUMN_FORMAT_TYPE_COMPRESSED) {
+      if (field->zip_dict_data.str != nullptr) {
+        LEX_CSTRING saved_data = field->zip_dict_data;
+        field->zip_dict_data.str =
+            strmake_root(&share->mem_root, saved_data.str, saved_data.length);
+        field->zip_dict_data.length = saved_data.length;
+        my_free(const_cast<char *>(saved_data.str));
+      }
+
+      if (field->zip_dict_name.str != nullptr) {
+        LEX_CSTRING saved_data = field->zip_dict_name;
+        field->zip_dict_name.str =
+            strmake_root(&share->mem_root, saved_data.str, saved_data.length);
+        field->zip_dict_name.length = saved_data.length;
+        my_free(const_cast<char *>(saved_data.str));
+      }
+    }
+  }
 
   /* Fix key->name and key_part->field */
   if (key_parts) {
