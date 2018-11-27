@@ -2207,14 +2207,15 @@ static char *quote_name(char *name, char *buff, bool force) {
    @return Pointer to unquoted string (either original opt_quoted_name or
    buff).
 */
-static char *unquote_name(const char *opt_quoted_name, char *buff) noexcept {
-  if (!opt_quoted) return (char *)opt_quoted_name;
+static const char *unquote_name(const char *opt_quoted_name,
+                                char *buff) noexcept {
+  if (!opt_quoted) return (const char *)opt_quoted_name;
 
   const char qtype = ansi_quotes_mode ? '\"' : '`';
 
   if (*opt_quoted_name != qtype) {
     assert(strchr(opt_quoted_name, qtype) == 0);
-    return (char *)opt_quoted_name;
+    return (const char *)opt_quoted_name;
   }
 
   ++opt_quoted_name;
@@ -3656,9 +3657,9 @@ static void print_optional_create_compression_dictionary(
   */
   if (!processed_compression_dictionaries->count(dictionary_name)) {
     static const constexpr char get_zip_dict_data_stmt[] =
-        "SELECT `ZIP_DICT` "
-        "FROM `INFORMATION_SCHEMA`.`XTRADB_ZIP_DICT` "
-        "WHERE `NAME` = '%s'";
+        "SELECT `DICT_DATA` "
+        "FROM `INFORMATION_SCHEMA`.`COMPRESSION_DICTIONARY` "
+        "WHERE `DICT_NAME` = '%s'";
 
     processed_compression_dictionaries->emplace(dictionary_name);
 
@@ -3754,6 +3755,30 @@ static inline bool innodb_stats_tables(const char *db, const char *table) {
           !my_strcasecmp(charset_info, table, "innodb_index_stats") ||
           !my_strcasecmp(charset_info, table, "innodb_dynamic_metadata") ||
           !my_strcasecmp(charset_info, table, "innodb_ddl_log"));
+}
+
+/**
+   Checks if --add-drop-table option is enabled and prints
+   "DROP TABLE IF EXISTS ..." if the specified table is not a log table.
+
+   @param sql_file           output file
+   @param db                 db name
+   @param table              table name
+   @param opt_quoted_table   optionally quoted table name
+*/
+static void print_optional_drop_table(FILE *sql_file, const char *db,
+                                      const char *table,
+                                      const char *opt_quoted_table) noexcept {
+  DBUG_ENTER("print_optional_drop_table");
+  DBUG_PRINT("enter", ("db: %s  table: %s", db, table));
+  if (opt_drop) {
+    if (!(general_log_or_slow_log_tables(db, table) ||
+          replication_metadata_tables(db, table))) {
+      fprintf(sql_file, "DROP TABLE IF EXISTS %s;\n", opt_quoted_table);
+      check_io(sql_file);
+    }
+  }
+  DBUG_VOID_RETURN;
 }
 
 /**
@@ -3904,22 +3929,17 @@ static uint get_table_structure(const char *table, char *db, char *table_type,
                       "\n--\n-- Table structure for table %s\n--\n\n", text);
       if (freemem) my_free(const_cast<char *>(text));
 
-      if (opt_drop) {
+      field = mysql_fetch_field_direct(result, 0);
+      if (strcmp(field->name, "View") == 0) {
         /*
           Even if the "table" is a view, we do a DROP TABLE here.  The
           view-specific code below fills in the DROP VIEW.
           We will skip the DROP TABLE for general_log and slow_log, since
           those stmts will fail, in case we apply dump by enabling logging.
           We will skip this for replication metadata tables as well.
-         */
-        if (!(general_log_or_slow_log_tables(db, table) ||
-              replication_metadata_tables(db, table)))
-          fprintf(sql_file, "DROP TABLE IF EXISTS %s;\n", opt_quoted_table);
-        check_io(sql_file);
-      }
+        */
+        print_optional_drop_table(sql_file, db, table, opt_quoted_table);
 
-      field = mysql_fetch_field_direct(result, 0);
-      if (strcmp(field->name, "View") == 0) {
         char *scv_buff = nullptr;
         uint64_t n_cols;
 
@@ -4048,6 +4068,8 @@ static uint get_table_structure(const char *table, char *db, char *table_type,
         for (const auto &it : referenced_dictionaries)
           print_optional_create_compression_dictionary(sql_file, it.c_str());
       }
+
+      print_optional_drop_table(sql_file, db, table, opt_quoted_table);
 
       is_log_table = general_log_or_slow_log_tables(db, table);
       is_replication_metadata_table = replication_metadata_tables(db, table);

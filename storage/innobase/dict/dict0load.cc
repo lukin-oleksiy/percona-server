@@ -51,6 +51,7 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #include "fsp0file.h"
 #include "fsp0sysspace.h"
 #include "fts0priv.h"
+#include "lob0lob.h"
 #include "mach0data.h"
 
 #include "my_dbug.h"

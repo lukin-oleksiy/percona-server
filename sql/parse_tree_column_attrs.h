@@ -508,16 +508,12 @@ class PT_column_format_column_attr : public PT_column_attr_base {
     *type_flags |= format << FIELD_FLAGS_COLUMN_FORMAT;
   }
   bool do_contextualize(Column_parse_context *pc) override {
-    if (pc->is_generated) {
-      my_error(ER_WRONG_USAGE, MYF(0), "COLUMN_FORMAT", "generated column");
-      return true;
-    }
     return super::do_contextualize(pc);
   }
   enum Attr_type attr_type() const override {
     return AT_COLUMN_FORMAT_COLUMN_ATTR;
   }
-  virtual void apply_zip_dict(LEX_CSTRING *to) const noexcept {
+  void apply_zip_dict(LEX_CSTRING *to) const noexcept override {
     *to = m_zip_dict_name;
   }
 

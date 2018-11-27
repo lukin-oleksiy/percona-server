@@ -2118,13 +2118,6 @@ dberr_t srv_start(bool create_new_db) {
     }
   }
 
-// Percona commented out to be removed for the new DD
-#if 0
-  /* Create the SYS_ZIP_DICT system table */
-  err = dict_create_or_check_sys_zip_dict();
-  if (err != DB_SUCCESS) return(err);
-#endif
-
   srv_is_being_started = false;
 
   ut_a(trx_purge_state() == PURGE_STATE_INIT);

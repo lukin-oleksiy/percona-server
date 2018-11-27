@@ -169,6 +169,8 @@ SET(DD_SOURCES
   dd/impl/system_views/columns_extensions.cc
   dd/impl/system_views/column_statistics.cc
   dd/impl/system_views/enabled_roles.cc
+  dd/impl/system_views/compression_dictionary.cc
+  dd/impl/system_views/compression_dictionary_tables.cc
   dd/impl/system_views/events.cc
   dd/impl/system_views/files.cc
   dd/impl/system_views/innodb_datafiles.cc
@@ -1004,6 +1006,13 @@ IF(COMPRESS_DEBUG_SECTIONS)
   IF(HAVE_COMPRESS_GZ_OPTION)
     TARGET_COMPILE_OPTIONS(sql_gis PRIVATE -gz)
   ENDIF()
+ENDIF()
+
+# Suppress warnings for gcc-11 or newer
+IF(CMAKE_COMPILER_IS_GNUCXX AND NOT CMAKE_CXX_COMPILER_VERSION VERSION_LESS 11)
+  ADD_CXX_COMPILE_FLAGS_TO_FILES(-Wno-mismatched-new-delete FILES sql_cursor.cc sql_prepare.cc)
+  # a false positive with a bison-generated file (https://gcc.gnu.org/bugzilla/show_bug.cgi?id=98753)
+  ADD_CXX_COMPILE_FLAGS_TO_FILES(-Wno-free-nonheap-object FILES ${CMAKE_CURRENT_BINARY_DIR}/sql_hints.yy.cc)
 ENDIF()
 
 ADD_LIBRARY(sql_dd STATIC ${DD_SOURCES})
