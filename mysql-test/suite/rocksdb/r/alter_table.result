@@ -150,6 +150,8 @@ t1	CREATE TABLE `t1` (
   PRIMARY KEY (`pk`)
 ) ENGINE=ROCKSDB DEFAULT CHARSET=latin1 COLLATE=latin1_general_cs
 ALTER TABLE t1 CONVERT TO CHARACTER SET utf8mb3;
+Warnings:
+Warning	1287	'utf8mb3' is deprecated and will be removed in a future release. Please use utf8mb4 instead
 SHOW CREATE TABLE t1;
 Table	Create Table
 t1	CREATE TABLE `t1` (
@@ -158,15 +160,15 @@ t1	CREATE TABLE `t1` (
   `b` char(8) DEFAULT NULL,
   `c` char(8) DEFAULT NULL,
   PRIMARY KEY (`pk`)
-) ENGINE=ROCKSDB DEFAULT CHARSET=utf8
+) ENGINE=ROCKSDB DEFAULT CHARSET=utf8mb3
 ALTER TABLE t1 DEFAULT CHARACTER SET = latin1 COLLATE latin1_general_ci;
 SHOW CREATE TABLE t1;
 Table	Create Table
 t1	CREATE TABLE `t1` (
   `pk` int NOT NULL,
   `a` int DEFAULT NULL,
-  `b` char(8) CHARACTER SET utf8 DEFAULT NULL,
-  `c` char(8) CHARACTER SET utf8 DEFAULT NULL,
+  `b` char(8) CHARACTER SET utf8mb3 DEFAULT NULL,
+  `c` char(8) CHARACTER SET utf8mb3 DEFAULT NULL,
   PRIMARY KEY (`pk`)
 ) ENGINE=ROCKSDB DEFAULT CHARSET=latin1 COLLATE=latin1_general_ci
 ALTER TABLE t1 FORCE;
@@ -175,8 +177,8 @@ Table	Create Table
 t1	CREATE TABLE `t1` (
   `pk` int NOT NULL,
   `a` int DEFAULT NULL,
-  `b` char(8) CHARACTER SET utf8 DEFAULT NULL,
-  `c` char(8) CHARACTER SET utf8 DEFAULT NULL,
+  `b` char(8) CHARACTER SET utf8mb3 DEFAULT NULL,
+  `c` char(8) CHARACTER SET utf8mb3 DEFAULT NULL,
   PRIMARY KEY (`pk`)
 ) ENGINE=ROCKSDB DEFAULT CHARSET=latin1 COLLATE=latin1_general_ci
 DROP TABLE t1;
