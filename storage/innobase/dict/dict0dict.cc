@@ -6070,3 +6070,22 @@ void dict_sys_set_min_next_row_id(row_id_t next_id) {
   dict_sys_set_min_id_in_ram(next_id);
 }
 #endif /* !UNIV_HOTBACKUP */
+
+bool dict_detect_encryption(bool is_upgrade) {
+  bool encrypt_mysql = false;
+  if (is_upgrade) {
+    space_id_t space_id = fil_space_get_id_by_name("mysql/plugin");
+    ut_ad(space_id != SPACE_UNKNOWN);
+
+    fil_space_t *space = fil_space_get(space_id);
+    ut_ad(space != nullptr);
+
+    if (space == nullptr) {
+      return (false);
+    }
+    encrypt_mysql = FSP_FLAGS_GET_ENCRYPTION(space->flags);
+  }
+
+  return (encrypt_mysql || srv_encrypt_tables == SRV_ENCRYPT_TABLES_ON ||
+          srv_encrypt_tables == SRV_ENCRYPT_TABLES_FORCE);
+}
