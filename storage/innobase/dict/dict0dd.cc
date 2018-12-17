@@ -3567,15 +3567,19 @@ void get_field_types(const dd::Table *dd_tab, const dict_table_t *m_table,
     col_len = field->key_length();
   }
 
+  const ulint is_compressed =
+      field->column_format() == COLUMN_FORMAT_TYPE_COMPRESSED ? DATA_COMPRESSED
+                                                              : 0;
+
   if (!is_virtual) {
     prtype =
         dtype_form_prtype((ulint)field->type() | nulls_allowed | unsigned_type |
-                              binary_type | long_true_varchar,
+                              binary_type | long_true_varchar | is_compressed,
                           charset_no);
   } else {
     prtype = dtype_form_prtype(
         (ulint)field->type() | nulls_allowed | unsigned_type | binary_type |
-            long_true_varchar | is_virtual | is_multi_val,
+            long_true_varchar | is_virtual | is_multi_val | is_compressed,
         charset_no);
   }
 }
