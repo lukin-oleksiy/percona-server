@@ -28,8 +28,8 @@ namespace myrocks {
 */
 
 inline void rdb_netstr_append_uint64(my_core::String *const out_netstr,
-                                     const uint64 &val) {
-  DBUG_ASSERT(out_netstr != nullptr);
+                                     const uint64 val) {
+  assert(out_netstr != nullptr);
 
   // Convert from host machine byte order (usually Little Endian) to network
   // byte order (Big Endian).
@@ -38,8 +38,8 @@ inline void rdb_netstr_append_uint64(my_core::String *const out_netstr,
 }
 
 inline void rdb_netstr_append_uint32(my_core::String *const out_netstr,
-                                     const uint32 &val) {
-  DBUG_ASSERT(out_netstr != nullptr);
+                                     const uint32 val) {
+  assert(out_netstr != nullptr);
 
   // Convert from host machine byte order (usually Little Endian) to network
   // byte order (Big Endian).
@@ -48,8 +48,8 @@ inline void rdb_netstr_append_uint32(my_core::String *const out_netstr,
 }
 
 inline void rdb_netstr_append_uint16(my_core::String *const out_netstr,
-                                     const uint16 &val) {
-  DBUG_ASSERT(out_netstr != nullptr);
+                                     const uint16 val) {
+  assert(out_netstr != nullptr);
 
   // Convert from host machine byte order (usually Little Endian) to network
   // byte order (Big Endian).
@@ -61,8 +61,8 @@ inline void rdb_netstr_append_uint16(my_core::String *const out_netstr,
   Basic network buffer ("netbuf") write helper functions.
 */
 
-inline void rdb_netbuf_store_uint64(uchar *const dst_netbuf, const uint64 &n) {
-  DBUG_ASSERT(dst_netbuf != nullptr);
+inline void rdb_netbuf_store_uint64(uchar *const dst_netbuf, const uint64 n) {
+  assert(dst_netbuf != nullptr);
 
   // Convert from host byte order (usually Little Endian) to network byte order
   // (Big Endian).
@@ -70,8 +70,8 @@ inline void rdb_netbuf_store_uint64(uchar *const dst_netbuf, const uint64 &n) {
   memcpy(dst_netbuf, &net_val, sizeof(net_val));
 }
 
-inline void rdb_netbuf_store_uint32(uchar *const dst_netbuf, const uint32 &n) {
-  DBUG_ASSERT(dst_netbuf != nullptr);
+inline void rdb_netbuf_store_uint32(uchar *const dst_netbuf, const uint32 n) {
+  assert(dst_netbuf != nullptr);
 
   // Convert from host byte order (usually Little Endian) to network byte order
   // (Big Endian).
@@ -79,8 +79,8 @@ inline void rdb_netbuf_store_uint32(uchar *const dst_netbuf, const uint32 &n) {
   memcpy(dst_netbuf, &net_val, sizeof(net_val));
 }
 
-inline void rdb_netbuf_store_uint16(uchar *const dst_netbuf, const uint16 &n) {
-  DBUG_ASSERT(dst_netbuf != nullptr);
+inline void rdb_netbuf_store_uint16(uchar *const dst_netbuf, const uint16 n) {
+  assert(dst_netbuf != nullptr);
 
   // Convert from host byte order (usually Little Endian) to network byte order
   // (Big Endian).
@@ -88,15 +88,15 @@ inline void rdb_netbuf_store_uint16(uchar *const dst_netbuf, const uint16 &n) {
   memcpy(dst_netbuf, &net_val, sizeof(net_val));
 }
 
-inline void rdb_netbuf_store_byte(uchar *const dst_netbuf, const uchar &c) {
-  DBUG_ASSERT(dst_netbuf != nullptr);
+inline void rdb_netbuf_store_byte(uchar *const dst_netbuf, const uchar c) {
+  assert(dst_netbuf != nullptr);
 
   *dst_netbuf = c;
 }
 
 inline void rdb_netbuf_store_index(uchar *const dst_netbuf,
-                                   const uint32 &number) {
-  DBUG_ASSERT(dst_netbuf != nullptr);
+                                   const uint32 number) {
+  assert(dst_netbuf != nullptr);
 
   rdb_netbuf_store_uint32(dst_netbuf, number);
 }
@@ -248,7 +248,7 @@ class Rdb_string_reader {
     Read the next @param size bytes. Returns pointer to the bytes read, or
     nullptr if the remaining string doesn't have that many bytes.
   */
-  const char *read(const uint &size) {
+  const char *read(const uint size) {
     const char *res;
     if (m_len < size) {
       res = nullptr;
@@ -324,50 +324,50 @@ class Rdb_string_writer {
   Rdb_string_writer() = default;
 
   void clear() { m_data.clear(); }
-  void write_uint8(const uint &val) {
+  void write_uint8(const uint val) {
     m_data.push_back(static_cast<uchar>(val));
   }
 
-  void write_uint16(const uint &val) {
+  void write_uint16(const uint val) {
     const auto size = m_data.size();
     m_data.resize(size + 2);
     rdb_netbuf_store_uint16(m_data.data() + size, val);
   }
 
-  void write_uint32(const uint &val) {
+  void write_uint32(const uint val) {
     const auto size = m_data.size();
     m_data.resize(size + 4);
     rdb_netbuf_store_uint32(m_data.data() + size, val);
   }
 
-  void write(const uchar *const new_data, const size_t &len) {
-    DBUG_ASSERT(new_data != nullptr);
+  void write(const uchar *const new_data, const size_t len) {
+    assert(new_data != nullptr);
     m_data.insert(m_data.end(), new_data, new_data + len);
   }
 
   uchar *ptr() { return m_data.data(); }
   size_t get_current_pos() const { return m_data.size(); }
 
-  void write_uint8_at(const size_t &pos, const uint &new_val) {
+  void write_uint8_at(const size_t pos, const uint new_val) {
     // This function will only overwrite what was written
     assert(pos < get_current_pos());
     m_data.data()[pos] = new_val;
   }
 
-  void write_uint16_at(const size_t &pos, const uint &new_val) {
+  void write_uint16_at(const size_t pos, const uint new_val) {
     // This function will only overwrite what was written
     assert(pos < get_current_pos());
     assert((pos + 1) < get_current_pos());
     rdb_netbuf_store_uint16(m_data.data() + pos, new_val);
   }
 
-  void truncate(const size_t &pos) {
-    DBUG_ASSERT(pos < m_data.size());
+  void truncate(const size_t pos) {
+    assert(pos < m_data.size());
     m_data.resize(pos);
   }
 
-  void allocate(const size_t &len, const uchar &val = 0) {
-    DBUG_ASSERT(len > 0);
+  void allocate(const size_t len, const uchar val = 0) {
+    assert(len > 0);
     m_data.resize(m_data.size() + len, val);
   }
 
@@ -395,8 +395,8 @@ class Rdb_bit_writer {
   explicit Rdb_bit_writer(Rdb_string_writer *writer_arg)
       : m_writer(writer_arg), m_offset(0) {}
 
-  void write(uint size, const uint &value) {
-    DBUG_ASSERT((value & ((1 << size) - 1)) == value);
+  void write(uint size, const uint value) {
+    assert((value & ((1 << size) - 1)) == value);
 
     while (size > 0) {
       if (m_offset == 0) {
