@@ -457,7 +457,7 @@ static const constexpr ulong RDB_DEADLOCK_DETECT_DEPTH = 50;
 static long long rocksdb_block_cache_size = RDB_DEFAULT_BLOCK_CACHE_SIZE;
 static long long rocksdb_sim_cache_size = 0;
 static double rocksdb_cache_high_pri_pool_ratio = 0.0;
-static my_bool rocksdb_cache_dump = FALSE;
+static bool rocksdb_cache_dump = false;
 /* Use unsigned long long instead of uint64_t because of MySQL compatibility */
 static unsigned long long  // NOLINT(runtime/int)
     rocksdb_rate_limiter_bytes_per_sec = 0;
@@ -519,7 +519,7 @@ static uint32_t rocksdb_stats_recalc_rate = 0;
 static bool rocksdb_no_create_column_family = false;
 static uint32_t rocksdb_debug_manual_compaction_delay = 0;
 static uint32_t rocksdb_max_manual_compactions = 0;
-static my_bool rocksdb_rollback_on_timeout = FALSE;
+static bool rocksdb_rollback_on_timeout = false;
 
 std::atomic<uint64_t> rocksdb_row_lock_deadlocks(0);
 std::atomic<uint64_t> rocksdb_row_lock_wait_timeouts(0);
@@ -1440,7 +1440,7 @@ static MYSQL_SYSVAR_BOOL(
     rollback_on_timeout, rocksdb_rollback_on_timeout, PLUGIN_VAR_OPCMDARG,
     "Whether to roll back the complete transaction or a single statement on "
     "lock wait timeout (a single statement by default)",
-    NULL, NULL, FALSE);
+    NULL, NULL, false);
 
 static MYSQL_SYSVAR_UINT(
     debug_manual_compaction_delay, rocksdb_debug_manual_compaction_delay,
@@ -2034,7 +2034,8 @@ class Rdb_transaction {
         convert_error_code_to_mysql() does: force a statement
         rollback before returning HA_ERR_LOCK_WAIT_TIMEOUT:
         */
-      thd->mark_transaction_to_rollback(static_cast<bool>(rocksdb_rollback_on_timeout));
+      thd->mark_transaction_to_rollback(
+          static_cast<bool>(rocksdb_rollback_on_timeout));
 
       rocksdb_row_lock_wait_timeouts++;
 
@@ -4500,7 +4501,8 @@ static int rocksdb_init_func(void *const p) {
     }
     std::shared_ptr<rocksdb::Cache> block_cache = rocksdb::NewLRUCache(
         rocksdb_block_cache_size, -1 /*num_shard_bits*/,
-        false /*strict_capcity_limit*/, rocksdb_cache_high_pri_pool_ratio, memory_allocator);
+        false /*strict_capcity_limit*/, rocksdb_cache_high_pri_pool_ratio,
+        memory_allocator);
     if (rocksdb_sim_cache_size > 0) {
       // Simulated cache enabled
       // Wrap block cache inside a simulated cache and pass it to RocksDB
@@ -7778,6 +7780,7 @@ int ha_rocksdb::secondary_index_read(const int keyno, uchar *const buf) {
             table, buf, &key, &value, m_verify_row_debug_checksums);
         global_stats.covered_secondary_key_lookups.inc();
       } else {
+        DEBUG_SYNC(ha_thd(), "rocksdb_concurrent_delete_sk");
         rc = get_row_by_rowid(buf, m_pk_packed_tuple, size);
       }
 
@@ -8001,8 +8004,9 @@ int ha_rocksdb::index_read_map_impl(uchar *const buf, const uchar *const key,
     else
       rc = read_row_from_secondary_key(buf, kd, move_forward);
 
-    if (rc != HA_ERR_ROCKSDB_STATUS_BUSY || !is_new_snapshot)
+    if (!should_recreate_snapshot(rc, is_new_snapshot)) {
       break; /* Exit the loop */
+    }
 
     // release the snapshot and iterator so they will be regenerated
     tx->release_snapshot();
@@ -8449,21 +8453,26 @@ int ha_rocksdb::index_next_with_direction(uchar *const buf, bool move_forward) {
   if (active_index == pk_index(table, m_tbl_def)) {
     rc = rnd_next_with_direction(buf, move_forward);
   } else {
-    if (m_skip_scan_it_next_call) {
-      m_skip_scan_it_next_call = false;
-    } else if (!m_scan_it->Valid()) {
-      DBUG_RETURN(HA_ERR_KEY_NOT_FOUND);
-    } else {
-      if (move_forward)
-        m_scan_it->Next(); /* this call cannot fail */
-      else
-        m_scan_it->Prev();
+    for (;;) {
+      if (m_skip_scan_it_next_call) {
+        m_skip_scan_it_next_call = false;
+      } else if (!m_scan_it->Valid()) {
+        DBUG_RETURN(HA_ERR_KEY_NOT_FOUND);
+      } else {
+        if (move_forward)
+          m_scan_it->Next(); /* this call cannot fail */
+        else
+          m_scan_it->Prev();
+      }
+      rocksdb_skip_expired_records(*m_key_descr_arr[active_index], m_scan_it,
+                                   !move_forward);
+      rc = find_icp_matching_index_rec(move_forward, buf);
+      if (!rc)
+        rc = secondary_index_read(active_index, buf);
+      if (!should_skip_invalidated_record(rc)) {
+        break;
+      }
     }
-    rocksdb_skip_expired_records(*m_key_descr_arr[active_index], m_scan_it,
-                                 !move_forward);
-    rc = find_icp_matching_index_rec(move_forward, buf);
-    if (!rc)
-      rc = secondary_index_read(active_index, buf);
   }
 
   DBUG_RETURN(rc);
@@ -8572,8 +8581,9 @@ int ha_rocksdb::index_first_intern(uchar *const buf) {
     m_skip_scan_it_next_call = true;
 
     rc = index_next_with_direction(buf, true);
-    if (rc != HA_ERR_ROCKSDB_STATUS_BUSY || !is_new_snapshot)
-      break;  // exit the loop
+    if (!should_recreate_snapshot(rc, is_new_snapshot)) {
+      break; /* exit the loop */
+    }
 
     // release the snapshot and iterator so they will be regenerated
     tx->release_snapshot();
@@ -8662,8 +8672,9 @@ int ha_rocksdb::index_last_intern(uchar *const buf) {
         rc = secondary_index_read(active_index, buf);
     }
 
-    if (rc != HA_ERR_ROCKSDB_STATUS_BUSY || !is_new_snapshot)
+    if (!should_recreate_snapshot(rc, is_new_snapshot)) {
       break; /* exit the loop */
+    }
 
     // release the snapshot and iterator so they will be regenerated
     tx->release_snapshot();
@@ -9687,9 +9698,9 @@ int ha_rocksdb::rnd_next(uchar *const buf) {
   ha_statistic_increment(&System_status_var::ha_read_rnd_next_count);
   for (;;) {
     rc = rnd_next_with_direction(buf, true);
-    if (rc != HA_ERR_ROCKSDB_STATUS_BUSY || !m_rnd_scan_is_new_snapshot)
+    if (!should_recreate_snapshot(rc, m_rnd_scan_is_new_snapshot)) {
       break; /* exit the loop */
-
+    }
     // release the snapshot and iterator and then regenerate them
     Rdb_transaction *tx = get_or_create_tx(table->in_use);
     tx->release_snapshot();
@@ -9766,11 +9777,7 @@ int ha_rocksdb::rnd_next_with_direction(uchar *const buf, bool move_forward) {
       const rocksdb::Status s =
           get_for_update(tx, m_pk_descr->get_cf(), key, &m_retrieved_record);
       if (s.IsNotFound() &&
-          my_core::thd_tx_isolation(ha_thd()) == ISO_READ_COMMITTED) {
-        // This occurs if we accessed a row, tried to lock it, failed,
-        // released and reacquired the snapshot (because of READ COMMITTED
-        // mode) and the row was deleted by someone else in the meantime.
-        // If so, we just want to move on to the next row.
+          should_skip_invalidated_record(HA_ERR_KEY_NOT_FOUND)) {
         continue;
       }
 
@@ -12717,6 +12724,36 @@ bool Rdb_manual_compaction_thread::is_manual_compaction_finished(int mc_id) {
   }
   RDB_MUTEX_UNLOCK_CHECK(m_mc_mutex);
   return finished;
+}
+
+/**
+ * Locking read + Not Found + Read Committed occurs if we accessed
+ * a row by Seek, tried to lock it, failed, released and reacquired the
+ * snapshot (because of READ COMMITTED mode) and the row was deleted by
+ * someone else in the meantime.
+ * If so, we either just skipping the row, or re-creating a snapshot
+ * and seek again. In both cases, Read Committed constraint is not broken.
+ */
+bool ha_rocksdb::should_skip_invalidated_record(const int rc) const {
+  if ((m_lock_rows != RDB_LOCK_NONE && rc == HA_ERR_KEY_NOT_FOUND &&
+       my_core::thd_tx_isolation(ha_thd()) == ISO_READ_COMMITTED)) {
+    return true;
+  }
+  return false;
+}
+/**
+ * Indicating snapshot needs to be re-created and retrying seek again,
+ * instead of returning errors or empty set. This is normally applicable
+ * when hitting kBusy when locking the first row of the transaction,
+ * with Repeatable Read isolation level.
+ */
+bool ha_rocksdb::should_recreate_snapshot(const int rc,
+                                          const bool is_new_snapshot) const {
+  if (should_skip_invalidated_record(rc) ||
+      (rc == HA_ERR_ROCKSDB_STATUS_BUSY && is_new_snapshot)) {
+    return true;
+  }
+  return false;
 }
 
 bool ha_rocksdb::check_bloom_and_set_bounds(
