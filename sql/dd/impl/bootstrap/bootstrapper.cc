@@ -908,15 +908,20 @@ mysql.compression_dictionary_cols
 @param[in,out]  thd  Session context
 @return false on success, true on failure */
 static bool check_and_create_compression_dict_tables(THD *thd) {
-  const dd::Table *new_table_def = nullptr;
-
+  const dd::Table *comp_table_def = nullptr;
   if (thd->dd_client()->acquire("mysql", "compression_dictionary",
-                                &new_table_def)) {
+                                &comp_table_def)) {
     return true;
   }
 
-  if (new_table_def != nullptr) {
-    // Compression dictionary table exists. Do nothing
+  const dd::Table *comp_cols_table_def = nullptr;
+  if (thd->dd_client()->acquire("mysql", "compression_dictionary_cols",
+                                &comp_cols_table_def)) {
+    return true;
+  }
+
+  if (comp_table_def && comp_cols_table_def) {
+    // Compression dictionary tables exist. Do nothing.
     return false;
   }
 
