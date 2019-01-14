@@ -119,6 +119,12 @@ enum class Explain_format_type : ulong {
   JSON = 3
 };
 
+// Values for default_table_encryption
+enum enum_default_table_encryption {
+  DEFAULT_TABLE_ENC_OFF = 0,
+  DEFAULT_TABLE_ENC_ON = 1,
+};
+
 /* Bits for different SQL modes modes (including ANSI mode) */
 inline constexpr sql_mode_t MODE_REAL_AS_FLOAT = 1;
 inline constexpr sql_mode_t MODE_PIPES_AS_CONCAT = 2;

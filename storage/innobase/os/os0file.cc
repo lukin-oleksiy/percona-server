@@ -5763,13 +5763,16 @@ Requests a synchronous read operation of page 0 of IBD file
 @param[in]      file            Open file handle
 @param[out]     buf             buffer where to read
 @param[in]      n               number of bytes to read
-@return DB_SUCCESS if request was successful, DB_IO_ERROR on failure */
+@param[in]      exit_on_err     if true then exit on error
+@return DB_SUCCESS or error code */
 dberr_t os_file_read_first_page_func(IORequest &type, const char *file_name,
-                                     os_file_t file, void *buf, ulint n) {
+                                     os_file_t file, void *buf, ulint n,
+                                     bool exit_on_err) {
   ut_ad(type.is_read());
 
-  dberr_t err = os_file_read_page(type, file_name, file, buf, 0,
-                                  UNIV_ZIP_SIZE_MIN, nullptr, true, nullptr);
+  dberr_t err =
+      os_file_read_page(type, file_name, file, buf, 0, UNIV_ZIP_SIZE_MIN,
+                        nullptr, exit_on_err, nullptr);
 
   if (err == DB_SUCCESS) {
     uint32_t flags = fsp_header_get_flags(static_cast<byte *>(buf));

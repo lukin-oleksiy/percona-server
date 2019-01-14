@@ -1635,5 +1635,12 @@ cleared */
 bool dd_clear_encryption_flag(THD *thd, const char *space_name,
                               volatile bool *is_space_being_removed);
 
+/* If mysql_ibd's DD encryption flag is different from the encryption flag in
+ * space_flag   the mysql_ibd's encryption flag will be set to the
+ * one from space_flags.
+@param[in] Thread       THD
+@param[in] space_flags  with correct encryption flag */
+bool dd_fix_mysql_ibd_encryption_flag_if_needed(THD *thd, uint32_t space_flags);
+
 #include "dict0dd.ic"
 #endif
