@@ -84,7 +84,7 @@ while ( $varid <= $countvars )
 }
 
 --echo
---let $expected = 85
+--let $expected = 87
 --let $assert_text = Expect $expected persisted variables in persisted_variables table.
 --let $assert_cond = [SELECT COUNT(*) as count FROM performance_schema.persisted_variables, count, 1] = $expected
 --source include/assert.inc

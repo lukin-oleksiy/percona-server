@@ -222,6 +222,9 @@ The following options may be given as the first argument:
  of big documents may need significantly less space.
  --binlog-rows-query-log-events 
  Allow writing of Rows_query_log events into binary log.
+ --binlog-skip-flush-commands 
+ If set to TRUE, FLUSH <XXX> commands will not be be
+ written to the binary log
  --binlog-space-limit=# 
  Maximum space to use for all binary logs. Default is 0,
  this feature is disabled.
@@ -429,11 +432,6 @@ The following options may be given as the first argument:
  Default secondary storage engine for external tables
  --external-table-storage-engine=name 
  Default storage engine for external tables
- --extra-max-connections=# 
- The number of connections on extra-port
- --extra-port=#      Extra port number to use for tcp connections in a
- one-thread-per-connection manner. 0 means don't use
- another port
  --flush             Flush MyISAM tables to disk between SQL commands
  --flush-time=#      A dedicated thread is created to flush all tables at the
  given interval
@@ -1749,6 +1747,7 @@ binlog-row-image FULL
 binlog-row-metadata MINIMAL
 binlog-row-value-options 
 binlog-rows-query-log-events FALSE
+binlog-skip-flush-commands FALSE
 binlog-space-limit 0
 binlog-stmt-cache-size 32768
 binlog-transaction-compression FALSE
@@ -1806,8 +1805,6 @@ explain-format TREE
 explain-json-format-version 2
 explicit-defaults-for-timestamp TRUE
 external-locking FALSE
-extra-max-connections 1
-extra-port 0
 flush FALSE
 flush-time 0
 ft-boolean-syntax + -><()~*:""&|
