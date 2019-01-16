@@ -56,6 +56,7 @@ SET PERSIST binlog_row_image = @@GLOBAL.binlog_row_image;
 SET PERSIST binlog_row_metadata = @@GLOBAL.binlog_row_metadata;
 SET PERSIST binlog_row_value_options = @@GLOBAL.binlog_row_value_options;
 SET PERSIST binlog_rows_query_log_events = @@GLOBAL.binlog_rows_query_log_events;
+SET PERSIST binlog_skip_flush_commands = @@GLOBAL.binlog_skip_flush_commands;
 SET PERSIST binlog_space_limit = @@GLOBAL.binlog_space_limit;
 ERROR HY000: Variable 'binlog_space_limit' is a read only variable
 SET PERSIST binlog_stmt_cache_size = @@GLOBAL.binlog_stmt_cache_size;
@@ -234,16 +235,16 @@ Warning	1287	'@@sync_relay_log_info' is deprecated and will be removed in a futu
 Warning	1287	'@@sync_relay_log_info' is deprecated and will be removed in a future release.
 SET PERSIST sync_source_info = @@GLOBAL.sync_source_info;
 
-include/assert.inc [Expect 85 persisted variables in persisted_variables table.]
+include/assert.inc [Expect 87 persisted variables in persisted_variables table.]
 
 ############################################################
 # 2. Restart server, it must preserve the persisted variable
 #    settings. Verify persisted configuration.
 # restart
 
-include/assert.inc [Expect 85 persisted variables in persisted_variables table.']
-include/assert.inc [Expect 85 persisted variables shown as PERSISTED in variables_info table.']
-include/assert.inc [Expect 85 persisted variables with matching persisted and global values.]
+include/assert.inc [Expect 87 persisted variables in persisted_variables table.']
+include/assert.inc [Expect 87 persisted variables shown as PERSISTED in variables_info table.']
+include/assert.inc [Expect 87 persisted variables with matching persisted and global values.]
 
 ############################################################
 # 3. Test RESET PERSIST IF EXISTS. Verify persisted variable
@@ -273,6 +274,7 @@ RESET PERSIST IF EXISTS binlog_row_image;
 RESET PERSIST IF EXISTS binlog_row_metadata;
 RESET PERSIST IF EXISTS binlog_row_value_options;
 RESET PERSIST IF EXISTS binlog_rows_query_log_events;
+RESET PERSIST IF EXISTS binlog_skip_flush_commands;
 RESET PERSIST IF EXISTS binlog_space_limit;
 Warnings:
 Warning	3615	Variable binlog_space_limit does not exist in persisted config file
