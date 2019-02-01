@@ -2354,7 +2354,7 @@ detect this and will eventually quit sooner. */
 #endif /* !UNIV_HOTBACKUP */
 
   /** Mutex protecting the autoincrement counter. */
-  ib_mutex_t *autoinc_mutex;
+  AutoIncMutex *autoinc_mutex;
 
   /** Autoinc counter value to give to the next inserted row. */
   uint64_t autoinc;
