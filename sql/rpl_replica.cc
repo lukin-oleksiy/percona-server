@@ -3211,7 +3211,6 @@ static bool wait_for_relay_log_space(Relay_log_info *rli,
 
   @param thd pointer to I/O Thread's Thd.
   @param mi  point to I/O Thread metadata class.
-
   @param force_flush_mi_info when true, do not respect sync period and flush
                              information.
                              when false, flush will only happen if it is time to
