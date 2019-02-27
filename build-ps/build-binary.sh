@@ -252,6 +252,8 @@ fi
         -DCOMPILATION_COMMENT="$COMMENT" \
         -DWITH_PAM=ON \
         -DWITH_ROCKSDB=ON \
+        -DROCKSDB_DISABLE_AVX2=1 \
+        -DROCKSDB_DISABLE_MARCH_NATIVE=1 \
         -DWITH_INNODB_MEMCACHED=ON \
         -DWITH_ZLIB=system \
         -DWITH_NUMA=ON \
