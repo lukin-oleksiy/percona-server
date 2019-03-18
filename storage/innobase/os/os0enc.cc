@@ -498,7 +498,7 @@ bool Encryption::fill_encryption_info(
   tablespaces when InnoDB is initializing (like system, temp, etc).
   These tablespaces UUID will be fixed by handlerton API after server
   generates uuid */
-  ut_ad(!innodb_inited || strlen(s_uuid) != 0);
+  ut_ad(!srv_is_uuid_ready || strlen(s_uuid) != 0);
 
   /* Write (and encrypt if needed) key and iv */
   byte key_info[KEY_LEN * 2];
