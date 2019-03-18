@@ -65,33 +65,17 @@ Tablespace_pool *tbsp_pool = nullptr;
 /* Directory to store session temporary tablespaces, provided by user */
 char *srv_temp_dir = nullptr;
 
-/** @return true for encrypted purpose, else false */
-static bool is_encrypt(enum tbsp_purpose purpose) {
-  switch (purpose) {
-    case TBSP_USER:
-    case TBSP_INTRINSIC:
-    case TBSP_SLAVE:
-      return (false);
-    case TBSP_ENC_USER:
-    case TBSP_ENC_INTRINSIC:
-    case TBSP_ENC_SLAVE:
-      return (true);
-    default:
-      ut_ad(0);
-  }
-  /* Make compilers happy */
-  ut_ad(0);
-  return (false);
-}
-
 /** Session Temporary tablespace */
 Tablespace::Tablespace()
     : m_space_id(++m_last_used_space_id), m_inited(), m_thread_id() {
   ut_ad(m_space_id <= dict_sys_t::s_max_temp_space_id);
   m_purpose = TBSP_NONE;
+  mutex_create(LATCH_ID_TEMP_POOL_TBLSP, &m_mutex);
 }
 
 Tablespace::~Tablespace() {
+  mutex_destroy(&m_mutex);
+
   if (!m_inited) {
     return;
   }
@@ -159,7 +143,10 @@ bool Tablespace::truncate() {
     return false;
   }
 
+  acquire();
+
   if (!fil_truncate_tablespace(m_space_id, FIL_IBT_FILE_INITIAL_SIZE)) {
+    release();
     return false;
   }
 
@@ -171,6 +158,8 @@ bool Tablespace::truncate() {
   mtr_set_log_mode(&mtr, MTR_LOG_NO_REDO);
   fsp_header_init(m_space_id, FIL_IBT_FILE_INITIAL_SIZE, &mtr);
   mtr_commit(&mtr);
+
+  release();
 
   return true;
 }
@@ -187,7 +176,7 @@ bool Tablespace::encrypt() {
 }
 
 void Tablespace::decrypt() {
-  if (!is_encrypt(m_purpose)) {
+  if (!is_encrypted()) {
     return;
   }
   byte encryption_info[Encryption::INFO_SIZE];
@@ -212,6 +201,8 @@ void Tablespace::decrypt() {
 
   rw_lock_x_unlock(&space->latch);
 }
+
+void Tablespace::rotate_encryption_key() {}
 
 uint32_t Tablespace::file_id() const {
   return (m_space_id - dict_sys_t::s_min_temp_space_id);
@@ -275,7 +266,7 @@ Tablespace *Tablespace_pool::get(my_thread_id id, enum tbsp_purpose purpose) {
   }
 
   ts = m_free->back();
-  if (is_encrypt(purpose)) {
+  if (Tablespace::is_encrypted(purpose)) {
     if (!ts->encrypt()) {
       release();
       ib::error() << "Unable to encrypt a session temp tablespace. Probably due"
