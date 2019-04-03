@@ -285,7 +285,7 @@ int create_zip_dict(THD *thd, const char *name, ulong name_len,
   DBUG_ENTER("mysql_create_zip_dict");
   handlerton *hton = ha_default_handlerton(thd);
 
-#ifndef DBUG_OFF
+#ifndef NDEBUG
   const std::string name_str(name, name_len);
   const std::string data_str(data, data_len);
   const std::string query_str(to_string(thd->query()));
@@ -402,10 +402,18 @@ int create_zip_dict(THD *thd, const char *name, ulong name_len,
         break;
       case HA_ERR_RECORD_FILE_FULL:
         error = ER_RECORD_FILE_FULL;
-        my_error(error, MYF(0), "compression_dictionary");
+        my_error(error, MYF(0), COMPRESSION_DICTIONARY_TABLE);
         break;
       case HA_ERR_TOO_MANY_CONCURRENT_TRXS:
         error = ER_TOO_MANY_CONCURRENT_TRXS;
+        my_error(error, MYF(0));
+        break;
+      case HA_ERR_TABLE_READONLY:
+        error = ER_OPEN_AS_READONLY;
+        my_error(error, MYF(0), COMPRESSION_DICTIONARY_TABLE);
+        break;
+      case HA_ERR_INNODB_FORCED_RECOVERY:
+        error = ER_INNODB_FORCED_RECOVERY;
         my_error(error, MYF(0));
         break;
       default:
@@ -470,7 +478,7 @@ int drop_zip_dict(THD *thd, const char *name, ulong name_len, bool if_exists) {
   DBUG_ENTER("mysql_drop_zip_dict");
   handlerton *hton = ha_default_handlerton(thd);
 
-#ifndef DBUG_OFF
+#ifndef NDEBUG
   const std::string name_str(name, name_len);
   DBUG_LOG("zip_dict", "thd->query: " << thd->query().str
                                       << " dict_name: " << name_str
@@ -567,6 +575,14 @@ int drop_zip_dict(THD *thd, const char *name, ulong name_len, bool if_exists) {
       break;
     case HA_ERR_TOO_MANY_CONCURRENT_TRXS:
       error = ER_TOO_MANY_CONCURRENT_TRXS;
+      my_error(error, MYF(0));
+      break;
+    case HA_ERR_TABLE_READONLY:
+      error = ER_OPEN_AS_READONLY;
+      my_error(error, MYF(0), COMPRESSION_DICTIONARY_TABLE);
+      break;
+    case HA_ERR_INNODB_FORCED_RECOVERY:
+      error = ER_INNODB_FORCED_RECOVERY;
       my_error(error, MYF(0));
       break;
     default:
@@ -756,13 +772,16 @@ static bool cols_table_delete_low(TABLE *table, uint64 table_id,
     ret = table->file->ha_delete_row(table->record[0]);
   }
 
-  if (ret == 0) {
-    return (false);
-  } else {
-    assert(0);
-    int error = ER_UNKNOWN_ERROR;
-    my_error(error, MYF(0));
-    return (true);
+  switch (ret) {
+    case 0:
+      return (false);
+    case HA_ERR_INNODB_FORCED_RECOVERY:
+      my_error(ER_INNODB_FORCED_RECOVERY, MYF(0));
+      return (true);
+    default:
+      assert(0);
+      my_error(ER_UNKNOWN_ERROR, MYF(0));
+      return (true);
   }
 }
 
