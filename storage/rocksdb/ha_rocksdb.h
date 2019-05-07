@@ -65,13 +65,6 @@
   refinements (@see /storage/rocksdb/README file).
 */
 
-/**
-  @note MyRocks Coding Conventions:
-  MyRocks code follows the baseline MySQL coding conventions, available at
-  http://dev.mysql.com/doc/internals/en/coding-guidelines.html, with several
-  refinements (@see /storage/rocksdb/README file).
-*/
-
 namespace myrocks {
 
 class Rdb_converter;
@@ -118,7 +111,8 @@ struct Rdb_table_handler {
 
 /* Provide hash function for GL_INDEX_ID so we can include it in sets */
 namespace std {
-template <> struct hash<myrocks::GL_INDEX_ID> {
+template <>
+struct hash<myrocks::GL_INDEX_ID> {
   std::size_t operator()(const myrocks::GL_INDEX_ID &gl_index_id) const {
     const uint64_t val =
         ((uint64_t)gl_index_id.cf_id << 32 | (uint64_t)gl_index_id.index_id);
@@ -172,7 +166,10 @@ class ha_rocksdb : public my_core::handler {
   uint m_pk_key_parts;
 
   /*
-    true <=> Primary Key columns can be decoded from the index
+    true <=> Primary Key columns can be decoded from the index. It should be
+    enabled by default and may be disabled in init_with_fields() after initial
+    keys info is loaded and it turns out the feature isn't supported for
+    particular table.
   */
   mutable bool m_pk_can_be_decoded;
 
@@ -319,11 +316,10 @@ class ha_rocksdb : public my_core::handler {
                            const bool use_all_keys, const uint eq_cond_len);
   void release_scan_iterator(void);
 
-  rocksdb::Status
-  get_for_update(Rdb_transaction *const tx,
-                 rocksdb::ColumnFamilyHandle *const column_family,
-                 const rocksdb::Slice &key,
-                 rocksdb::PinnableSlice *value) const;
+  rocksdb::Status get_for_update(
+      Rdb_transaction *const tx,
+      rocksdb::ColumnFamilyHandle *const column_family,
+      const rocksdb::Slice &key, rocksdb::PinnableSlice *value) const;
 
   int get_row_by_rowid(uchar *const buf, const char *const rowid,
                        const uint rowid_size, const bool skip_ttl_check = true,
@@ -405,7 +401,7 @@ class ha_rocksdb : public my_core::handler {
 
   ha_rocksdb(my_core::handlerton *const hton,
              my_core::TABLE_SHARE *const table_arg);
-  ~ha_rocksdb() {
+  virtual ~ha_rocksdb() override {
     int err MY_ATTRIBUTE((__unused__));
     err = finalize_bulk_load(false);
     if (err != 0) {
@@ -496,10 +492,9 @@ class ha_rocksdb : public my_core::handler {
   static const std::vector<std::string> parse_into_tokens(const std::string &s,
                                                           const char delim);
 
-  static const std::string
-  generate_cf_name(const uint index, const TABLE *const table_arg,
-                   const Rdb_tbl_def *const tbl_def_arg,
-                   bool *per_part_match_found);
+  static const std::string generate_cf_name(
+      const uint index, const TABLE *const table_arg,
+      const Rdb_tbl_def *const tbl_def_arg, bool *per_part_match_found);
 
   static const char *get_key_name(const uint index,
                                   const TABLE *const table_arg,
@@ -550,8 +545,8 @@ class ha_rocksdb : public my_core::handler {
     DBUG_RETURN(MAX_REF_PARTS);
   }
 
-  uint
-  max_supported_key_part_length(HA_CREATE_INFO *create_info) const override;
+  uint max_supported_key_part_length(
+      HA_CREATE_INFO *create_info) const override;
 
   /** @brief
     unireg.cc will call this to make sure that the storage engine can handle
@@ -710,10 +705,9 @@ class ha_rocksdb : public my_core::handler {
       uint64 ttl_duration, const std::string &ttl_column) const
       MY_ATTRIBUTE((__warn_unused_result__));
 
-  std::unordered_map<std::string, uint>
-  get_old_key_positions(const TABLE *table_arg, const Rdb_tbl_def *tbl_def_arg,
-                        const TABLE *old_table_arg,
-                        const Rdb_tbl_def *old_tbl_def_arg) const;
+  std::unordered_map<std::string, uint> get_old_key_positions(
+      const TABLE *table_arg, const Rdb_tbl_def *tbl_def_arg,
+      const TABLE *old_table_arg, const Rdb_tbl_def *old_tbl_def_arg) const;
 
   int compare_key_parts(const KEY *const old_key,
                         const KEY *const new_key) const
@@ -932,11 +926,10 @@ class ha_rocksdb : public my_core::handler {
                            const dd::Table *old_table_def,
                            dd::Table *new_table_def) override;
 
-  bool
-  commit_inplace_alter_table(TABLE *altered_table,
-                             my_core::Alter_inplace_info *const ha_alter_info,
-                             bool commit, const dd::Table *old_table_def,
-                             dd::Table *new_table_def) override;
+  bool commit_inplace_alter_table(
+      TABLE *const altered_table,
+      my_core::Alter_inplace_info *const ha_alter_info, bool commit,
+      const dd::Table *old_table_def, dd::Table *new_table_def) override;
 
   bool is_read_free_rpl_table() const;
 
@@ -999,11 +992,16 @@ struct Rdb_inplace_alter_ctx : public my_core::inplace_alter_handler_ctx {
       std::unordered_set<std::shared_ptr<Rdb_key_def>> added_indexes,
       std::unordered_set<GL_INDEX_ID> dropped_index_ids, uint n_added_keys,
       uint n_dropped_keys, ulonglong max_auto_incr)
-      : my_core::inplace_alter_handler_ctx(), m_new_tdef(new_tdef),
-        m_old_key_descr(old_key_descr), m_new_key_descr(new_key_descr),
-        m_old_n_keys(old_n_keys), m_new_n_keys(new_n_keys),
-        m_added_indexes(added_indexes), m_dropped_index_ids(dropped_index_ids),
-        m_n_added_keys(n_added_keys), m_n_dropped_keys(n_dropped_keys),
+      : my_core::inplace_alter_handler_ctx(),
+        m_new_tdef(new_tdef),
+        m_old_key_descr(old_key_descr),
+        m_new_key_descr(new_key_descr),
+        m_old_n_keys(old_n_keys),
+        m_new_n_keys(new_n_keys),
+        m_added_indexes(added_indexes),
+        m_dropped_index_ids(dropped_index_ids),
+        m_n_added_keys(n_added_keys),
+        m_n_dropped_keys(n_dropped_keys),
         m_max_auto_incr(max_auto_incr) {}
 
   ~Rdb_inplace_alter_ctx() {}

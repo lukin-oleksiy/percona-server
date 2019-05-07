@@ -57,10 +57,10 @@ namespace myrocks {
   engine.
 */
 
-#define ROCKSDB_FIELD_INFO(_name_, _len_, _type_, _flag_)                      \
+#define ROCKSDB_FIELD_INFO(_name_, _len_, _type_, _flag_) \
   { _name_, _len_, _type_, 0, _flag_, nullptr, 0 }
 
-#define ROCKSDB_FIELD_INFO_END                                                 \
+#define ROCKSDB_FIELD_INFO_END \
   ROCKSDB_FIELD_INFO(nullptr, 0, MYSQL_TYPE_NULL, 0)
 
 /*
@@ -616,20 +616,20 @@ static int rdb_i_s_cfoptions_fill_table(
 
     // get COMPACTION_STYLE option
     switch (opts.compaction_style) {
-    case rocksdb::kCompactionStyleLevel:
-      val = "kCompactionStyleLevel";
-      break;
-    case rocksdb::kCompactionStyleUniversal:
-      val = "kCompactionStyleUniversal";
-      break;
-    case rocksdb::kCompactionStyleFIFO:
-      val = "kCompactionStyleFIFO";
-      break;
-    case rocksdb::kCompactionStyleNone:
-      val = "kCompactionStyleNone";
-      break;
-    default:
-      val = "NULL";
+      case rocksdb::kCompactionStyleLevel:
+        val = "kCompactionStyleLevel";
+        break;
+      case rocksdb::kCompactionStyleUniversal:
+        val = "kCompactionStyleUniversal";
+        break;
+      case rocksdb::kCompactionStyleFIFO:
+        val = "kCompactionStyleFIFO";
+        break;
+      case rocksdb::kCompactionStyleNone:
+        val = "kCompactionStyleNone";
+        break;
+      default:
+        val = "NULL";
     }
 
     cf_option_types.push_back({"COMPACTION_STYLE", val});
@@ -652,14 +652,14 @@ static int rdb_i_s_cfoptions_fill_table(
     val.append("; STOP_STYLE=");
 
     switch (compac_opts.stop_style) {
-    case rocksdb::kCompactionStopStyleSimilarSize:
-      val.append("kCompactionStopStyleSimilarSize}");
-      break;
-    case rocksdb::kCompactionStopStyleTotalSize:
-      val.append("kCompactionStopStyleTotalSize}");
-      break;
-    default:
-      val.append("}");
+      case rocksdb::kCompactionStopStyleSimilarSize:
+        val.append("kCompactionStopStyleSimilarSize}");
+        break;
+      case rocksdb::kCompactionStopStyleTotalSize:
+        val.append("kCompactionStopStyleTotalSize}");
+        break;
+      default:
+        val.append("}");
     }
 
     cf_option_types.push_back({"COMPACTION_OPTIONS_UNIVERSAL", val});
@@ -673,7 +673,7 @@ static int rdb_i_s_cfoptions_fill_table(
     std::vector<std::string> table_options =
         split_into_vector(opts.table_factory->GetPrintableTableOptions(), '\n');
 
-    for (auto option : table_options) {
+    for (std::string option : table_options) {
       option.erase(std::remove(option.begin(), option.end(), ' '),
                    option.end());
 
@@ -869,7 +869,7 @@ static int rdb_i_s_compact_stats_fill_table(
 
   Rdb_cf_manager &cf_manager = rdb_get_cf_manager();
 
-  for (auto cf_name : cf_manager.get_cf_names()) {
+  for (const auto &cf_name : cf_manager.get_cf_names()) {
     rocksdb::ColumnFamilyHandle *cfh = cf_manager.get_cf(cf_name);
 
     if (cfh == nullptr) {
@@ -1024,8 +1024,7 @@ int Rdb_ddl_scanner::add_table(Rdb_tbl_def *tdef) {
     }
 
     ret = my_core::schema_table_store_record(m_thd, m_table);
-    if (ret)
-      return ret;
+    if (ret) return ret;
   }
   return HA_EXIT_SUCCESS;
 }
