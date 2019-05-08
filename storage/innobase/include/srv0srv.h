@@ -1150,14 +1150,15 @@ void srv_purge_coordinator_thread();
 void srv_worker_thread();
 
 /** Set encryption for UNDO tablespace with given space id.
+@param[in] thd          Thread handle
 @param[in] space_id     Undo tablespace id
 @param[in] mtr          Mini-transaction
 @return false for success, true otherwise */
-bool set_undo_tablespace_encryption(space_id_t space_id, mtr_t *mtr);
+bool set_undo_tablespace_encryption(THD *thd, space_id_t space_id, mtr_t *mtr);
 
 /** Enable UNDO tablespaces encryption.
 @return false for success, true otherwise. */
-bool srv_enable_undo_encryption();
+bool srv_enable_undo_encryption(THD *thd);
 
 /** Enable REDO log encryption.
 @return false for success, true otherwise. */

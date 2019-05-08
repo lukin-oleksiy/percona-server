@@ -2789,7 +2789,7 @@ bool srv_enable_redo_encryption() {
 }
 
 /* Set encryption for UNDO tablespace with given space id. */
-bool set_undo_tablespace_encryption(space_id_t space_id, mtr_t *mtr) {
+bool set_undo_tablespace_encryption(THD *thd, space_id_t space_id, mtr_t *mtr) {
   ut_ad(fsp_is_undo_tablespace(space_id));
   fil_space_t *space = fil_space_get(space_id);
 
@@ -2808,6 +2808,9 @@ bool set_undo_tablespace_encryption(space_id_t space_id, mtr_t *mtr) {
   if (!Encryption::fill_encryption_info(encryption_metadata, true,
                                         encrypt_info)) {
     ib::error(ER_IB_MSG_1052, space->name);
+    if (thd != nullptr) {
+      ib_senderrf(thd, IB_LOG_LEVEL_WARN, ER_IB_MSG_1052, space->name);
+    }
     return true;
   }
 
@@ -2817,6 +2820,9 @@ bool set_undo_tablespace_encryption(space_id_t space_id, mtr_t *mtr) {
   if (!fsp_header_write_encryption(space->id, new_flags, encrypt_info, true,
                                    false, mtr)) {
     ib::error(ER_IB_MSG_1053, space->name);
+    if (thd != nullptr) {
+      ib_senderrf(thd, IB_LOG_LEVEL_WARN, ER_IB_MSG_1053, space->name);
+    }
     return true;
   }
 
@@ -2826,6 +2832,10 @@ bool set_undo_tablespace_encryption(space_id_t space_id, mtr_t *mtr) {
                            encryption_metadata.m_key, encryption_metadata.m_iv);
   if (err != DB_SUCCESS) {
     ib::error(ER_IB_MSG_1054, space->name, int{err}, ut_strerr(err));
+    if (thd != nullptr) {
+      ib_senderrf(thd, IB_LOG_LEVEL_WARN, ER_IB_MSG_1054, space->name, int{err},
+                  ut_strerr(err));
+    }
     return true;
   }
 
@@ -2833,7 +2843,7 @@ bool set_undo_tablespace_encryption(space_id_t space_id, mtr_t *mtr) {
 }
 
 /* Enable UNDO tablespace encryption */
-bool srv_enable_undo_encryption() {
+bool srv_enable_undo_encryption(THD *thd) {
   /* Make sure undo::ddl_mutex is owned. */
   ut_ad(mutex_own(&undo::ddl_mutex));
   bool ret_val = false;
@@ -2850,7 +2860,7 @@ bool srv_enable_undo_encryption() {
     ut_ad(fsp_is_undo_tablespace(undo_space->id()));
 
     /* While enabling encryption, make sure not to overwrite the tablespace key.
-    Otherwise, pages encrypted with the old tablespace key can't be read. */
+       Otherwise, pages encrypted with the old tablespace key can't be read. */
     if (FSP_FLAGS_GET_ENCRYPTION(space->flags)) {
       continue;
     }
@@ -2871,7 +2881,7 @@ bool srv_enable_undo_encryption() {
     mtr_start(&mtr);
     mtr_x_lock_space(space, &mtr);
 
-    if (set_undo_tablespace_encryption(undo_space->id(), &mtr)) {
+    if (set_undo_tablespace_encryption(thd, undo_space->id(), &mtr)) {
       mtr_commit(&mtr);
       undo_space->rsegs()->s_unlock();
       ret_val = true;
