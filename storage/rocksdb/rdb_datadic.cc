@@ -2061,9 +2061,14 @@ int Rdb_key_def::compare_keys(const rocksdb::Slice *key1,
   Rdb_string_reader reader2(key2);
 
   // Skip the index number
-  if ((!reader1.read(INDEX_NUMBER_SIZE))) return HA_EXIT_FAILURE;
+  auto indexp1 = reader1.read(INDEX_NUMBER_SIZE);
+  if (!indexp1) return HA_EXIT_FAILURE;
 
-  if ((!reader2.read(INDEX_NUMBER_SIZE))) return HA_EXIT_FAILURE;
+  auto indexp2 = reader2.read(INDEX_NUMBER_SIZE);
+  if (!indexp2) return HA_EXIT_FAILURE;
+
+  // shouldn't compare with other index
+  assert(memcmp(indexp1, indexp2, INDEX_NUMBER_SIZE) == 0);
 
   for (uint i = 0; i < m_key_parts; i++) {
     const Rdb_field_packing *const fpi = &m_pack_info[i];
@@ -4744,6 +4749,12 @@ bool Rdb_ddl_manager::init(Rdb_dict_manager *const dict_arg,
           m_dict->get_stats(gl_index_id), index_info.m_index_flags,
           ttl_rec_offset, index_info.m_ttl_duration);
     }
+
+    assert(tdef->m_key_count > 0);
+    tdef->m_tbl_stats.set(
+        tdef->m_key_count > 0 ? tdef->m_key_descr_arr[0]->m_stats.m_rows : 0, 0,
+        0);
+
     put(tdef);
     i++;
   }
@@ -4811,6 +4822,52 @@ Rdb_tbl_def *Rdb_ddl_manager::find(const std::string &table_name,
   }
 
   return rec;
+}
+
+int Rdb_ddl_manager::find_indexes(const std::string &table_name,
+                                  std::vector<GL_INDEX_ID> *indexes) {
+  mysql_rwlock_rdlock(&m_rwlock);
+
+  Rdb_tbl_def *tdef = nullptr;
+  const auto it = m_ddl_map.find(table_name);
+  if (it != m_ddl_map.end()) {
+    tdef = it->second;
+  }
+
+  if (!tdef) {
+    mysql_rwlock_unlock(&m_rwlock);
+    return HA_EXIT_FAILURE;
+  }
+
+  for (uint i = 0; i < tdef->m_key_count; i++) {
+    indexes->push_back(tdef->m_key_descr_arr[i]->get_gl_index_id());
+  }
+
+  mysql_rwlock_unlock(&m_rwlock);
+
+  return HA_EXIT_SUCCESS;
+}
+
+int Rdb_ddl_manager::find_table_stats(const std::string &table_name,
+                                      Rdb_table_stats *tbl_stats) {
+  mysql_rwlock_rdlock(&m_rwlock);
+
+  Rdb_tbl_def *tdef = nullptr;
+  const auto it = m_ddl_map.find(table_name);
+  if (it != m_ddl_map.end()) {
+    tdef = it->second;
+  }
+
+  if (!tdef) {
+    mysql_rwlock_unlock(&m_rwlock);
+    return HA_EXIT_FAILURE;
+  }
+
+  *tbl_stats = tdef->m_tbl_stats;
+
+  mysql_rwlock_unlock(&m_rwlock);
+
+  return HA_EXIT_SUCCESS;
 }
 
 // this is a safe version of the find() function below.  It acquires a read
@@ -4942,6 +4999,24 @@ void Rdb_ddl_manager::persist_stats(const bool sync) {
   m_dict->commit(wb.get(), sync);
 }
 
+void Rdb_ddl_manager::set_table_stats(const std::string &tbl_name) {
+  timespec ts;
+  clock_gettime(CLOCK_REALTIME, &ts);
+
+  mysql_rwlock_rdlock(&m_rwlock);
+  const auto &tbl_def = find(tbl_name, false /* needs lock */);
+  if (tbl_def) {
+    assert(tbl_def->m_key_count > 0);
+    // Take the number of rows of the first index as the number of rows of
+    // the table. This is an estimated value.
+    tbl_def->m_tbl_stats.set(tbl_def->m_key_count > 0
+                                 ? tbl_def->m_key_descr_arr[0]->m_stats.m_rows
+                                 : 0,
+                             0, ts.tv_sec);
+  }
+  mysql_rwlock_unlock(&m_rwlock);
+}
+
 /*
   Put table definition of `tbl` into the mapping, and also write it to the
   on-disk data dictionary.
@@ -5042,6 +5117,8 @@ bool Rdb_ddl_manager::rename(const std::string &from, const std::string &to,
 
   new_rec->m_hidden_pk_val =
       rec->m_hidden_pk_val.load(std::memory_order_relaxed);
+
+  new_rec->m_tbl_stats = rec->m_tbl_stats;
 
   // so that it's not free'd when deleting the old rec
   rec->m_key_descr_arr = nullptr;
