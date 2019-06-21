@@ -3,6 +3,10 @@ CREATE TABLE t1 (
 Period smallint(4) unsigned zerofill DEFAULT '0000' NOT NULL,
 Varor_period smallint(4) unsigned DEFAULT '0' NOT NULL
 );
+Warnings:
+Warning	1681	The ZEROFILL attribute is deprecated and will be removed in a future release. Use the LPAD function to zero-pad numbers, or store the formatted numbers in a CHAR column.
+Warning	1681	Integer display width is deprecated and will be removed in a future release.
+Warning	1681	Integer display width is deprecated and will be removed in a future release.
 INSERT INTO t1 VALUES (9410,9412);
 select period from t1;
 period
@@ -25,6 +29,11 @@ UNIQUE fld1 (fld1),
 KEY fld3 (fld3),
 PRIMARY KEY (auto)
 );
+Warnings:
+Warning	1681	The ZEROFILL attribute is deprecated and will be removed in a future release. Use the LPAD function to zero-pad numbers, or store the formatted numbers in a CHAR column.
+Warning	1681	Integer display width is deprecated and will be removed in a future release.
+Warning	1681	The ZEROFILL attribute is deprecated and will be removed in a future release. Use the LPAD function to zero-pad numbers, or store the formatted numbers in a CHAR column.
+Warning	1681	Integer display width is deprecated and will be removed in a future release.
 select t2.fld3 from t2 where companynr = 58 and fld3 like "%imaginable%";
 fld3
 imaginable
@@ -252,16 +261,16 @@ fld1	fld3
 select distinct companynr from t2;
 companynr
 00
-37
-36
-50
-58
 29
-40
-53
-65
-41
 34
+36
+37
+40
+41
+50
+53
+58
+65
 68
 select distinct companynr from t2 order by companynr;
 companynr
@@ -504,7 +513,13 @@ price2     double(11,0),
 key (period),
 key (name)
 );
+Warnings:
+Warning	1681	Specifying number of digits for floating point data types is deprecated and will be removed in a future release.
+Warning	1681	Specifying number of digits for floating point data types is deprecated and will be removed in a future release.
 create temporary table tmp select * from t3;
+Warnings:
+Warning	1681	Specifying number of digits for floating point data types is deprecated and will be removed in a future release.
+Warning	1681	Specifying number of digits for floating point data types is deprecated and will be removed in a future release.
 insert into t3 select * from tmp;
 insert into tmp select * from t3;
 insert into t3 select * from tmp;
@@ -522,6 +537,7 @@ insert into tmp select * from t3;
 insert into t3 select * from tmp;
 insert into tmp select * from t3;
 insert into t3 select * from tmp;
+set session innodb_parallel_read_threads=1;
 alter table t3 add t2nr int not null auto_increment primary key first;
 drop table tmp;
 SET BIG_TABLES=1;
@@ -590,16 +606,16 @@ companynr	fld3	count(*)
 SET BIG_TABLES=0;
 select distinct fld3,repeat("a",length(fld3)),count(*) from t2 group by companynr,fld3 limit 100,10;
 fld3	repeat("a",length(fld3))	count(*)
-bivalves	aaaaaaaa	1
-incurring	aaaaaaaaa	1
-Adolph	aaaaaa	1
-pithed	aaaaaa	1
-emergency	aaaaaaaaa	1
-Miles	aaaaa	1
-trimmings	aaaaaaaaa	1
-tragedies	aaaaaaaaa	1
-skulking	aaaaaaaa	1
-flint	aaaaa	1
+Baird	aaaaa	1
+balled	aaaaaa	1
+ballgown	aaaaaaaa	1
+Baltimorean	aaaaaaaaaaa	1
+bankruptcies	aaaaaaaaaaaa	1
+Barry	aaaaa	1
+batting	aaaaaaa	1
+beaner	aaaaaa	1
+beasts	aaaaaa	1
+beaters	aaaaaaa	1
 select distinct companynr,rtrim(space(512+companynr)) from t3 order by 1,2;
 companynr	rtrim(space(512+companynr))
 37	
@@ -651,7 +667,7 @@ id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered
 1	SIMPLE	t2	NULL	const	fld1	fld1	4	const	#	#	NULL
 1	SIMPLE	t3	NULL	const	PRIMARY,period	PRIMARY	4	const	#	#	NULL
 Warnings:
-Note	1003	/* select#1 */ select 'breaking' AS `fld3`,'1001' AS `period` from `test`.`t2` join `test`.`t3` where 1
+Note	1003	/* select#1 */ select 'breaking' AS `fld3`,'1001' AS `period` from `test`.`t2` join `test`.`t3` where true
 select fld3,period from t2,t1 where companynr*10 = 37*10;
 fld3	period
 Abraham	9410
@@ -1315,33 +1331,36 @@ companyname char(30) NOT NULL default '',
 PRIMARY KEY (companynr),
 UNIQUE KEY companyname(companyname)
 ) MAX_ROWS=50 PACK_KEYS=1 COMMENT='companynames';
+Warnings:
+Warning	1681	The ZEROFILL attribute is deprecated and will be removed in a future release. Use the LPAD function to zero-pad numbers, or store the formatted numbers in a CHAR column.
+Warning	1681	Integer display width is deprecated and will be removed in a future release.
 select STRAIGHT_JOIN t2.companynr,companyname from t4,t2 where t2.companynr=t4.companynr group by t2.companynr;
 companynr	companyname
 00	Unknown
-37	company 4
-36	company 3
-50	company 11
-58	company 8
 29	company 1
-40	company 5
-53	company 7
-65	company 9
-41	company 6
 34	company 2
+36	company 3
+37	company 4
+40	company 5
+41	company 6
+50	company 11
+53	company 7
+58	company 8
+65	company 9
 68	company 10
 select SQL_SMALL_RESULT t2.companynr,companyname from t4,t2 where t2.companynr=t4.companynr group by t2.companynr;
 companynr	companyname
 00	Unknown
-37	company 4
-36	company 3
-50	company 11
-58	company 8
 29	company 1
-40	company 5
-53	company 7
-65	company 9
-41	company 6
 34	company 2
+36	company 3
+37	company 4
+40	company 5
+41	company 6
+50	company 11
+53	company 7
+58	company 8
+65	company 9
 68	company 10
 select * from t1,t1 t12;
 Period	Varor_period	Period	Varor_period
@@ -1349,29 +1368,29 @@ Period	Varor_period	Period	Varor_period
 select t2.fld1,t22.fld1 from t2,t2 t22 where t2.fld1 >= 250501 and t2.fld1 <= 250505 and t22.fld1 >= 250501 and t22.fld1 <= 250505;
 fld1	fld1
 250501	250501
-250502	250501
-250503	250501
-250504	250501
-250505	250501
 250501	250502
-250502	250502
-250503	250502
-250504	250502
-250505	250502
 250501	250503
-250502	250503
-250503	250503
-250504	250503
-250505	250503
 250501	250504
-250502	250504
-250503	250504
-250504	250504
-250505	250504
 250501	250505
+250502	250501
+250502	250502
+250502	250503
+250502	250504
 250502	250505
+250503	250501
+250503	250502
+250503	250503
+250503	250504
 250503	250505
+250504	250501
+250504	250502
+250504	250503
+250504	250504
 250504	250505
+250505	250501
+250505	250502
+250505	250503
+250505	250504
 250505	250505
 insert into t2 (fld1, companynr) values (999999,99);
 analyze table t2,t4;
@@ -1389,13 +1408,13 @@ id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered
 1	SIMPLE	t2	NULL	ALL	NULL	NULL	NULL	NULL	#	100.00	NULL
 1	SIMPLE	t4	NULL	eq_ref	PRIMARY	PRIMARY	1	test.t2.companynr	#	100.00	Using where; Not exists
 Warnings:
-Note	1003	/* select#1 */ select `test`.`t2`.`companynr` AS `companynr`,`test`.`t4`.`companyname` AS `companyname` from `test`.`t2` left join `test`.`t4` on((`test`.`t4`.`companynr` = `test`.`t2`.`companynr`)) where isnull(`test`.`t4`.`companynr`)
+Note	1003	/* select#1 */ select `test`.`t2`.`companynr` AS `companynr`,`test`.`t4`.`companyname` AS `companyname` from `test`.`t2` left join `test`.`t4` on((`test`.`t4`.`companynr` = `test`.`t2`.`companynr`)) where (`test`.`t4`.`companynr` is null)
 explain select t2.companynr,companyname from t4 left join t2 using (companynr) where t2.companynr is null;
 id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 1	SIMPLE	t4	NULL	index	NULL	companyname	120	NULL	#	100.00	Using index
-1	SIMPLE	t2	NULL	ALL	NULL	NULL	NULL	NULL	#	10.00	Using where; Not exists; Using join buffer (Block Nested Loop)
+1	SIMPLE	t2	NULL	ALL	NULL	NULL	NULL	NULL	#	10.00	Using where; Not exists; Using join buffer (hash join)
 Warnings:
-Note	1003	/* select#1 */ select `test`.`t2`.`companynr` AS `companynr`,`test`.`t4`.`companyname` AS `companyname` from `test`.`t4` left join `test`.`t2` on((`test`.`t2`.`companynr` = `test`.`t4`.`companynr`)) where isnull(`test`.`t2`.`companynr`)
+Note	1003	/* select#1 */ select `test`.`t2`.`companynr` AS `companynr`,`test`.`t4`.`companyname` AS `companyname` from `test`.`t4` left join `test`.`t2` on((`test`.`t2`.`companynr` = `test`.`t4`.`companynr`)) where (`test`.`t2`.`companynr` is null)
 select companynr,companyname from t2 left join t4 using (companynr) where companynr is null;
 companynr	companyname
 select count(*) from t2 left join t4 using (companynr) where companynr is not null;
@@ -1405,12 +1424,12 @@ explain select companynr,companyname from t2 left join t4 using (companynr) wher
 id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 1	SIMPLE	NULL	NULL	NULL	NULL	NULL	NULL	NULL	#	NULL	Impossible WHERE
 Warnings:
-Note	1003	/* select#1 */ select `test`.`t2`.`companynr` AS `companynr`,`test`.`t4`.`companyname` AS `companyname` from `test`.`t2` left join `test`.`t4` on(multiple equal(`test`.`t2`.`companynr`, `test`.`t4`.`companynr`)) where 0
+Note	1003	/* select#1 */ select `test`.`t2`.`companynr` AS `companynr`,`test`.`t4`.`companyname` AS `companyname` from `test`.`t2` left join `test`.`t4` on(multiple equal(`test`.`t2`.`companynr`, `test`.`t4`.`companynr`)) where false
 explain select companynr,companyname from t4 left join t2 using (companynr) where companynr is null;
 id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 1	SIMPLE	NULL	NULL	NULL	NULL	NULL	NULL	NULL	#	NULL	Impossible WHERE
 Warnings:
-Note	1003	/* select#1 */ select `test`.`t4`.`companynr` AS `companynr`,`test`.`t4`.`companyname` AS `companyname` from `test`.`t4` left join `test`.`t2` on(multiple equal(`test`.`t4`.`companynr`, `test`.`t2`.`companynr`)) where 0
+Note	1003	/* select#1 */ select `test`.`t4`.`companynr` AS `companynr`,`test`.`t4`.`companyname` AS `companyname` from `test`.`t4` left join `test`.`t2` on(multiple equal(`test`.`t4`.`companynr`, `test`.`t2`.`companynr`)) where false
 delete from t2 where fld1=999999;
 explain select t2.companynr,companyname from t4 left join t2 using (companynr) where t2.companynr > 0;
 id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
@@ -1433,55 +1452,55 @@ Note	1003	/* select#1 */ select `test`.`t2`.`companynr` AS `companynr`,`test`.`t
 explain select companynr,companyname from t4 left join t2 using (companynr) where companynr > 0;
 id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 1	SIMPLE	t4	NULL	range	PRIMARY	PRIMARY	1	NULL	#	#	Using where
-1	SIMPLE	t2	NULL	ALL	NULL	NULL	NULL	NULL	#	#	Using where; Using join buffer (Block Nested Loop)
+1	SIMPLE	t2	NULL	ALL	NULL	NULL	NULL	NULL	#	#	Using where; Using join buffer (hash join)
 Warnings:
 Note	1003	/* select#1 */ select `test`.`t4`.`companynr` AS `companynr`,`test`.`t4`.`companyname` AS `companyname` from `test`.`t4` left join `test`.`t2` on((`test`.`t2`.`companynr` = `test`.`t4`.`companynr`)) where (`test`.`t4`.`companynr` > 0)
 explain select companynr,companyname from t4 left join t2 using (companynr) where companynr > 0 or companynr < 0;
 id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 1	SIMPLE	t4	NULL	range	PRIMARY	PRIMARY	1	NULL	#	#	Using where
-1	SIMPLE	t2	NULL	ALL	NULL	NULL	NULL	NULL	#	#	Using where; Using join buffer (Block Nested Loop)
+1	SIMPLE	t2	NULL	ALL	NULL	NULL	NULL	NULL	#	#	Using where; Using join buffer (hash join)
 Warnings:
 Note	1003	/* select#1 */ select `test`.`t4`.`companynr` AS `companynr`,`test`.`t4`.`companyname` AS `companyname` from `test`.`t4` left join `test`.`t2` on((`test`.`t2`.`companynr` = `test`.`t4`.`companynr`)) where (`test`.`t4`.`companynr` > 0)
 explain select companynr,companyname from t4 left join t2 using (companynr) where companynr > 0 and companynr > 0;
 id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 1	SIMPLE	t4	NULL	range	PRIMARY	PRIMARY	1	NULL	#	#	Using where
-1	SIMPLE	t2	NULL	ALL	NULL	NULL	NULL	NULL	#	#	Using where; Using join buffer (Block Nested Loop)
+1	SIMPLE	t2	NULL	ALL	NULL	NULL	NULL	NULL	#	#	Using where; Using join buffer (hash join)
 Warnings:
 Note	1003	/* select#1 */ select `test`.`t4`.`companynr` AS `companynr`,`test`.`t4`.`companyname` AS `companyname` from `test`.`t4` left join `test`.`t2` on((`test`.`t2`.`companynr` = `test`.`t4`.`companynr`)) where ((`test`.`t4`.`companynr` > 0) and (`test`.`t4`.`companynr` > 0))
 explain select t2.companynr,companyname from t4 left join t2 using (companynr) where t2.companynr > 0 or t2.companynr is null;
 id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 1	SIMPLE	t4	NULL	index	NULL	companyname	120	NULL	#	#	Using index
-1	SIMPLE	t2	NULL	ALL	NULL	NULL	NULL	NULL	#	#	Using where; Using join buffer (Block Nested Loop)
+1	SIMPLE	t2	NULL	ALL	NULL	NULL	NULL	NULL	#	#	Using where; Using join buffer (hash join)
 Warnings:
-Note	1003	/* select#1 */ select `test`.`t2`.`companynr` AS `companynr`,`test`.`t4`.`companyname` AS `companyname` from `test`.`t4` left join `test`.`t2` on((`test`.`t2`.`companynr` = `test`.`t4`.`companynr`)) where ((`test`.`t2`.`companynr` > 0) or isnull(`test`.`t2`.`companynr`))
+Note	1003	/* select#1 */ select `test`.`t2`.`companynr` AS `companynr`,`test`.`t4`.`companyname` AS `companyname` from `test`.`t4` left join `test`.`t2` on((`test`.`t2`.`companynr` = `test`.`t4`.`companynr`)) where ((`test`.`t2`.`companynr` > 0) or (`test`.`t2`.`companynr` is null))
 explain select t2.companynr,companyname from t4 left join t2 using (companynr) where t2.companynr > 0 or t2.companynr < 0 or t4.companynr > 0;
 id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 1	SIMPLE	t4	NULL	index	PRIMARY	companyname	120	NULL	#	#	Using index
-1	SIMPLE	t2	NULL	ALL	NULL	NULL	NULL	NULL	#	#	Using where; Using join buffer (Block Nested Loop)
+1	SIMPLE	t2	NULL	ALL	NULL	NULL	NULL	NULL	#	#	Using where; Using join buffer (hash join)
 Warnings:
 Note	1003	/* select#1 */ select `test`.`t2`.`companynr` AS `companynr`,`test`.`t4`.`companyname` AS `companyname` from `test`.`t4` left join `test`.`t2` on((`test`.`t2`.`companynr` = `test`.`t4`.`companynr`)) where ((`test`.`t2`.`companynr` > 0) or (`test`.`t4`.`companynr` > 0))
 explain select t2.companynr,companyname from t4 left join t2 using (companynr) where ifnull(t2.companynr,1)>0;
 id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 1	SIMPLE	t4	NULL	index	NULL	companyname	120	NULL	#	#	Using index
-1	SIMPLE	t2	NULL	ALL	NULL	NULL	NULL	NULL	#	#	Using where; Using join buffer (Block Nested Loop)
+1	SIMPLE	t2	NULL	ALL	NULL	NULL	NULL	NULL	#	#	Using where; Using join buffer (hash join)
 Warnings:
 Note	1003	/* select#1 */ select `test`.`t2`.`companynr` AS `companynr`,`test`.`t4`.`companyname` AS `companyname` from `test`.`t4` left join `test`.`t2` on((`test`.`t2`.`companynr` = `test`.`t4`.`companynr`)) where (ifnull(`test`.`t2`.`companynr`,1) > 0)
 explain select companynr,companyname from t4 left join t2 using (companynr) where companynr > 0 or companynr is null;
 id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 1	SIMPLE	t4	NULL	range	PRIMARY	PRIMARY	1	NULL	#	#	Using where
-1	SIMPLE	t2	NULL	ALL	NULL	NULL	NULL	NULL	#	#	Using where; Using join buffer (Block Nested Loop)
+1	SIMPLE	t2	NULL	ALL	NULL	NULL	NULL	NULL	#	#	Using where; Using join buffer (hash join)
 Warnings:
 Note	1003	/* select#1 */ select `test`.`t4`.`companynr` AS `companynr`,`test`.`t4`.`companyname` AS `companyname` from `test`.`t4` left join `test`.`t2` on((`test`.`t2`.`companynr` = `test`.`t4`.`companynr`)) where (`test`.`t4`.`companynr` > 0)
 explain select companynr,companyname from t4 left join t2 using (companynr) where companynr > 0 or companynr < 0 or companynr > 0;
 id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 1	SIMPLE	t4	NULL	range	PRIMARY	PRIMARY	1	NULL	#	#	Using where
-1	SIMPLE	t2	NULL	ALL	NULL	NULL	NULL	NULL	#	#	Using where; Using join buffer (Block Nested Loop)
+1	SIMPLE	t2	NULL	ALL	NULL	NULL	NULL	NULL	#	#	Using where; Using join buffer (hash join)
 Warnings:
 Note	1003	/* select#1 */ select `test`.`t4`.`companynr` AS `companynr`,`test`.`t4`.`companyname` AS `companyname` from `test`.`t4` left join `test`.`t2` on((`test`.`t2`.`companynr` = `test`.`t4`.`companynr`)) where ((`test`.`t4`.`companynr` > 0) or (`test`.`t4`.`companynr` > 0))
 explain select companynr,companyname from t4 left join t2 using (companynr) where ifnull(companynr,1)>0;
 id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 1	SIMPLE	t4	NULL	index	NULL	companyname	120	NULL	#	#	Using where; Using index
-1	SIMPLE	t2	NULL	ALL	NULL	NULL	NULL	NULL	#	#	Using where; Using join buffer (Block Nested Loop)
+1	SIMPLE	t2	NULL	ALL	NULL	NULL	NULL	NULL	#	#	Using where; Using join buffer (hash join)
 Warnings:
 Note	1003	/* select#1 */ select `test`.`t4`.`companynr` AS `companynr`,`test`.`t4`.`companyname` AS `companyname` from `test`.`t4` left join `test`.`t2` on((`test`.`t2`.`companynr` = `test`.`t4`.`companynr`)) where (ifnull(`test`.`t4`.`companynr`,1) > 0)
 select distinct t2.companynr,t4.companynr from t2,t4 where t2.companynr=t4.companynr+1;
@@ -1491,7 +1510,7 @@ companynr	companynr
 explain select distinct t2.companynr,t4.companynr from t2,t4 where t2.companynr=t4.companynr+1;
 id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 1	SIMPLE	t4	NULL	index	NULL	companyname	120	NULL	#	#	Using index; Using temporary
-1	SIMPLE	t2	NULL	ALL	NULL	NULL	NULL	NULL	#	#	Using where; Using join buffer (Block Nested Loop)
+1	SIMPLE	t2	NULL	ALL	NULL	NULL	NULL	NULL	#	#	Using where; Using join buffer (hash join)
 Warnings:
 Note	1003	/* select#1 */ select distinct `test`.`t2`.`companynr` AS `companynr`,`test`.`t4`.`companynr` AS `companynr` from `test`.`t2` join `test`.`t4` where (`test`.`t2`.`companynr` = (`test`.`t4`.`companynr` + 1))
 select t2.fld1,t2.companynr,fld3,period from t3,t2 where t2.fld1 = 38208 and t2.fld1=t3.t2nr and period = 1008 or t2.fld1 = 38008 and t2.fld1 =t3.t2nr and period = 1008;
@@ -1611,15 +1630,15 @@ companynr	count(price)	sum(price)	min(price)	max(price)	avg(price)
 512	4181	3288532102	786542	786542	786542.0000
 select distinct mod(companynr,10) from t4 group by companynr;
 mod(companynr,10)
-9
-8
 0
-4
-6
-7
 1
 3
+4
 5
+6
+7
+8
+9
 select distinct 1 from t4 group by companynr;
 1
 1
@@ -1727,10 +1746,10 @@ name	count(*)
 cloakroom	4181
 select name,count(*) from t3 where name >= "extramarital" and price <= 39654943 group by name;
 name	count(*)
+Iranizes	4181
 extramarital	4181
 gazer	4181
 gems	4181
-Iranizes	4181
 spates	4181
 tucked	4181
 violinist	4181
@@ -1739,18 +1758,18 @@ fld3	count(*)
 spates	4181
 select companynr|0,companyname from t4 group by 1;
 companynr|0	companyname
+0	Unknown
 29	company 1
-68	company 10
-50	company 11
 34	company 2
 36	company 3
 37	company 4
 40	company 5
 41	company 6
+50	company 11
 53	company 7
 58	company 8
 65	company 9
-0	Unknown
+68	company 10
 select t2.companynr,companyname,count(*) from t2,t4 where t2.companynr=t4.companynr group by t2.companynr order by companyname;
 companynr	companyname	count(*)
 29	company 1	95
@@ -1807,110 +1826,110 @@ companynr	count(*)
 53	4
 select t2.fld4,t2.fld1,count(price),sum(price),min(price),max(price),avg(price) from t3,t2 where t3.companynr = 37 and t2.fld1 = t3.t2nr group by fld1,t2.fld4;
 fld4	fld1	count(price)	sum(price)	min(price)	max(price)	avg(price)
-teethe	000001	1	5987435	5987435	5987435	5987435.0000
-dreaded	011401	1	5987435	5987435	5987435	5987435.0000
-scholastics	011402	1	28357832	28357832	28357832	28357832.0000
-audiology	011403	1	39654943	39654943	39654943	39654943.0000
-wallet	011501	1	5987435	5987435	5987435	5987435.0000
-parters	011701	1	5987435	5987435	5987435	5987435.0000
-eschew	011702	1	28357832	28357832	28357832	28357832.0000
-quitter	011703	1	39654943	39654943	39654943	39654943.0000
-neat	012001	1	5987435	5987435	5987435	5987435.0000
-Steinberg	012003	1	39654943	39654943	39654943	39654943.0000
-balled	012301	1	5987435	5987435	5987435	5987435.0000
-persist	012302	1	28357832	28357832	28357832	28357832.0000
-attainments	012303	1	39654943	39654943	39654943	39654943.0000
-capably	012501	1	5987435	5987435	5987435	5987435.0000
-impulsive	012602	1	28357832	28357832	28357832	28357832.0000
-starlet	012603	1	39654943	39654943	39654943	39654943.0000
-featherweight	012701	1	5987435	5987435	5987435	5987435.0000
-pessimist	012702	1	28357832	28357832	28357832	28357832.0000
-daughter	012703	1	39654943	39654943	39654943	39654943.0000
-lawgiver	013601	1	5987435	5987435	5987435	5987435.0000
-stated	013602	1	28357832	28357832	28357832	28357832.0000
-readable	013603	1	39654943	39654943	39654943	39654943.0000
-testicle	013801	1	5987435	5987435	5987435	5987435.0000
-Parsifal	013802	1	28357832	28357832	28357832	28357832.0000
-leavings	013803	1	39654943	39654943	39654943	39654943.0000
-squeaking	013901	1	5987435	5987435	5987435	5987435.0000
-contrasted	016001	1	5987435	5987435	5987435	5987435.0000
-leftover	016201	1	5987435	5987435	5987435	5987435.0000
-whiteners	016202	1	28357832	28357832	28357832	28357832.0000
-erases	016301	1	5987435	5987435	5987435	5987435.0000
-Punjab	016302	1	28357832	28357832	28357832	28357832.0000
+Abraham	018103	1	39654943	39654943	39654943	39654943.0000
+Anatole	038102	1	28357832	28357832	28357832	28357832.0000
+Beebe	018602	1	28357832	28357832	28357832	28357832.0000
+Chicana	038203	1	39654943	39654943	39654943	39654943.0000
+Conley	018101	1	5987435	5987435	5987435	5987435.0000
+Connally	018801	1	5987435	5987435	5987435	5987435.0000
+Graves	018052	1	28357832	28357832	28357832	28357832.0000
+Judas	018032	1	28357832	28357832	28357832	28357832.0000
+Kline	038101	1	5987435	5987435	5987435	5987435.0000
+Manhattanize	030502	1	28357832	28357832	28357832	28357832.0000
 Merritt	016303	1	39654943	39654943	39654943	39654943.0000
-sweetish	018001	1	5987435	5987435	5987435	5987435.0000
-dogging	018002	1	28357832	28357832	28357832	28357832.0000
-scornfully	018003	1	39654943	39654943	39654943	39654943.0000
-fetters	018012	1	28357832	28357832	28357832	28357832.0000
+Parsifal	013802	1	28357832	28357832	28357832	28357832.0000
+Punjab	016302	1	28357832	28357832	28357832	28357832.0000
+Selfridge	019102	1	28357832	28357832	28357832	28357832.0000
+Simla	018402	1	28357832	28357832	28357832	28357832.0000
+Steinberg	012003	1	39654943	39654943	39654943	39654943.0000
+Taoism	018603	1	39654943	39654943	39654943	39654943.0000
+attainments	012303	1	39654943	39654943	39654943	39654943.0000
+audiology	011403	1	39654943	39654943	39654943	39654943.0000
+balled	012301	1	5987435	5987435	5987435	5987435.0000
+bee	038001	1	5987435	5987435	5987435	5987435.0000
+betroth	030501	1	5987435	5987435	5987435	5987435.0000
 bivalves	018013	1	39654943	39654943	39654943	39654943.0000
-skulking	018021	1	5987435	5987435	5987435	5987435.0000
+bloodbath	018042	1	28357832	28357832	28357832	28357832.0000
+cage	018201	1	5987435	5987435	5987435	5987435.0000
+capably	012501	1	5987435	5987435	5987435	5987435.0000
+checkpoints	018803	1	39654943	39654943	39654943	39654943.0000
+coexist	018601	1	5987435	5987435	5987435	5987435.0000
+contrasted	016001	1	5987435	5987435	5987435	5987435.0000
+daughter	012703	1	39654943	39654943	39654943	39654943.0000
+dental	038003	1	39654943	39654943	39654943	39654943.0000
+dimensions	038202	1	28357832	28357832	28357832	28357832.0000
+disable	019103	1	39654943	39654943	39654943	39654943.0000
+dogging	018002	1	28357832	28357832	28357832	28357832.0000
+dreaded	011401	1	5987435	5987435	5987435	5987435.0000
+epistle	018062	1	28357832	28357832	28357832	28357832.0000
+erases	016301	1	5987435	5987435	5987435	5987435.0000
+eschew	011702	1	28357832	28357832	28357832	28357832.0000
+featherweight	012701	1	5987435	5987435	5987435	5987435.0000
+fetched	018802	1	28357832	28357832	28357832	28357832.0000
+fetters	018012	1	28357832	28357832	28357832	28357832.0000
+firearm	018812	1	28357832	28357832	28357832	28357832.0000
 flint	018022	1	28357832	28357832	28357832	28357832.0000
 flopping	018023	1	39654943	39654943	39654943	39654943.0000
-Judas	018032	1	28357832	28357832	28357832	28357832.0000
-vacuuming	018033	1	39654943	39654943	39654943	39654943.0000
-medical	018041	1	5987435	5987435	5987435	5987435.0000
-bloodbath	018042	1	28357832	28357832	28357832	28357832.0000
-subschema	018043	1	39654943	39654943	39654943	39654943.0000
-interdependent	018051	1	5987435	5987435	5987435	5987435.0000
-Graves	018052	1	28357832	28357832	28357832	28357832.0000
-neonatal	018053	1	39654943	39654943	39654943	39654943.0000
-sorters	018061	1	5987435	5987435	5987435	5987435.0000
-Conley	018101	1	5987435	5987435	5987435	5987435.0000
-lectured	018102	1	28357832	28357832	28357832	28357832.0000
-Abraham	018103	1	39654943	39654943	39654943	39654943.0000
-cage	018201	1	5987435	5987435	5987435	5987435.0000
-hushes	018202	1	28357832	28357832	28357832	28357832.0000
-Simla	018402	1	28357832	28357832	28357832	28357832.0000
-reporters	018403	1	39654943	39654943	39654943	39654943.0000
-coexist	018601	1	5987435	5987435	5987435	5987435.0000
-Beebe	018602	1	28357832	28357832	28357832	28357832.0000
-Taoism	018603	1	39654943	39654943	39654943	39654943.0000
-Connally	018801	1	5987435	5987435	5987435	5987435.0000
-fetched	018802	1	28357832	28357832	28357832	28357832.0000
-checkpoints	018803	1	39654943	39654943	39654943	39654943.0000
 gritty	018811	1	5987435	5987435	5987435	5987435.0000
-firearm	018812	1	28357832	28357832	28357832	28357832.0000
-minima	019101	1	5987435	5987435	5987435	5987435.0000
-Selfridge	019102	1	28357832	28357832	28357832	28357832.0000
-disable	019103	1	39654943	39654943	39654943	39654943.0000
-witchcraft	019201	1	5987435	5987435	5987435	5987435.0000
-betroth	030501	1	5987435	5987435	5987435	5987435.0000
-Manhattanize	030502	1	28357832	28357832	28357832	28357832.0000
+hushes	018202	1	28357832	28357832	28357832	28357832.0000
 imprint	030503	1	39654943	39654943	39654943	39654943.0000
-swelling	031901	1	5987435	5987435	5987435	5987435.0000
+impulsive	012602	1	28357832	28357832	28357832	28357832.0000
+interdependent	018051	1	5987435	5987435	5987435	5987435.0000
 interrelationships	036001	1	5987435	5987435	5987435	5987435.0000
-riser	036002	1	28357832	28357832	28357832	28357832.0000
-bee	038001	1	5987435	5987435	5987435	5987435.0000
 kanji	038002	1	28357832	28357832	28357832	28357832.0000
-dental	038003	1	39654943	39654943	39654943	39654943.0000
-railway	038011	1	5987435	5987435	5987435	5987435.0000
-validate	038012	1	28357832	28357832	28357832	28357832.0000
+lawgiver	013601	1	5987435	5987435	5987435	5987435.0000
+leavings	013803	1	39654943	39654943	39654943	39654943.0000
+lectured	018102	1	28357832	28357832	28357832	28357832.0000
+leftover	016201	1	5987435	5987435	5987435	5987435.0000
+medical	018041	1	5987435	5987435	5987435	5987435.0000
+minima	019101	1	5987435	5987435	5987435	5987435.0000
+neat	012001	1	5987435	5987435	5987435	5987435.0000
+neonatal	018053	1	39654943	39654943	39654943	39654943.0000
 normalizes	038013	1	39654943	39654943	39654943	39654943.0000
-Kline	038101	1	5987435	5987435	5987435	5987435.0000
-Anatole	038102	1	28357832	28357832	28357832	28357832.0000
+parters	011701	1	5987435	5987435	5987435	5987435.0000
 partridges	038103	1	39654943	39654943	39654943	39654943.0000
+persist	012302	1	28357832	28357832	28357832	28357832.0000
+pessimist	012702	1	28357832	28357832	28357832	28357832.0000
+quitter	011703	1	39654943	39654943	39654943	39654943.0000
+railway	038011	1	5987435	5987435	5987435	5987435.0000
+readable	013603	1	39654943	39654943	39654943	39654943.0000
 recruited	038201	1	5987435	5987435	5987435	5987435.0000
-dimensions	038202	1	28357832	28357832	28357832	28357832.0000
-Chicana	038203	1	39654943	39654943	39654943	39654943.0000
-epistle	018062	1	28357832	28357832	28357832	28357832.0000
+reporters	018403	1	39654943	39654943	39654943	39654943.0000
+riser	036002	1	28357832	28357832	28357832	28357832.0000
+scholastics	011402	1	28357832	28357832	28357832	28357832.0000
+scornfully	018003	1	39654943	39654943	39654943	39654943.0000
+skulking	018021	1	5987435	5987435	5987435	5987435.0000
+sorters	018061	1	5987435	5987435	5987435	5987435.0000
+squeaking	013901	1	5987435	5987435	5987435	5987435.0000
+starlet	012603	1	39654943	39654943	39654943	39654943.0000
+stated	013602	1	28357832	28357832	28357832	28357832.0000
+subschema	018043	1	39654943	39654943	39654943	39654943.0000
+sweetish	018001	1	5987435	5987435	5987435	5987435.0000
+swelling	031901	1	5987435	5987435	5987435	5987435.0000
+teethe	000001	1	5987435	5987435	5987435	5987435.0000
+testicle	013801	1	5987435	5987435	5987435	5987435.0000
+vacuuming	018033	1	39654943	39654943	39654943	39654943.0000
+validate	038012	1	28357832	28357832	28357832	28357832.0000
+wallet	011501	1	5987435	5987435	5987435	5987435.0000
+whiteners	016202	1	28357832	28357832	28357832	28357832.0000
+witchcraft	019201	1	5987435	5987435	5987435	5987435.0000
 select t3.companynr,fld3,sum(price) from t3,t2 where t2.fld1 = t3.t2nr and t3.companynr = 512 group by companynr,fld3;
 companynr	fld3	sum(price)
+512	Micronesia	786542
+512	Miles	786542
 512	boat	786542
 512	capably	786542
+512	cupboard	786542
 512	decliner	786542
+512	descendants	786542
 512	dopers	786542
 512	erases	786542
-512	cupboard	786542
-512	Miles	786542
-512	Micronesia	786542
-512	descendants	786542
 512	skies	786542
 select t2.companynr,count(*),min(fld3),max(fld3),sum(price),avg(price) from t2,t3 where t3.companynr >= 30 and t3.companynr <= 58 and t3.t2nr = t2.fld1 and 1+1=2 group by t2.companynr;
 companynr	count(*)	min(fld3)	max(fld3)	sum(price)	avg(price)
 00	1	Omaha	Omaha	5987435	5987435.0000
-37	83	Abraham	Wotan	1908978016	22999735.1325
 36	1	dubbed	dubbed	28357832	28357832.0000
+37	83	Abraham	Wotan	1908978016	22999735.1325
 50	2	scribbled	tapestry	68012775	34006387.5000
 select t3.companynr+0,t3.t2nr,fld3,sum(price) from t3,t2 where t2.fld1 = t3.t2nr and t3.companynr = 37 group by 1,t3.t2nr,fld3,fld3,fld3,fld3,fld3 order by fld1;
 t3.companynr+0	t2nr	fld3	sum(price)
@@ -2011,12 +2030,12 @@ explain select fld3 from t2 where 1>2 or 2>3;
 id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 1	SIMPLE	NULL	NULL	NULL	NULL	NULL	NULL	NULL	#	#	Impossible WHERE
 Warnings:
-Note	1003	/* select#1 */ select `test`.`t2`.`fld3` AS `fld3` from `test`.`t2` where 0
+Note	1003	/* select#1 */ select `test`.`t2`.`fld3` AS `fld3` from `test`.`t2` where false
 explain select fld3 from t2 where fld1=fld1;
 id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 1	SIMPLE	t2	NULL	ALL	NULL	NULL	NULL	NULL	#	#	NULL
 Warnings:
-Note	1003	/* select#1 */ select `test`.`t2`.`fld3` AS `fld3` from `test`.`t2` where 1
+Note	1003	/* select#1 */ select `test`.`t2`.`fld3` AS `fld3` from `test`.`t2` where true
 select companynr,fld1 from t2 HAVING fld1=250501 or fld1=250502;
 companynr	fld1
 34	250501
@@ -2213,6 +2232,17 @@ KEY mcbs_aufnr(mcbs_aufnr),
 KEY kundentyp(kundentyp),
 KEY p_nr(p_nr,suffix)
 );
+Warnings:
+Warning	1681	Integer display width is deprecated and will be removed in a future release.
+Warning	1681	Integer display width is deprecated and will be removed in a future release.
+Warning	1681	Integer display width is deprecated and will be removed in a future release.
+Warning	1681	Integer display width is deprecated and will be removed in a future release.
+Warning	1681	Integer display width is deprecated and will be removed in a future release.
+Warning	1681	Integer display width is deprecated and will be removed in a future release.
+Warning	1681	Integer display width is deprecated and will be removed in a future release.
+Warning	1681	Integer display width is deprecated and will be removed in a future release.
+Warning	1681	Integer display width is deprecated and will be removed in a future release.
+Warning	1681	Integer display width is deprecated and will be removed in a future release.
 SET sql_mode = default;
 INSERT INTO t1 VALUES (3359356,405,3359356,'Mustermann Musterfrau',52500,'2000-05-20','workflow','Auftrag erledigt','Originalvertrag eingegangen und geprüft','','privat',1485525,2122316,'+','','N',1909160,'MobilComSuper92000D2',NULL,NULL,'MS9ND2',3,24,'MobilCom Shop Koeln',52500,NULL,'auto',20010202105916,'Mobilfunk','PP','','','');
 INSERT INTO t1 VALUES (3359357,468,3359357,'Mustermann Musterfrau',7001,'2000-05-20','workflow','Auftrag erledigt','Originalvertrag eingegangen und geprüft','','privat',1503580,2139699,'+','','P',1909171,'MobilComSuper9D1T10SFreisprech(Akquise)',NULL,NULL,'MS9NS1',327,24,'MobilCom Intern',7003,NULL,'auto',20010202105916,'Mobilfunk','PP','','','');
@@ -2227,7 +2257,7 @@ Privat (Private Nutzung)	Mobilfunk
 Warnings:
 Warning	1052	Column 'kundentyp' in group statement is ambiguous
 drop table t1;
-# restart:--thread-handling=pool-of-threads --thread-pool-size=2 --thread-pool-max-threads=2 --admin-address=127.0.0.1 --admin-port=ADMIN_PORT --skip-mysqlx
+# restart:--thread-handling=pool-of-threads --thread-pool-size=2 --thread-pool-max-threads=2 --admin-address=127.0.0.1 --admin-port=ADMIN_PORT --loose-skip-mysqlx
 call mtr.add_suppression("Threadpool could not create additional thread to handle queries");
 SELECT sleep(50000);
 SELECT sleep(50000);
