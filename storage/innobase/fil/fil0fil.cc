@@ -2552,6 +2552,20 @@ dberr_t Fil_shard::get_file_size(fil_node_t *file, bool read_only_mode) {
   auto fil_space_flags = space->flags & ~FSP_FLAGS_MASK_DATA_DIR;
   auto header_fsp_flags = flags & ~FSP_FLAGS_MASK_DATA_DIR;
 
+  /* If a crash occurs while an UNDO space is being truncated,
+     it will be created new at startup. In that case, the fil_space_t
+     object will have the ENCRYPTION flag set, but the header page will
+     not be marked until the srv_master_thread gets around to it.
+     The opposite can occur where the header page contains the encryption
+     flag but the fil_space_t does not.  It could happen that undo
+     encryption was turned off just before the crash or shutdown so that
+     the srv_master_thread did not yet have time to apply it.
+     So don't compare the encryption flag for undo tablespaces. */
+  if (fsp_is_undo_tablespace(space->id)) {
+    fsp_flags_unset_encryption(fil_space_flags);
+    fsp_flags_unset_encryption(header_fsp_flags);
+  }
+
   /* Make sure the space_flags are the same as the header page flags. */
   if (UNIV_UNLIKELY(fil_space_flags != header_fsp_flags)) {
     ib::error(ER_IB_MSG_272, ulong{space->flags}, file->name, ulonglong{flags});

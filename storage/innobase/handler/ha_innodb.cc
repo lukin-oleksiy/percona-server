@@ -937,6 +937,24 @@ static PSI_file_info all_innodb_files[] = {
 #endif /* UNIV_PFS_IO */
 #endif /* HAVE_PSI_INTERFACE */
 
+static MYSQL_THDVAR_UINT(records_in_range, PLUGIN_VAR_RQCMDARG,
+                         "Used to override the result of records_in_range(). "
+                         "Set to a positive number to override",
+                         NULL, NULL, 0,
+                         /* min */ 0, /* max */ INT_MAX, 0);
+
+static MYSQL_THDVAR_UINT(force_index_records_in_range, PLUGIN_VAR_RQCMDARG,
+                         "Used to override the result of records_in_range() "
+                         "when FORCE INDEX is used.",
+                         NULL, NULL, 0,
+                         /* min */ 0, /* max */ INT_MAX, 0);
+
+uint innodb_force_index_records_in_range(THD *thd) {
+  return THDVAR(thd, force_index_records_in_range);
+}
+
+uint innodb_records_in_range(THD *thd) { return THDVAR(thd, records_in_range); }
+
 /** Plugin update function to handle validation and then switch the
 innodb_doublewrite mode
 @param[in]  thd thread handle
@@ -1138,15 +1156,6 @@ static bool innodb_empty_free_list_algorithm_allowed(
 @param[in]      field   MySQL field object
 @return offset */
 static inline uint get_field_offset(const TABLE *table, const Field *field);
-
-static int innodb_encrypt_tables_validate(
-    /*==================================*/
-    THD *thd,                      /*!< in: thread handle */
-    SYS_VAR *var,                  /*!< in: pointer to system
-                                                   variable */
-    void *save,                    /*!< out: immediate result
-                                   for update function */
-    struct st_mysql_value *value); /*!< in: incoming string */
 
 static MYSQL_THDVAR_BOOL(table_locks, PLUGIN_VAR_OPCMDARG,
                          "Enable InnoDB locking in LOCK TABLES",
@@ -2854,8 +2863,13 @@ bool Encryption::is_master_key_encryption(const char *algorithm) noexcept {
 /** Check if the NO algorithm was explicitly specified.
 @param[in]      algorithm       Encryption algorithm to check
 @return true if no algorithm explicitly requested */
-bool Encryption::none_explicitly_specified(const char *algorithm) noexcept {
-  return (algorithm != nullptr && innobase_strcasecmp(algorithm, "n") == 0);
+bool Encryption::none_explicitly_specified(ulong create_info_used_fields,
+                                           const char *algorithm) noexcept {
+  if (create_info_used_fields & HA_CREATE_USED_ENCRYPT) {
+    ut_ad(algorithm != nullptr);
+    return innobase_strcasecmp(algorithm, "n") == 0;
+  }
+  return false;
 }
 
 dberr_t Encryption::validate(const char *option) noexcept {
@@ -3491,8 +3505,8 @@ static int innodb_init_abort() {
 @param[in,out]  tablespaces     predefined tablespaces created by the DDSE
 @return 0 on success, 1 on failure */
 [[nodiscard]] static int innobase_init_files(
-    dict_init_mode_t dict_init_mode,
-    List<const Plugin_tablespace> *tablespaces);
+    dict_init_mode_t dict_init_mode, List<const Plugin_tablespace> *tablespaces,
+    bool &is_dd_encrypted);
 
 /** Initialize InnoDB for being used to store the DD tables.
 Create the required files according to the dict_init_mode.
@@ -4672,6 +4686,13 @@ error_exit:
   return (ret);
 }
 
+void innobase_fix_default_table_encryption(ulong encryption_option) {
+  if (!srv_read_only_mode) {
+    srv_default_table_encryption =
+        static_cast<enum_default_table_encryption>(encryption_option);
+  }
+}
+
 /** Fix the empty UUID of tablespaces like system, temp etc by generating
 a new master key and do key rotation. These tablespaces if encrypted
 during startup, will be encrypted with tablespace key which has empty UUID
@@ -5778,6 +5799,9 @@ static int innodb_init(void *p) {
   innobase_hton->fix_tablespaces_empty_uuid =
       innobase_fix_tablespaces_empty_uuid;
 
+  innobase_hton->fix_default_table_encryption =
+      innobase_fix_default_table_encryption;
+
   innobase_hton->redo_log_set_state = innobase_redo_set_state;
 
   innobase_hton->post_ddl = innobase_post_ddl;
@@ -6039,7 +6063,8 @@ static bool dd_open_hardcoded(space_id_t space_id, const char *filename,
 @param[in,out]  tablespaces     predefined tablespaces created by the DDSE
 @return 0 on success, 1 on failure */
 static int innobase_init_files(dict_init_mode_t dict_init_mode,
-                               List<const Plugin_tablespace> *tablespaces) {
+                               List<const Plugin_tablespace> *tablespaces,
+                               bool &is_dd_encrypted) {
   DBUG_TRACE;
 
   ut_ad(dict_init_mode == DICT_INIT_CREATE_FILES ||
@@ -6075,6 +6100,8 @@ static int innobase_init_files(dict_init_mode_t dict_init_mode,
     my_error(ER_CANNOT_FIND_KEY_IN_KEYRING, MYF(0));
     return innodb_init_abort();
   }
+
+  is_dd_encrypted = do_encrypt;
 
   const ulint dd_space_flags =
       do_encrypt ? predefined_flags | FSP_FLAGS_MASK_ENCRYPTION
@@ -12127,6 +12154,15 @@ dberr_t create_table_info_t::enable_encryption(dict_table_t *table) {
 
   if (Encryption::is_none(encrypt)) return (DB_SUCCESS);
 
+  /* If table is part of tablespace - no need for retrieving
+  master key as tablespace key was already decrypted
+  either by validate_first_page or during tablespace creation.
+  Just set the encryption flag and return. */
+  if (!(m_flags2 & DICT_TF2_USE_FILE_PER_TABLE)) {
+    DICT_TF2_FLAG_SET(table, DICT_TF2_ENCRYPTION_FILE_PER_TABLE);
+    return (DB_SUCCESS);
+  }
+
   /* Set the encryption flag. */
   byte *master_key = nullptr;
   uint32_t master_key_id;
@@ -13210,13 +13246,13 @@ bool create_table_info_t::create_option_tablespace_is_valid() {
 
   if (!m_use_shared_space) {
     if (!m_use_file_per_table) {
-      /* System or temporary tablespace is being used for table */
-      if (m_create_info->encrypt_type.str != nullptr &&
-          !Encryption::is_none(m_create_info->encrypt_type.str)) {
-        /* Encryption is not allowed for system tablespace. */
+      if (m_create_info->encrypt_type.str != nullptr && is_temp) {
+        /* Temporary tablespace is being used for table */
         my_printf_error(ER_ILLEGAL_HA_CREATE_OPTION,
-                        "InnoDB : ENCRYPTION=Y is not accepted"
-                        " for system tablespace.",
+                        "InnoDB: ENCRYPTION is not accepted"
+                        " for temporary tablespace. For temporary tablespace"
+                        " encryption please use innodb_temp_tablespace_encrypt"
+                        " variable.",
                         MYF(0));
         return false;
       }
@@ -13242,17 +13278,6 @@ bool create_table_info_t::create_option_tablespace_is_valid() {
   }
 
   if (m_use_shared_space && !is_general_space) {
-    /* System tablespace is being used for table */
-    if (m_create_info->encrypt_type.str != nullptr &&
-        !Encryption::is_none(m_create_info->encrypt_type.str)) {
-      /* Encryption is not allowed for system tablespace. */
-      my_printf_error(ER_ILLEGAL_HA_CREATE_OPTION,
-                      "InnoDB : ENCRYPTION=Y is not accepted"
-                      " for system tablespace.",
-                      MYF(0));
-      return false;
-    }
-
     if (m_create_info->m_implicit_tablespace_autoextend_size_change &&
         m_create_info->m_implicit_tablespace_autoextend_size > 0) {
       /* AUTOEXTEND_SIZE is not allowed for system tablespace. */
@@ -13464,8 +13489,6 @@ bool create_table_info_t::create_option_compression_is_valid() {
   return (true);
 }
 
-static const char *srv_encrypt_tables_names[] = {"OFF", "ON", "FORCE", nullptr};
-
 /** Validate ENCRYPTION option.
 @return true if valid, false if not. */
 bool create_table_info_t::create_option_encryption_is_valid() const {
@@ -13479,15 +13502,6 @@ bool create_table_info_t::create_option_encryption_is_valid() const {
 
   const bool table_is_encrypted =
       !Encryption::is_none(m_create_info->encrypt_type.str);
-
-  if (srv_encrypt_tables == SRV_ENCRYPT_TABLES_FORCE &&
-      Encryption::none_explicitly_specified(m_create_info->encrypt_type.str)) {
-    my_printf_error(ER_INVALID_ENCRYPTION_OPTION,
-                    "InnoDB: Only ENCRYPTED tables can be created with "
-                    "innodb_encrypt_tables=FORCE.",
-                    MYF(0));
-    return (false);
-  }
 
   ulint space_id;
   if (m_use_shared_space) {
@@ -13773,7 +13787,8 @@ static bool innobase_ddse_dict_init(
     ib::info(ER_IB_MSG_DBLWR_1305) << "Atomic write disabled";
   }
 
-  if (innobase_init_files(dict_init_mode, tablespaces)) {
+  bool is_dd_encrypted{false};
+  if (innobase_init_files(dict_init_mode, tablespaces, is_dd_encrypted)) {
     return true;
   }
 
@@ -13877,6 +13892,13 @@ static bool innobase_ddse_dict_init(
   def->add_index(0, "index_pk", "PRIMARY KEY(id)");
   def->add_index(1, "index_k_thread_id", "KEY(thread_id)");
   /* Options and tablespace are set at the SQL layer. */
+
+  if (is_dd_encrypted) {
+    innodb_dynamic_metadata->set_encrypted();
+    innodb_table_stats->set_encrypted();
+    innodb_index_stats->set_encrypted();
+    innodb_ddl_log->set_encrypted();
+  }
 
   tables->push_back(innodb_dynamic_metadata);
   tables->push_back(innodb_table_stats);
@@ -23329,18 +23351,6 @@ static MYSQL_SYSVAR_ULONG(autoextend_increment,
                           "Data file autoextend increment in megabytes",
                           nullptr, nullptr, 64L, 1L, 1000L, 0);
 
-static TYPELIB srv_encrypt_tables_typelib = {
-    array_elements(srv_encrypt_tables_names) - 1, 0, srv_encrypt_tables_names,
-    nullptr};
-static MYSQL_SYSVAR_ENUM(
-    encrypt_tables, srv_encrypt_tables, PLUGIN_VAR_OPCMDARG,
-    "Enable encryption for tables. "
-    "When turned ON, all tables are created encrypted unless otherwise "
-    "specified. When it's set to FORCE, only encrypted tables can be created."
-    "The FORCE setting also disables non inplace alteration of unencrypted,"
-    " tables without encrypting them in the process.",
-    nullptr, nullptr, 0, &srv_encrypt_tables_typelib);
-
 static MYSQL_SYSVAR_BOOL(
     dedicated_server, srv_dedicated_server,
     PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_NOPERSIST | PLUGIN_VAR_READONLY,
@@ -24681,7 +24691,8 @@ static SYS_VAR *innobase_system_variables[] = {
     MYSQL_SYSVAR(compressed_columns_threshold),
     MYSQL_SYSVAR(ft_ignore_stopwords),
     MYSQL_SYSVAR(encrypt_online_alter_logs),
-    MYSQL_SYSVAR(encrypt_tables),
+    MYSQL_SYSVAR(records_in_range),
+    MYSQL_SYSVAR(force_index_records_in_range),
     nullptr};
 
 mysql_declare_plugin(innobase){
@@ -25557,40 +25568,6 @@ void ib_warn_row_too_big(const dict_table_t *table) {
                " ROW_FORMAT=COMPRESSED "
              : "",
       prefix ? DICT_MAX_FIXED_COL_LEN : 0);
-}
-
-static int innodb_encrypt_tables_validate(
-    /*=================================*/
-    THD *thd,                     /*!< in: thread handle */
-    SYS_VAR *var,                 /*!< in: pointer to system
-                                                  variable */
-    void *save,                   /*!< out: immediate result
-                                  for update function */
-    struct st_mysql_value *value) /*!< in: incoming string */
-{
-  const char *innodb_encrypt_tables_input;
-  char buff[STRING_BUFFER_USUAL_SIZE];
-  int len = sizeof(buff);
-
-  ut_a(save != NULL);
-  ut_a(value != NULL);
-
-  innodb_encrypt_tables_input = value->val_str(value, buff, &len);
-
-  bool legit_value = false;
-  uint use = 0;
-  for (; use < array_elements(srv_encrypt_tables_names); use++) {
-    if (!innobase_strcasecmp(innodb_encrypt_tables_input,
-                             srv_encrypt_tables_names[use])) {
-      legit_value = true;
-      break;
-    }
-  }
-
-  if (legit_value == false) return 1;
-  *static_cast<ulong *>(save) = use;
-
-  return 0;
 }
 
 /** Constructs fake dict_col_t describing column for foreign key type

@@ -4,38 +4,22 @@
 --source include/no_valgrind_without_big.inc
 --source include/have_innodb_max_16k.inc
 --source include/have_debug.inc
+--source include/have_punch_hole.inc
+--source include/have_component_keyring_file.inc
+--source suite/component_keyring_file/inc/setup_component.inc
 
 --disable_query_log
 call mtr.add_suppression("\\[Warning\\] .* Ignoring tablespace .* because it could not be opened");
-call mtr.add_suppression("\\[Error\\] .* Encryption can't find master key, please check the keyring plugin is loaded.");
+call mtr.add_suppression("\\[Error\\] .* Encryption can't find master key, please check the keyring is loaded.");
 call mtr.add_suppression("\\[ERROR\\] .* Failed to find tablespace for table `\.\.*`\.`\.\.*` in the cache.");
 call mtr.add_suppression("\\[ERROR\\] .* Operating system error number 2 in a file operation.");
 call mtr.add_suppression("\\[ERROR\\] .* The error means the system cannot find the path specified.");
 call mtr.add_suppression("\\[ERROR\\] .* Could not find a valid tablespace file for");
 call mtr.add_suppression("\\[ERROR\\] .* If you are installing InnoDB, remember that you must create directories yourself, InnoDB does not create them.");
 call mtr.add_suppression("\\[ERROR\\] .* Tablespace [0-9]+, name 'test.*t1', unable to open file '.*test.*t1.ibd' - Data structure corruption");
-call mtr.add_suppression("\\[ERROR\\] .* Encryption information in datafile: .* can't be decrypted, please confirm the keyfile is match and keyring plugin is loaded");
-call mtr.add_suppression("\\[ERROR\\] .* ibd can't be decrypted, please confirm the keyfile is match and keyring plugin is loaded.");
-call mtr.add_suppression("\\[ERROR\\] .* Check keyring plugin fail, please check the keyring plugin is loaded.");
+call mtr.add_suppression("\\[ERROR\\] .* Encryption information in datafile: .* can't be decrypted, please confirm that keyring is loaded");
+call mtr.add_suppression("\\[ERROR\\] .* ibd can't be decrypted, please confirm that keyring is loaded.");
 --enable_query_log
-
-# Create a table with encryption, should fail since keyring is not
-# loaded
---error ER_CANNOT_FIND_KEY_IN_KEYRING
-CREATE TABLE t1(c1 INT, c2 char(20)) ENCRYPTION="Y" ENGINE = InnoDB;
-
-CREATE TABLE t1(c1 INT, c2 char(20)) ENGINE = InnoDB;
-
---error ER_CANNOT_FIND_KEY_IN_KEYRING
-ALTER TABLE t1 ENCRYPTION="Y", algorithm=copy;
-
---let $restart_parameters = $keyring_restart_param
---let $do_not_echo_parameters = 1
---source include/restart_mysqld.inc
-
---disable_warnings
-DROP TABLE IF EXISTS t1;
---enable_warnings
 
 let $innodb_file_per_table = `SELECT @@innodb_file_per_table`;
 
@@ -61,63 +45,16 @@ DROP TABLE t1;
 
 # Test create temporary encrypted table,
 # Should fail, 'ENCRYPTION' clause is not  allowed with temporary tablespace.
---error ER_CANNOT_USE_ENCRYPTION_CLAUSE
+--error ER_ILLEGAL_HA_CREATE_OPTION
 CREATE TEMPORARY TABLE t1(c int) ENCRYPTION="Y";
 SHOW WARNINGS;
---error ER_CANNOT_USE_ENCRYPTION_CLAUSE
+--error ER_ILLEGAL_HA_CREATE_OPTION
 CREATE TEMPORARY TABLE t1(c int) ENCRYPTION="N";
 SHOW WARNINGS;
 
 # Test create encrypted table with incorrect option.
 --error ER_INVALID_ENCRYPTION_OPTION
 CREATE TABLE t1(c int) ENCRYPTION="R" ENGINE = InnoDB;
-
-# Create a table with encryption
-CREATE TABLE t1(c1 INT, c2 char(20)) ENCRYPTION="Y" ENGINE = InnoDB;
-
-SHOW CREATE TABLE t1;
-INSERT INTO t1 VALUES(0, "aaaaa");
-INSERT INTO t1 VALUES(1, "bbbbb");
-INSERT INTO t1 VALUES(2, "ccccc");
-INSERT INTO t1 VALUES(3, "ddddd");
-INSERT INTO t1 VALUES(4, "eeeee");
-INSERT INTO t1 VALUES(5, "fffff");
-INSERT INTO t1 VALUES(6, "ggggg");
-INSERT INTO t1 VALUES(7, "hhhhh");
-INSERT INTO t1 VALUES(8, "iiiii");
-INSERT INTO t1 VALUES(9, "jjjjj");
-INSERT INTO t1 select * from t1;
-INSERT INTO t1 select * from t1;
-INSERT INTO t1 select * from t1;
-INSERT INTO t1 select * from t1;
-INSERT INTO t1 select * from t1;
-INSERT INTO t1 select * from t1;
-
-SELECT * FROM t1 ORDER BY c1 LIMIT 10;
-
---disable_query_log
-SET DEBUG='+d,os_block_cache_busy';
---enable_query_log
-
-# Restart without key ring to check the encrypted table can't be open.
---let $restart_parameters=
--- source include/restart_mysqld.inc
-
---error ER_CANNOT_FIND_KEY_IN_KEYRING
-SELECT * FROM t1 ORDER BY c1 LIMIT 10;
-
-# Restart to confirm the encryption info can be retrieved properly.
---let $restart_parameters="$KEYRING_RESTART_PARAM"
---let $restart_hide_args= 1
---source include/restart_mysqld.inc
-
---disable_query_log
-SET DEBUG='-d,os_block_cache_busy';
---enable_query_log
-
-SELECT * FROM t1 ORDER BY c1 LIMIT 10;
-
-DROP TABLE t1;
 
 # Crash/recovery test.
 CREATE TABLE t1(c1 INT, c2 char(20)) ENCRYPTION="Y" ENGINE = InnoDB;
@@ -134,8 +71,8 @@ INSERT INTO t1 VALUES(8, "iiiii");
 INSERT INTO t1 VALUES(9, "jjjjj");
 
 # Restart to confirm the encryption info can be retrieved properly.
---let $restart_parameters="$KEYRING_RESTART_PARAM"
---let $restart_hide_args= 1
+--let $restart_parameters = $keyring_restart_param
+--let $do_not_echo_parameters = 1
 --source include/kill_and_restart_mysqld.inc
 
 SELECT * FROM t1 ORDER BY c1 LIMIT 10;
@@ -185,8 +122,8 @@ UNLOCK TABLES;
 SELECT * FROM t1 ORDER BY c1 LIMIT 10;
 
 # Restart to confirm the encryption info can be retrieved properly.
---let $restart_parameters="$KEYRING_RESTART_PARAM"
---let $restart_hide_args= 1
+--let $restart_parameters = $keyring_restart_param
+--let $do_not_echo_parameters = 1
 --source include/restart_mysqld.inc
 
 SELECT * FROM t1 ORDER BY c1;
@@ -206,8 +143,8 @@ UNLOCK TABLES;
 SELECT * FROM t1 ORDER BY c1 LIMIT 10;
 
 # Restart to confirm the encryption info can be retrieved properly.
---let $restart_parameters="$KEYRING_RESTART_PARAM"
---let $restart_hide_args= 1
+--let $restart_parameters = $keyring_restart_param
+--let $do_not_echo_parameters = 1
 --source include/restart_mysqld.inc
 
 SELECT * FROM t1 ORDER BY c1;
@@ -238,8 +175,8 @@ UNLOCK TABLES;
 SELECT c1, ST_AsText(g) FROM t1 ORDER BY c1 LIMIT 10;
 
 # Restart to confirm the encryption info can be retrieved properly.
---let $restart_parameters="$KEYRING_RESTART_PARAM --innodb_strict_mode=OFF"
---let $restart_hide_args= 1
+--let $restart_parameters = $keyring_restart_param --innodb_strict_mode=OFF
+--let $do_not_echo_parameters = 1
 --source include/restart_mysqld.inc
 
 SELECT c1, ST_AsText(g) FROM t1 ORDER BY c1 LIMIT 10;
@@ -282,3 +219,4 @@ let SEARCH_PATTERN=Sydney;
 # Cleanup
 eval SET GLOBAL innodb_file_per_table=$innodb_file_per_table;
 DROP TABLE t1;
+--source suite/component_keyring_file/inc/teardown_component.inc
