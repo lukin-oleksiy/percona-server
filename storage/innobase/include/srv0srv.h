@@ -854,13 +854,9 @@ extern bool srv_print_lock_wait_timeout_info;
 
 extern bool srv_cmp_per_index_enabled;
 
-extern ulong srv_encrypt_tables;
+extern enum_default_table_encryption srv_default_table_encryption;
 
-enum srv_encrypt_tables_values {
-  SRV_ENCRYPT_TABLES_OFF = 0,
-  SRV_ENCRYPT_TABLES_ON = 1,
-  SRV_ENCRYPT_TABLES_FORCE = 2,
-};
+extern ulong srv_encrypt_tables;
 
 /** Number of times secondary index lookup triggered cluster lookup */
 extern std::atomic<ulint> srv_sec_rec_cluster_reads;

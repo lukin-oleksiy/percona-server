@@ -1619,28 +1619,5 @@ void get_field_types(const dd::Table *dd_tab, const dict_table_t *m_table,
                      ulint &prtype);
 #endif
 
-/* Sets tablespace's DD encryption flag.
-@param[in] Thread       THD
-@param[in] space_name   name of the space for which DD encryption flag is to be
-@param[in] *is_space_being_removed - whether space is being removed
-set */
-bool dd_set_encryption_flag(THD *thd, const char *space_name,
-                            volatile bool *is_space_being_removed);
-
-/* Clears tablespace's DD encryption flag.
-@param[in] Thread       THD
-@param[in] space_name   name of the space for which DD encryption flag is to be
-@param[in] *is_space_being_removed - whether space is being removed
-cleared */
-bool dd_clear_encryption_flag(THD *thd, const char *space_name,
-                              volatile bool *is_space_being_removed);
-
-/* If mysql_ibd's DD encryption flag is different from the encryption flag in
- * space_flag   the mysql_ibd's encryption flag will be set to the
- * one from space_flags.
-@param[in] Thread       THD
-@param[in] space_flags  with correct encryption flag */
-bool dd_fix_mysql_ibd_encryption_flag_if_needed(THD *thd, uint32_t space_flags);
-
 #include "dict0dd.ic"
 #endif

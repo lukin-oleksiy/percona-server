@@ -195,9 +195,21 @@ dberr_t dict_build_tablespace(trx_t *trx, Tablespace *tablespace) {
 static ibt::Tablespace *determine_session_temp_tblsp(
     innodb_session_t *innodb_session, bool is_intrinsic, bool is_slave_thd) {
   ibt::Tablespace *tblsp = nullptr;
-  if (srv_encrypt_tables == SRV_ENCRYPT_TABLES_ON ||
-      srv_encrypt_tables == SRV_ENCRYPT_TABLES_FORCE ||
-      srv_tmp_tablespace_encrypt) {
+  bool encrypted = false;
+  switch (srv_default_table_encryption) {
+    case DEFAULT_TABLE_ENC_ON:
+      encrypted = true;
+      break;
+    case DEFAULT_TABLE_ENC_OFF:
+      if (srv_tmp_tablespace_encrypt) {
+        encrypted = true;
+      }
+      break;
+    default:
+      ut_ad(0);
+  }
+
+  if (encrypted) {
     if (is_slave_thd) {
       tblsp = ibt::get_enc_rpl_slave_tblsp();
     } else if (is_intrinsic) {

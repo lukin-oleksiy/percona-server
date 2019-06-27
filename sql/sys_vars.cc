@@ -7751,9 +7751,8 @@ static Sys_var_uint Sys_immediate_server_version(
     BLOCK_SIZE(1), NO_MUTEX_GUARD, IN_BINLOG,
     ON_CHECK(check_session_admin_or_replication_applier));
 
-static bool check_set_default_table_encryption_access(sys_var *self
-                                                      [[maybe_unused]],
-                                                      THD *thd, set_var *var) {
+static bool check_set_default_table_encryption(sys_var *self [[maybe_unused]],
+                                               THD *thd, set_var *var) {
   DBUG_EXECUTE_IF("skip_table_encryption_admin_check_for_set",
                   { return false; });
   if ((var->type == OPT_GLOBAL || var->type == OPT_PERSIST) &&
@@ -7785,14 +7784,6 @@ static bool check_set_default_table_encryption_access(sys_var *self
            "SUPER or SYSTEM_VARIABLES_ADMIN and TABLE_ENCRYPTION_ADMIN");
   return true;
 }
-
-static Sys_var_bool Sys_default_table_encryption(
-    "default_table_encryption",
-    "Database and tablespace are created with this default encryption property "
-    "unless the user specifies an explicit encryption property.",
-    HINT_UPDATEABLE SESSION_VAR(default_table_encryption), CMD_LINE(OPT_ARG),
-    DEFAULT(false), NO_MUTEX_GUARD, IN_BINLOG,
-    ON_CHECK(check_set_default_table_encryption_access), ON_UPDATE(nullptr));
 
 static bool check_set_table_encryption_privilege_access(sys_var *, THD *thd,
                                                         set_var *) {

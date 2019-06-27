@@ -469,7 +469,7 @@ struct System_variables {
     Used to determine if the database or tablespace should be encrypted by
     default.
   */
-  bool default_table_encryption;
+  ulong default_table_encryption;
 
   /**
     @sa Sys_var_print_identified_with_as_hex
