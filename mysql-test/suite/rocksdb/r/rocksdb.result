@@ -40,7 +40,7 @@ create table t0 (a int primary key) engine=rocksdb;
 show create table t0;
 Table	Create Table
 t0	CREATE TABLE `t0` (
-  `a` int(11) NOT NULL,
+  `a` int NOT NULL,
   PRIMARY KEY (`a`)
 ) ENGINE=ROCKSDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
 drop table t0;
@@ -73,7 +73,7 @@ explain select * from t2 where a='abc';
 id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 1	SIMPLE	t2	NULL	const	PRIMARY	PRIMARY	42	const	#	100.00	NULL
 Warnings:
-Note	1003	/* select#1 */ select 'abc' AS `a`,'def' AS `b` from `test`.`t2` where 1
+Note	1003	/* select#1 */ select 'abc' AS `a`,'def' AS `b` from `test`.`t2` where true
 select * from t2 where a='abc';
 a	b
 abc	def
@@ -325,7 +325,7 @@ DROP TABLE t15;
 create table t16 (pk int primary key, a char(8)) engine=RocksDB;
 insert into t16 values (1,'a'),(2,'b'),(3,'c'),(4,'d');
 update t16 set pk=100, a = 'updated' where a in ('b','c');
-ERROR 23000: Duplicate entry '100' for key 'PRIMARY'
+ERROR 23000: Duplicate entry '100' for key 't16.PRIMARY'
 select * from t16;
 pk	a
 1	a
@@ -353,16 +353,16 @@ drop table t_very_long_table_name;
 create table t17 (pk varchar(12) primary key, col1 varchar(12)) engine=rocksdb;
 insert into t17 values ('row1', 'val1');
 insert into t17 values ('row1', 'val1-try2');
-ERROR 23000: Duplicate entry 'row1' for key 'PRIMARY'
+ERROR 23000: Duplicate entry 'row1' for key 't17.PRIMARY'
 insert into t17 values ('ROW1', 'val1-try2');
-ERROR 23000: Duplicate entry 'ROW1' for key 'PRIMARY'
+ERROR 23000: Duplicate entry 'ROW1' for key 't17.PRIMARY'
 insert into t17 values ('row2', 'val2');
 insert into t17 values ('row3', 'val3');
 # This is ok
 update t17 set pk='row4' where pk='row1';
 # This will try to overwrite another row:
 update t17 set pk='row3' where pk='row2';
-ERROR 23000: Duplicate entry 'row3' for key 'PRIMARY'
+ERROR 23000: Duplicate entry 'row3' for key 't17.PRIMARY'
 select * from t17;
 pk	col1
 row2	val2
@@ -1186,7 +1186,7 @@ insert into t3 values(1, 'one',11), (2,'two',22);
 explain 
 select key1 from t3 where key1='one';
 id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
-1	SIMPLE	t3	NULL	ref	key1	key1	41	const	#	100.00	NULL
+1	SIMPLE	t3	NULL	ref	key1	key1	41	const	#	100.00	Using index
 Warnings:
 Note	1003	/* select#1 */ select `test`.`t3`.`key1` AS `key1` from `test`.`t3` where (`test`.`t3`.`key1` = 'one')
 select key1 from t3 where key1='one';
@@ -1312,7 +1312,7 @@ set session transaction_isolation='READ-COMMITTED';
 begin;
 insert into t1 values ('new-val1');
 insert into t1 select * from t2;
-ERROR 23000: Duplicate entry 'old-val1' for key 'PRIMARY'
+ERROR 23000: Duplicate entry 'old-val1' for key 't1.PRIMARY'
 commit;
 set session transaction_isolation=@orig_tx_iso;
 select * from t1;
@@ -1382,7 +1382,7 @@ drop table t1;
 CREATE TABLE t1 (pk INT PRIMARY KEY, a SMALLINT, b INT, KEY (a)) ENGINE=RocksDB;
 INSERT IGNORE INTO t1 VALUES (1, 157, 0), (2, 1898, -504403), (1, -14659,  0);
 Warnings:
-Warning	1062	Duplicate entry '1' for key 'PRIMARY'
+Warning	1062	Duplicate entry '1' for key 't1.PRIMARY'
 SELECT * FROM t1;
 pk	a	b
 1	157	0
@@ -1880,6 +1880,13 @@ time bigint(20) unsigned NOT NULL DEFAULT '0',
 version int(11) unsigned NOT NULL DEFAULT '0',
 PRIMARY KEY (link_type,id1,id2)
 ) engine=rocksdb;
+Warnings:
+Warning	1681	Integer display width is deprecated and will be removed in a future release.
+Warning	1681	Integer display width is deprecated and will be removed in a future release.
+Warning	1681	Integer display width is deprecated and will be removed in a future release.
+Warning	1681	Integer display width is deprecated and will be removed in a future release.
+Warning	1681	Integer display width is deprecated and will be removed in a future release.
+Warning	1681	Integer display width is deprecated and will be removed in a future release.
 insert into t1 select a,a,a,1,a,a,a from t0;
 alter table t1 add index id1_type (id1,link_type,visibility,time,version,data);
 select * from t1 where id1 = 3;
@@ -2364,7 +2371,7 @@ insert into t1 values (1), (2), (3);
 begin;
 insert into t1 values (4), (5), (6);
 insert into t1 values (7), (8), (2), (9);
-ERROR 23000: Duplicate entry '2' for key 'PRIMARY'
+ERROR 23000: Duplicate entry '2' for key 't1.PRIMARY'
 select * from t1;
 id
 1
@@ -2466,9 +2473,9 @@ SELECT * FROM t2 WHERE c1 > 4294967295 ORDER BY c1,c6;
 c1	c2	c3	c4	c5	c6	c7
 EXPLAIN SELECT * FROM t2 WHERE c1 > 4294967295 ORDER BY c1,c6;
 id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
-1	SIMPLE	t2	NULL	range	PRIMARY	PRIMARY	4	NULL	50	100.00	Using where
+1	SIMPLE	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	Impossible WHERE
 Warnings:
-Note	1003	/* select#1 */ select `test`.`t2`.`c1` AS `c1`,`test`.`t2`.`c2` AS `c2`,`test`.`t2`.`c3` AS `c3`,`test`.`t2`.`c4` AS `c4`,`test`.`t2`.`c5` AS `c5`,`test`.`t2`.`c6` AS `c6`,`test`.`t2`.`c7` AS `c7` from `test`.`t2` where (`test`.`t2`.`c1` > 4294967295) order by `test`.`t2`.`c1`,`test`.`t2`.`c6`
+Note	1003	/* select#1 */ select `test`.`t2`.`c1` AS `c1`,`test`.`t2`.`c2` AS `c2`,`test`.`t2`.`c3` AS `c3`,`test`.`t2`.`c4` AS `c4`,`test`.`t2`.`c5` AS `c5`,`test`.`t2`.`c6` AS `c6`,`test`.`t2`.`c7` AS `c7` from `test`.`t2` where false order by `test`.`t2`.`c1`,`test`.`t2`.`c6`
 drop table t2;
 #
 # Issue #135: register transaction was not being called for statement
@@ -2585,8 +2592,8 @@ create table r2 like r1;
 show create table r2;
 Table	Create Table
 r2	CREATE TABLE `r2` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `value` int(11) DEFAULT NULL,
+  `id` int NOT NULL AUTO_INCREMENT,
+  `value` int DEFAULT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=ROCKSDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
 begin;
@@ -2609,8 +2616,8 @@ create table r2 like r1;
 show create table r2;
 Table	Create Table
 r2	CREATE TABLE `r2` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `value` int(11) DEFAULT NULL,
+  `id` int NOT NULL AUTO_INCREMENT,
+  `value` int DEFAULT NULL,
   KEY `i` (`id`)
 ) ENGINE=ROCKSDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
 begin;
@@ -2691,9 +2698,11 @@ INSERT INTO t1 VALUES ('c1-val2','c2-val3',6);
 INSERT INTO t1 VALUES ('c1-val3','c2-val3',7);
 SELECT * FROM t1 force index(idx) WHERE c1 <> 'c1-val2' ORDER BY c1 DESC;
 c1	c2	c3
+c1-val3	c2-val3	7
+c1-val1	c2-val1	5
 explain SELECT * FROM t1  force index(idx) WHERE c1 <> '1' ORDER BY c1 DESC;
 id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
-1	SIMPLE	t1	NULL	range	idx	idx	42	NULL	#	100.00	Using index condition; Backward index scan
+1	SIMPLE	t1	NULL	range	idx	idx	42	NULL	#	100.00	Using where; Backward index scan
 Warnings:
 Note	1003	/* select#1 */ select `test`.`t1`.`c1` AS `c1`,`test`.`t1`.`c2` AS `c2`,`test`.`t1`.`c3` AS `c3` from `test`.`t1` FORCE INDEX (`idx`) where (`test`.`t1`.`c1` <> '1') order by `test`.`t1`.`c1` desc
 drop table t1;
@@ -2742,11 +2751,18 @@ id3 bigint(20),
 PRIMARY KEY (id1, id2, id3))
 ENGINE=ROCKSDB
 DEFAULT CHARSET=latin1;
+Warnings:
+Warning	1681	Integer display width is deprecated and will be removed in a future release.
+Warning	1681	Integer display width is deprecated and will be removed in a future release.
+Warning	1681	Integer display width is deprecated and will be removed in a future release.
 CREATE TABLE t2 (id1 bigint(20),
 id2 bigint(20),
 PRIMARY KEY (id1, id2))
 ENGINE=ROCKSDB
 DEFAULT CHARSET=latin1;
+Warnings:
+Warning	1681	Integer display width is deprecated and will be removed in a future release.
+Warning	1681	Integer display width is deprecated and will be removed in a future release.
 set rocksdb_commit_in_the_middle=1;
 SET @save_rocksdb_bulk_load_size= @@rocksdb_bulk_load_size;
 set rocksdb_bulk_load_size = 100;

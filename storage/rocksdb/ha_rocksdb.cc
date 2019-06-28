@@ -163,7 +163,7 @@ static Rdb_manual_compaction_thread rdb_mc_thread;
 
 // List of table names (using regex) that are exceptions to the strict
 // collation check requirement.
-Regex *rdb_collation_exceptions;
+std::unique_ptr<std::regex> rdb_collation_exceptions;
 
 static const char *rdb_get_error_messages(int error);
 
@@ -4291,12 +4291,6 @@ static int rocksdb_init_func(void *const p) {
   mysql_mutex_init(rdb_mem_cmp_space_mutex_key, &rdb_mem_cmp_space_mutex,
                    MY_MUTEX_INIT_FAST);
 
-#if defined(HAVE_PSI_INTERFACE)
-  rdb_collation_exceptions = new Regex(key_rwlock_collation_exception_list);
-#else
-  rdb_collation_exceptions = new Regex();
-#endif
-
   mysql_mutex_init(rdb_sysvars_psi_mutex_key, &rdb_sysvars_mutex,
                    MY_MUTEX_INIT_FAST);
   mysql_mutex_init(rdb_block_cache_resize_mutex_key,
@@ -4767,7 +4761,7 @@ static int rocksdb_done_func(void *const p) {
   mysql_mutex_destroy(&rdb_sysvars_mutex);
   mysql_mutex_destroy(&rdb_block_cache_resize_mutex);
 
-  delete rdb_collation_exceptions;
+  rdb_collation_exceptions.reset(nullptr);
   mysql_mutex_destroy(&rdb_collation_data_mutex);
   mysql_mutex_destroy(&rdb_mem_cmp_space_mutex);
 
@@ -6124,10 +6118,10 @@ int ha_rocksdb::alloc_key_buffers(const TABLE *const table_arg,
     goto error;
   }
 
-    /*
-      If inplace alter is happening, allocate special buffers for unique
-      secondary index duplicate checking.
-    */
+  /*
+    If inplace alter is happening, allocate special buffers for unique
+    secondary index duplicate checking.
+  */
 #ifdef HAVE_PSI_INTERFACE
   if (alloc_alter_buffers &&
       (!(m_dup_sk_packed_tuple = static_cast<uchar *>(
@@ -6194,21 +6188,21 @@ void ha_rocksdb::free_key_buffers() {
 void ha_rocksdb::set_use_read_free_rpl(const char *const whitelist) {
   const char *const wl = whitelist ? whitelist : DEFAULT_READ_FREE_RPL_TABLES;
 
-#if defined(HAVE_PSI_INTERFACE)
-  Regex regex_handler(key_rwlock_read_free_rpl_tables);
-#else
-  Regex regex_handler;
-#endif
+  std::smatch matches;
 
-  int flags = MY_REG_EXTENDED | MY_REG_NOSUB;
-  if (lower_case_table_names)
-    flags |= MY_REG_ICASE;
+  try {
+    std::regex_constants::syntax_option_type flags =
+        std::regex::nosubs | std::regex::extended;
+    if (lower_case_table_names) {
+      flags |= std::regex::icase;
+    }
+    std::regex regex_handler(wl, flags);
 
-  if (!regex_handler.compile(wl, flags, table_alias_charset)) {
-    warn_about_bad_patterns(regex_handler, "read_free_rpl_tables");
+    m_use_read_free_rpl =
+        std::regex_match(m_tbl_def->base_tablename(), matches, regex_handler);
+  } catch (std::regex_error const &re) {
+    warn_about_bad_patterns(wl, "read_free_rpl_tables");
   }
-
-  m_use_read_free_rpl = regex_handler.match(m_tbl_def->base_tablename());
 }
 #endif  // defined(ROCKSDB_INCLUDE_RFR) && ROCKSDB_INCLUDE_RFR
 
@@ -6623,9 +6617,12 @@ int ha_rocksdb::create_cfs(
         tbl_def_arg->base_tablename().find(tmp_file_prefix) != 0) {
       for (uint part = 0; part < table_arg->key_info[i].actual_key_parts;
            part++) {
+        std::cmatch matches;
         if (!rdb_is_index_collation_supported(
                 table_arg->key_info[i].key_part[part].field) &&
-            !rdb_collation_exceptions->match(tablename_sys)) {
+            (!rdb_collation_exceptions ||
+             !std::regex_match(tablename_sys, matches,
+                               *rdb_collation_exceptions))) {
           std::string collation_err;
           for (const auto &coll : RDB_INDEX_COLLATIONS) {
             if (collation_err != "") {
@@ -7186,12 +7183,6 @@ int ha_rocksdb::create(const char *const name, TABLE *const table_arg,
     DBUG_RETURN(HA_ERR_ROCKSDB_TABLE_INDEX_DIRECTORY_NOT_SUPPORTED);
   }
 
-  if (unlikely(create_info->encrypt_type.length)) {
-    my_error(ER_NOT_SUPPORTED_YET, MYF(0),
-             "ENCRYPTION for the RocksDB storage engine");
-    DBUG_RETURN(HA_WRONG_CREATE_OPTION);
-  }
-
   if (unlikely(create_info->tablespace)) {
     my_error(ER_NOT_SUPPORTED_YET, MYF(0),
              "TABLESPACEs for the RocksDB storage engine");
@@ -7593,6 +7584,16 @@ int ha_rocksdb::read_row_from_secondary_key(uchar *const buf,
 
   int rc = 0;
   uint pk_size;
+
+  // Due to MRR, now an index-only scan have pushed index condition.
+  // (If it does, we follow non-index only code path here, except that
+  //  we don't fetch the row).
+  bool have_icp = (pushed_idx_cond && pushed_idx_cond_keyno == active_index);
+  if (have_icp) {
+    if (kd.m_is_reverse_cf) move_forward = !move_forward;
+    rc = find_icp_matching_index_rec(move_forward, buf);
+    if (rc) return (rc);
+  }
 
   /* Get the key columns and primary key value */
   const rocksdb::Slice &rkey = m_scan_it->key();
@@ -11239,13 +11240,13 @@ void ha_rocksdb::get_auto_increment(ulonglong off, ulonglong inc,
 /* Debugger help function */
 static char dbug_item_print_buf[512];
 
-const char *dbug_print_item(Item *const item) {
+const char *dbug_print_item(const THD *thd, Item *const item) {
   char *const buf = dbug_item_print_buf;
   String str(buf, sizeof(dbug_item_print_buf), &my_charset_bin);
   str.length(0);
   if (!item)
     return "(Item*)nullptr";
-  item->print(&str, QT_ORDINARY);
+  item->print(thd, &str, QT_ORDINARY);
   if (str.c_ptr() == buf)
     return buf;
   else
@@ -13016,15 +13017,15 @@ void rocksdb_set_max_latest_deadlocks(THD *thd, struct SYS_VAR *var,
 }
 
 void rdb_set_collation_exception_list(const char *const exception_list) {
-  DBUG_ASSERT(rdb_collation_exceptions != nullptr);
-
-  int flags = MY_REG_EXTENDED | MY_REG_NOSUB;
-  if (lower_case_table_names)
-    flags |= MY_REG_ICASE;
-  if (!rdb_collation_exceptions->compile(exception_list, flags,
-                                         table_alias_charset)) {
-    warn_about_bad_patterns(*rdb_collation_exceptions,
-                            "strict_collation_exceptions");
+  try {
+    std::regex_constants::syntax_option_type flags =
+        std::regex::nosubs | std::regex::extended;
+    if (lower_case_table_names) {
+      flags |= std::regex::icase;
+    }
+    rdb_collation_exceptions.reset(new std::regex(exception_list, flags));
+  } catch (std::regex_error const &re) {
+    warn_about_bad_patterns(exception_list, "strict_collation_exceptions");
   }
 }
 
@@ -13285,7 +13286,8 @@ static void rocksdb_set_update_cf_options(
   // Reset the pointers regardless of how much success we had with updating
   // the CF options. This will results in consistent behavior and avoids
   // dealing with cases when only a subset of CF-s was successfully updated.
-  *reinterpret_cast<char **>(var_ptr) = my_strdup(0, val, MYF(0));
+  *static_cast<const char **>(var_ptr) =
+      *static_cast<const char *const *>(save);
 
   // Do the real work of applying the changes.
   Rdb_cf_options::Name_to_config_t option_map;
