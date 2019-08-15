@@ -3,6 +3,9 @@
 #
 --source include/have_rocksdb.inc
 
+# Save the initial number of concurrent sessions
+--source include/count_sessions.inc
+
 set @prior_rocksdb_lock_wait_timeout = @@rocksdb_lock_wait_timeout;
 set @prior_rocksdb_deadlock_detect = @@rocksdb_deadlock_detect;
 set global rocksdb_lock_wait_timeout = 300;
@@ -72,8 +75,22 @@ insert into t values (4), (1);
 select * from t;
 rollback;
 
+# In repeatable read, rollbacks in write unprepared confuses the snapshot
+# validation logic into thinking that a write has happened, because it sees
+# the rollback writes in the DB.
+let $snapshot_conflict = `SELECT @@global.rocksdb_write_policy = 'write_unprepared' and @@session.transaction_isolation = 'repeatable-read'`;
 connection con2;
---reap
+--disable_result_log
+if ($snapshot_conflict)
+{
+  --error ER_LOCK_DEADLOCK
+  --reap
+}
+if (!$snapshot_conflict)
+{
+  --reap
+}
+--enable_result_log
 rollback;
 
 connection con1;
@@ -121,3 +138,5 @@ disconnect con3;
 set global rocksdb_lock_wait_timeout = @prior_rocksdb_lock_wait_timeout;
 set global rocksdb_deadlock_detect = @prior_rocksdb_deadlock_detect;
 drop table t,r1,r2;
+
+--source include/wait_until_count_sessions.inc
