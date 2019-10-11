@@ -2349,10 +2349,12 @@ static bool rm_table_eval_gtid_and_table_groups_state(
         /*
           Normal case. Single base table in SE which don't support atomic DDL
           so it will be logged as a single-table DROP TABLES statement.
-          Other groups are empty.
+          We still can have temporary tables in this drop, but only those ones
+          which are not logged (previous 'if' would detect them).
+          Such temporary tables will be just dropped, but not logged.
         */
-        assert(!drop_ctx->has_tmp_trans_tables());
-        assert(!drop_ctx->has_tmp_non_trans_tables());
+        assert(!drop_ctx->has_tmp_trans_tables_to_binlog());
+        assert(!drop_ctx->has_tmp_non_trans_tables_to_binlog());
         assert(!drop_ctx->has_tmp_nonexistent_tables());
         drop_ctx->gtid_and_table_groups_state =
             Drop_tables_ctx::GTID_SINGLE_TABLE_GROUP;
@@ -17215,7 +17217,7 @@ static bool remove_secondary_keys(
     const dd::Table *table_def, dd::Table *altered_table_def,
     std::vector<dd::Index *> *dd_disabled_sec_keys) {
   uint i;
-  DBUG_ENTER("remove_secondary_keys");
+  DBUG_TRACE;
   assert(alter_info->delayed_key_count > 0);
 
   /*
@@ -17267,7 +17269,7 @@ static bool remove_secondary_keys(
 
   if (table->file->check_if_supported_inplace_alter(table, &ha_alter_info) ==
       HA_ALTER_INPLACE_NOT_SUPPORTED)
-    DBUG_RETURN(true);
+    return true;
 
   for (const auto index : *altered_table_def->indexes()) {
     const char *dd_index_name = index->name().c_str();
@@ -17295,15 +17297,15 @@ static bool remove_secondary_keys(
   if (table->file->ha_prepare_inplace_alter_table(table, &ha_alter_info,
                                                   table_def, td.get()) ||
       table->file->ha_inplace_alter_table(table, &ha_alter_info, table_def,
-                                          altered_table_def) ||
-      table->file->ha_commit_inplace_alter_table(
-          table, &ha_alter_info, true, table_def, altered_table_def)) {
+                                          td.get()) ||
+      table->file->ha_commit_inplace_alter_table(table, &ha_alter_info, true,
+                                                 table_def, td.get())) {
     table->file->ha_commit_inplace_alter_table(table, &ha_alter_info, false,
-                                               table_def, altered_table_def);
-    DBUG_RETURN(true);
+                                               table_def, td.get());
+    return true;
   }
 
-  DBUG_RETURN(false);
+  return false;
 }
 
 /*
@@ -18363,7 +18365,7 @@ bool mysql_alter_table(THD *thd, const char *new_db, const char *new_name,
       case Alter_info::ALTER_TABLE_ALGORITHM_INPLACE:
         break;
       default:
-        assert(0);
+        return 0;
     }
   }
 
