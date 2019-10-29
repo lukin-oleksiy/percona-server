@@ -27,41 +27,32 @@ IF (NOT CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
   RETURN ()
 ENDIF ()
 
-# Suppress warnings for gcc-9
-IF(CMAKE_COMPILER_IS_GNUCXX AND
-   (CMAKE_CXX_COMPILER_VERSION VERSION_EQUAL 9.0 OR CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 9.0))
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-copy -Wno-redundant-move -Wno-pessimizing-move -Wno-sign-compare")
+
+# Suppress warnings for all compilers
+append_cflags_if_supported(-Wno-unused-parameter -Wno-suggest-override)
+# "cmake/maintainer.cmake" sets "-Wcast-qual -Wundef" which cause warnings with RocksDB
+remove_compile_flags(-Wcast-qual -Wundef)
+
+
+# Suppress warnings for all clang versions
+IF(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  remove_compile_flags(-Wdeprecated -Winconsistent-missing-destructor-override -Wextra-semi -Wnon-virtual-dtor)
+  ADD_CXX_COMPILE_FLAGS_TO_FILES(-Wno-shadow-field FILES ha_rocksdb.cc rocksdb/memtable/hash_skiplist_rep.cc)
+  ADD_CXX_COMPILE_FLAGS_TO_FILES(-Wno-conditional-uninitialized FILES ha_rocksdb.cc rdb_datadic.cc rocksdb/db/db_impl/db_impl.cc rocksdb/db/write_thread.cc rocksdb/env/env_posix.cc)
 ENDIF()
 
-# Suppress warnings for clang-8
-IF((CMAKE_CXX_COMPILER_ID MATCHES "Clang") AND
-   (CMAKE_CXX_COMPILER_VERSION VERSION_EQUAL 8.0 OR CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 8.0))
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-defaulted-function-deleted")
+
+# Suppress warnings for clang-10 or newer
+IF(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT CMAKE_CXX_COMPILER_VERSION VERSION_LESS 10.0)
+  ADD_CXX_COMPILE_FLAGS_TO_FILES(-Wno-range-loop-construct FILES rocksdb/db/db_impl/db_impl_compaction_flush.cc rocksdb/options/options_parser.cc)
 ENDIF()
 
-# Relax fallthrough warnings we have no control over, as it's in zstd
-IF(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  MY_CHECK_CXX_COMPILER_FLAG("-Wimplicit-fallthrough=0" HAVE_IMPLICIT_FALLTHROUGH)
-  IF(HAVE_IMPLICIT_FALLTHROUGH)
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wimplicit-fallthrough=0")
-    SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wimplicit-fallthrough=0")
-  ENDIF()
+# Suppress warnings for gcc
+IF(CMAKE_COMPILER_IS_GNUCXX)
+  # "cmake/maintainer.cmake" sets "-Wmissing-format-attribute" which cause warnings with RocksDB
+  remove_compile_flags(-Wmissing-format-attribute)
 ENDIF()
 
-# Relax unused variable warnings
-MY_CHECK_CXX_COMPILER_FLAG("-Wno-unused-variable" HAVE_NO_UNUSED_VARIABLE)
-IF(HAVE_NO_UNUSED_VARIABLE)
-  ADD_COMPILE_FLAGS(ha_rocksdb.cc COMPILE_FLAGS "-Wno-unused-variable")
-ENDIF()
-
-# Relax undefined definition warnings for 8.0 until RocksDB catches up
-remove_compile_flags(-Wundef)
-
-# Relax unused parameter warnings for 8.0 until RocksDB catches up
-append_cflags_if_supported(-Wno-unused-parameter)
-
-# Relax suggest-attribute=format warnings for 8.0 until RocksDB catches up
-append_cflags_if_supported(-Wno-suggest-attribute=format)
 
 IF (NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/rocksdb/Makefile")
   MESSAGE(SEND_ERROR "Missing Makefile in rocksdb directory. Try \"git submodule update\".")
@@ -113,7 +104,7 @@ ENDIF()
 # get a list of rocksdb library source files
 # run with env -i to avoid passing variables
 EXECUTE_PROCESS(
-  COMMAND env -i PATH=$ENV{PATH} ${CMAKE_CURRENT_SOURCE_DIR}/get_rocksdb_files.sh
+  COMMAND env -i ${CMAKE_CURRENT_SOURCE_DIR}/get_rocksdb_files.sh
   OUTPUT_VARIABLE SCRIPT_OUTPUT
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
@@ -123,36 +114,7 @@ STRING(REGEX MATCHALL "[^\n]+" ROCKSDB_LIB_SOURCES ${SCRIPT_OUTPUT})
 # add bundled compression code
 SET(ROCKSDB_LIB_SOURCES
   ${ROCKSDB_LIB_SOURCES}
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/lz4/lib/lz4.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/lz4/lib/lz4hc.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/lz4/lib/lz4frame.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zstd/lib/common/entropy_common.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zstd/lib/common/error_private.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zstd/lib/common/fse_decompress.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zstd/lib/common/pool.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zstd/lib/common/threading.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zstd/lib/common/xxhash.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zstd/lib/common/zstd_common.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zstd/lib/compress/zstd_compress_literals.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zstd/lib/compress/zstd_compress_sequences.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zstd/lib/compress/zstd_double_fast.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zstd/lib/compress/zstd_fast.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zstd/lib/compress/zstd_lazy.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zstd/lib/compress/zstd_ldm.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zstd/lib/compress/zstd_opt.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zstd/lib/compress/hist.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zstd/lib/compress/fse_compress.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zstd/lib/compress/huf_compress.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zstd/lib/compress/zstd_compress.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zstd/lib/compress/zstdmt_compress.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zstd/lib/decompress/huf_decompress.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zstd/lib/decompress/zstd_decompress.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zstd/lib/decompress/zstd_decompress_block.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zstd/lib/decompress/zstd_ddict.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zstd/lib/dictBuilder/cover.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zstd/lib/dictBuilder/fastcover.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zstd/lib/dictBuilder/divsufsort.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zstd/lib/dictBuilder/zdict.c
+  ${CMAKE_SOURCE_DIR}/extra/lz4/xxhash.c
 )
 
 INCLUDE_DIRECTORIES(
@@ -160,11 +122,12 @@ INCLUDE_DIRECTORIES(
   ${CMAKE_CURRENT_SOURCE_DIR}/rocksdb/include
   ${CMAKE_CURRENT_SOURCE_DIR}/rocksdb/include/rocksdb
   ${CMAKE_CURRENT_SOURCE_DIR}/rocksdb/third-party/gtest-1.8.1/fused-src
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/lz4/lib
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zstd/lib
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zstd/lib/common
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zstd/lib/dictBuilder
 )
+
+IF(BUILD_BUNDLED_ZSTD)
+  INCLUDE_DIRECTORIES(BEFORE SYSTEM
+    ${CMAKE_SOURCE_DIR}/extra/zstd/lib/dictBuilder)
+ENDIF()
 
 ADD_DEFINITIONS(-DROCKSDB_PLATFORM_POSIX -DROCKSDB_LIB_IO_POSIX -DZLIB -DLZ4
   -DZSTD -DROCKSDB_SUPPORT_THREAD_LOCAL)
@@ -200,7 +163,7 @@ SET(ROCKSDB_SOURCES
   ${ROCKSDB_LIB_SOURCES}
 )
 
-SET(rocksdb_static_libs ${rocksdb_static_libs} ${ZLIB_LIBRARY} "-lrt" "-ldl")
+SET(rocksdb_static_libs ${rocksdb_static_libs} ${ZLIB_LIBRARY} ${ZSTD_LIBRARY} ${LZ4_LIBRARY} "-lrt" "-ldl")
 
 MYSQL_ADD_PLUGIN(rocksdb ${ROCKSDB_SOURCES} STORAGE_ENGINE DEFAULT MODULE_ONLY
   LINK_LIBRARIES ${rocksdb_static_libs}
