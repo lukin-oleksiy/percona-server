@@ -269,6 +269,12 @@ IF(NOT LINUX_RHEL AND MY_HOST_SYSTEM_NAME MATCHES "Linux")
     FILE(READ "/etc/os-release" MY_OS_RELEASE)
     IF(MY_OS_RELEASE MATCHES "Debian")
       SET(LINUX_DEBIAN 1)
+      IF(MY_OS_RELEASE MATCHES "jessie")
+        SET(LINUX_DEBIAN_8 1)
+      ENDIF()
+      IF(MY_OS_RELEASE MATCHES "stretch")
+        SET(LINUX_DEBIAN_9 1)
+      ENDIF()
     ELSEIF(MY_OS_RELEASE MATCHES "Ubuntu")
       SET(LINUX_UBUNTU 1)
       # /etc/os-release contains a line like
@@ -886,7 +892,7 @@ IF(NOT DEFINED WITH_INTERNAL)
 ENDIF()
 
 # On windows we need a non-standard package for SASL.
-IF(WITH_INTERNAL AND (NOT WIN32 OR WITH_SASL))
+IF(NOT WIN32 OR WITH_SASL)
   SET(WITH_AUTHENTICATION_LDAP_DEFAULT ON)
 ELSE()
   SET(WITH_AUTHENTICATION_LDAP_DEFAULT OFF)
@@ -1201,8 +1207,8 @@ ENDIF()
 
 OPTION(WITH_MSAN "Enable memory sanitizer" OFF)
 IF(WITH_MSAN)
-  MY_SANITIZER_CHECK("-fsanitize=memory -fsanitize-memory-track-origins"
-    TRUE WITH_MSAN_OK)
+  MY_SANITIZER_CHECK("-fsanitize=memory -fsanitize-memory-track-origins -fsanitize-blacklist=${CMAKE_CURRENT_SOURCE_DIR}/cmake/msan-blacklist.txt"
+                     TRUE WITH_MSAN_OK)
   IF(NOT WITH_MSAN_OK)
     MESSAGE(FATAL_ERROR "Do not know how to enable memory sanitizer")
   ELSE()
@@ -1436,8 +1442,10 @@ IF(CMAKE_C_LINK_FLAGS MATCHES "-fuse-ld=gold" OR
     "-fuse-ld=gold" "" CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS}")
 ENDIF()
 
-# RHEL9: undefined reference to symbol 'crc32_z@@ZLIB_1.2.9'
-IF(LINUX_RHEL9)
+# Linker/binutils bug in Fedora 28, Ubuntu 16.04, Debian 8 and Debian 9,
+# undefined reference to symbol '__bss_start'
+# Fedora 34: undefined reference to symbol 'crc32_z@@ZLIB_1.2.9'
+IF(LINUX_FEDORA_34 OR LINUX_RHEL9 OR LINUX_DEBIAN_8 OR LINUX_DEBIAN_9)
   IF(NOT USING_LD_LLD AND NOT USING_LD_MOLD)
     STRING_APPEND(CMAKE_CXX_LINK_FLAGS " -Wl,--copy-dt-needed-entries")
   ENDIF()
@@ -1549,6 +1557,13 @@ IF(WITH_TEST_TRACE_PLUGIN AND NOT CMAKE_BUILD_TYPE_UPPER STREQUAL "DEBUG")
     "Test trace plugin was selected but it can be included only in
      debug binaries. Set WITH_TEST_TRACE_PLUGIN to OFF or WITH_DEBUG to ON.")
 ENDIF()
+
+# Set NDEBUG, and FORTIFY_SOURCE for non-debug project types.
+FOREACH(BUILD_TYPE RELEASE RELWITHDEBINFO MINSIZEREL)
+  FOREACH(LANG C CXX)
+    STRING_PREPEND(CMAKE_${LANG}_FLAGS_${BUILD_TYPE} "-DNDEBUG -D_FORTIFY_SOURCE=2 ")
+  ENDFOREACH()
+ENDFOREACH()
 
 # Add safemutex for debug configurations
 # Enable debug sync for debug builds.
