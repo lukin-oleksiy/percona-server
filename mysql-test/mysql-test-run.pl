@@ -765,8 +765,6 @@ sub main {
   mtr_report("Collecting tests");
   my $tests = collect_test_cases($opt_reorder, $opt_suites,
                                  \@opt_cases,  $opt_skip_test_list);
-  my $all_tests;
-  @$all_tests = @$tests;
   mark_time_used('collect');
   # A copy of the tests list, that will not be modified even after the tests
   # are executed.
@@ -1335,9 +1333,14 @@ sub run_test_server ($$$) {
           # is enabled.
           add_total_times($line);
         } elsif ($line eq 'SHUTDOWN_REPORT') {
-          # Mysqld detected crash during shutdown
+          # Shutdown/valgrind report received
           $shutdown_report = 1;
           push(@$completed, My::Test::read_test($sock));
+
+          # Shutdown worker
+          print $sock "BYE\n";
+          $sock->shutdown(SHUT_WR);
+          next;
         } else {
           # Unknown message from worker
           mtr_error("Unknown response: '$line' from client");
@@ -1554,40 +1557,39 @@ sub run_worker ($) {
       # Send it back, now with results set
       $test->write_test($server, 'TESTRESULT');
       mark_time_used('restart');
-    } elsif ($line eq 'BYE') {
-      mtr_report("Server said BYE");
-      my $found_err = 0;
-      my $valgrind_report_text = '';
-
+    } elsif ($line eq 'GETREPORTS') {
       stop_all_servers($opt_shutdown_timeout);
+      mark_time_used('restart');
 
+      if ( $opt_gprof ) {
+        gprof_collect(find_mysqld($basedir), keys %gprof_dirs);
+      }
+
+      my $valgrind_report_text = '';
       if ($opt_valgrind || $opt_sanitize) {
         # Look for leaks here, even if we aldready have $shutdown_report.
         # shutdown_exit_reports() will report some unknown failure.
         # valgrind_exit_reports() will look specifically for ASAN/LSAN stuff.
-        $valgrind_report_text = valgrind_exit_reports();
+        $valgrind_reports = valgrind_exit_reports();
       }
 
       if ($shutdown_report || $valgrind_report_text) {
-        my $test = My::Test->new(
-          name => 'shutdown_report',
-          comment => $shutdown_report_text,
-          valgrind_comment => $valgrind_report_text,
-        );
-        $test->write_test($server, "SHUTDOWN_REPORT");
-        $found_err = 1;
+        $exit_code = 1;
       }
 
-      mark_time_used('restart');
-
-      if ($opt_gprof) {
-        gprof_collect(find_mysqld($basedir), keys %gprof_dirs);
-      }
-
+      # Send reports as the last message from the worker
+      my $test = My::Test->new(
+        name => 'shutdown_report',
+        comment => $shutdown_report_text ? $shutdown_report_text : '',
+        valgrind_comment => $valgrind_report_text ? $valgrind_report_text : '',
+      );
       mark_time_used('admin');
 
       print_times_used($server, $thread_num);
-      exit($found_err);
+      $test->write_test($server, "SHUTDOWN_REPORT");
+    } elsif ($line eq 'BYE') {
+      mtr_report("Server said BYE");
+      exit($exit_code);
     } else {
       mtr_error("Could not understand server, '$line'");
     }
@@ -8433,6 +8435,7 @@ sub run_ctest() {
     $ctest_out =
       `ctest $ctest_opts --test-timeout $opt_ctest_timeout $ctest_vs $ctest_memcheck 2>&1`;
   }
+
   if ($? == $no_ctest && ($opt_ctest == -1 || defined $ENV{PB2WORKDIR})) {
     chdir($olddir);
     return;
