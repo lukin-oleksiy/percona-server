@@ -15,7 +15,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 2,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "properties",
@@ -260,7 +260,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 2,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "table_id",
@@ -550,7 +550,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "database_name",
@@ -975,7 +975,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "database_name",
@@ -1490,7 +1490,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 2,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "id",
@@ -2083,7 +2083,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 2,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "id",
@@ -2496,7 +2496,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 2,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "id",
@@ -3005,7 +3005,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 2,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "id",
@@ -3599,7 +3599,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 2,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "id",
@@ -4162,7 +4162,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 2,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "id",
@@ -4789,7 +4789,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 2,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "column_id",
@@ -5097,7 +5097,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 2,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "id",
@@ -7053,7 +7053,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 2,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "id",
@@ -8769,7 +8769,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 2,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "foreign_key_id",
@@ -9226,7 +9226,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 2,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "id",
@@ -10121,7 +10121,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 2,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "index_id",
@@ -10681,7 +10681,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 2,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "partition_id",
@@ -11186,7 +11186,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 2,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "schema_name",
@@ -11611,7 +11611,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 2,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "id",
@@ -12681,7 +12681,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 2,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "parameter_id",
@@ -12989,7 +12989,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 2,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "id",
@@ -14069,7 +14069,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 2,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "id",
@@ -14581,7 +14581,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 2,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "id",
@@ -16648,7 +16648,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 2,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "id",
@@ -17325,7 +17325,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 2,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "id",
@@ -18035,7 +18035,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 2,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "partition_id",
@@ -18433,7 +18433,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 2,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "id",
@@ -19406,7 +19406,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 2,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "schema_name",
@@ -20146,7 +20146,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 2,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "id",
@@ -22573,7 +22573,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 2,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "tablespace_id",
@@ -22966,7 +22966,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 2,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "id",
@@ -23469,7 +23469,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 2,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "id",
@@ -24860,7 +24860,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 2,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "view_id",
@@ -25260,7 +25260,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 2,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "view_id",
@@ -25660,7 +25660,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "id",
@@ -25692,6 +25692,8 @@
                 "generation_expression_utf8": "",
                 "options": "interval_count=0;",
                 "se_private_data": "table_id=X",
+                "engine_attribute": "",
+                "secondary_engine_attribute": "",
                 "column_key": 2,
                 "column_type_utf8": "bigint unsigned",
                 "elements": [],
@@ -25728,6 +25730,8 @@
                 "generation_expression_utf8": "",
                 "options": "interval_count=0;",
                 "se_private_data": "table_id=X",
+                "engine_attribute": "",
+                "secondary_engine_attribute": "",
                 "column_key": 1,
                 "column_type_utf8": "int unsigned",
                 "elements": [],
@@ -25764,6 +25768,8 @@
                 "generation_expression_utf8": "",
                 "options": "interval_count=0;",
                 "se_private_data": "table_id=X",
+                "engine_attribute": "",
+                "secondary_engine_attribute": "",
                 "column_key": 3,
                 "column_type_utf8": "varchar(64)",
                 "elements": [],
@@ -25800,6 +25806,8 @@
                 "generation_expression_utf8": "",
                 "options": "interval_count=0;",
                 "se_private_data": "table_id=X",
+                "engine_attribute": "",
+                "secondary_engine_attribute": "",
                 "column_key": 1,
                 "column_type_utf8": "blob",
                 "elements": [],
@@ -25836,6 +25844,8 @@
                 "generation_expression_utf8": "",
                 "options": "",
                 "se_private_data": "table_id=X",
+                "engine_attribute": "",
+                "secondary_engine_attribute": "",
                 "column_key": 1,
                 "column_type_utf8": "",
                 "elements": [],
@@ -25872,6 +25882,8 @@
                 "generation_expression_utf8": "",
                 "options": "",
                 "se_private_data": "table_id=X",
+                "engine_attribute": "",
+                "secondary_engine_attribute": "",
                 "column_key": 1,
                 "column_type_utf8": "",
                 "elements": [],
@@ -25885,6 +25897,8 @@
         "last_checked_for_upgrade_version_id": X,
         "comment": "",
         "se_private_data": "autoinc=0;version=0;",
+        "engine_attribute": "",
+        "secondary_engine_attribute": "",
         "row_format": 2,
         "partition_type": 0,
         "partition_expression": "",
@@ -25908,6 +25922,8 @@
                 "is_algorithm_explicit": false,
                 "is_visible": true,
                 "engine": "InnoDB",
+                "engine_attribute": "",
+                "secondary_engine_attribute": "",
                 "elements": [
                     {
                         "ordinal_position": 1,
@@ -25967,6 +25983,8 @@
                 "is_algorithm_explicit": false,
                 "is_visible": true,
                 "engine": "InnoDB",
+                "engine_attribute": "",
+                "secondary_engine_attribute": "",
                 "elements": [
                     {
                         "ordinal_position": 1,
@@ -26010,7 +26028,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=0;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=0;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=0;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "table_id",
@@ -26042,6 +26060,8 @@
                 "generation_expression_utf8": "",
                 "options": "interval_count=0;",
                 "se_private_data": "table_id=X",
+                "engine_attribute": "",
+                "secondary_engine_attribute": "",
                 "column_key": 2,
                 "column_type_utf8": "bigint unsigned",
                 "elements": [],
@@ -26078,6 +26098,8 @@
                 "generation_expression_utf8": "",
                 "options": "interval_count=0;",
                 "se_private_data": "table_id=X",
+                "engine_attribute": "",
+                "secondary_engine_attribute": "",
                 "column_key": 2,
                 "column_type_utf8": "bigint unsigned",
                 "elements": [],
@@ -26114,6 +26136,8 @@
                 "generation_expression_utf8": "",
                 "options": "interval_count=0;",
                 "se_private_data": "table_id=X",
+                "engine_attribute": "",
+                "secondary_engine_attribute": "",
                 "column_key": 4,
                 "column_type_utf8": "bigint unsigned",
                 "elements": [],
@@ -26150,6 +26174,8 @@
                 "generation_expression_utf8": "",
                 "options": "",
                 "se_private_data": "table_id=X",
+                "engine_attribute": "",
+                "secondary_engine_attribute": "",
                 "column_key": 1,
                 "column_type_utf8": "",
                 "elements": [],
@@ -26186,6 +26212,8 @@
                 "generation_expression_utf8": "",
                 "options": "",
                 "se_private_data": "table_id=X",
+                "engine_attribute": "",
+                "secondary_engine_attribute": "",
                 "column_key": 1,
                 "column_type_utf8": "",
                 "elements": [],
@@ -26199,6 +26227,8 @@
         "last_checked_for_upgrade_version_id": X,
         "comment": "",
         "se_private_data": "",
+        "engine_attribute": "",
+        "secondary_engine_attribute": "",
         "row_format": 2,
         "partition_type": 0,
         "partition_expression": "",
@@ -26222,6 +26252,8 @@
                 "is_algorithm_explicit": false,
                 "is_visible": true,
                 "engine": "InnoDB",
+                "engine_attribute": "",
+                "secondary_engine_attribute": "",
                 "elements": [
                     {
                         "ordinal_position": 1,
@@ -26274,6 +26306,8 @@
                 "is_algorithm_explicit": false,
                 "is_visible": true,
                 "engine": "InnoDB",
+                "engine_attribute": "",
+                "secondary_engine_attribute": "",
                 "elements": [
                     {
                         "ordinal_position": 1,
@@ -26342,7 +26376,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=1;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "Host",
@@ -27698,7 +27732,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=1;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "Host",
@@ -30471,7 +30505,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=1;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "HOST",
@@ -30806,7 +30840,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=1;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "FROM_HOST",
@@ -31195,7 +31229,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=1;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "USER",
@@ -31539,7 +31573,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=1;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "Host",
@@ -31874,7 +31908,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=1;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "name",
@@ -32218,7 +32252,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=1;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "name",
@@ -32463,7 +32497,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=1;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "help_topic_id",
@@ -32921,7 +32955,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=1;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "help_category_id",
@@ -33289,7 +33323,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=1;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "help_topic_id",
@@ -33534,7 +33568,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=1;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "Server_name",
@@ -34094,7 +34128,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=1;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "Host",
@@ -34733,7 +34767,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=1;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "Host",
@@ -35220,7 +35254,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=1;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "help_keyword_id",
@@ -35498,7 +35532,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=1;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "Name",
@@ -35743,7 +35777,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=1;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "Time_zone_id",
@@ -35997,7 +36031,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=1;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "Time_zone_id",
@@ -36287,7 +36321,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=1;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "Time_zone_id",
@@ -36667,7 +36701,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=1;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "Transition_time",
@@ -36912,7 +36946,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=1;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "Host",
@@ -37514,7 +37548,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=1;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "component_id",
@@ -37804,7 +37838,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=1;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "Number_of_lines",
@@ -38664,7 +38698,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=1;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "Number_of_lines",
@@ -40304,7 +40338,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=1;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "Id",
@@ -41044,7 +41078,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=1;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "source_uuid",
@@ -42193,7 +42227,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=1;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "name",
@@ -42651,7 +42685,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=1;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "name",
@@ -42896,7 +42930,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=1;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "cost_name",
@@ -43269,7 +43303,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=1;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "engine_name",
@@ -43732,7 +43766,7 @@
         "created": NNN,
         "last_altered": NNN,
         "hidden": 1,
-        "options": "avg_row_length=0;encrypt_type=N;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
+        "options": "avg_row_length=0;encrypt_type=N;explicit_encryption=1;explicit_tablespace=1;key_block_size=0;keys_disabled=0;pack_record=1;row_type=2;stats_auto_recalc=0;stats_persistent=0;stats_sample_pages=0;",
         "columns": [
             {
                 "name": "Host",

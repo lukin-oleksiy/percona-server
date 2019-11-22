@@ -10069,9 +10069,9 @@ static bool validate_table_encryption(THD *thd, HA_CREATE_INFO *create_info) {
                                tt != Tablespace_type::SPACE_TYPE_SHARED);
     uses_system_tablespace = tt == Tablespace_type::SPACE_TYPE_SYSTEM;
     if (uses_system_tablespace) {
-      dd::Encrypt_result result = dd::is_system_tablespace_encrypted(thd);
-      if (result.error) return true;
-      uses_encrypted_tablespace = result.value;
+      dd::Encrypt_result result2 = dd::is_system_tablespace_encrypted(thd);
+      if (result2.error) return true;
+      uses_encrypted_tablespace = result2.value;
     }
   }
 
@@ -10081,7 +10081,7 @@ static bool validate_table_encryption(THD *thd, HA_CREATE_INFO *create_info) {
   */
   const bool requested_type = dd::is_encrypted(create_info->encrypt_type);
   if ((uses_general_tablespace || uses_system_tablespace) &&
-      requested_type != uses_encrypted_tablespace) {
+      ((requested_type != uses_encrypted_tablespace))) {
     my_error(ER_INVALID_ENCRYPTION_REQUEST, MYF(0),
              requested_type ? "'encrypted'" : "'unencrypted'",
              uses_encrypted_tablespace ? "'encrypted'" : "'unencrypted'");
@@ -10180,6 +10180,13 @@ bool mysql_create_table_no_lock(THD *thd, const char *db,
   if (schema == nullptr) {
     my_error(ER_BAD_DB_ERROR, MYF(0), db);
     return true;
+  }
+
+  // Fix create_info->explicit_encryption. For alter it is retrieved
+  // from share.
+  if (!(create_info->options & HA_LEX_CREATE_INTERNAL_TMP_TABLE) &&
+      (create_info->used_fields & HA_CREATE_USED_ENCRYPT)) {
+    create_info->explicit_encryption = true;
   }
 
   // Do not accept AUTOEXTEND_SIZE clauses for
@@ -11994,15 +12001,6 @@ bool mysql_create_like_table(THD *thd, Table_ref *table, Table_ref *src_table,
   */
   if (src_table_obj && !src_table_obj->is_explicit_tablespace()) {
     local_create_info.tablespace = nullptr;
-  }
-
-  /*
-    Do not keep ENCRYPTION clause for unencrypted table.
-    We raise error if we are creating encrypted temporary table later.
-  */
-  if (local_create_info.encrypt_type.str &&
-      !dd::is_encrypted(local_create_info.encrypt_type)) {
-    local_create_info.encrypt_type = {nullptr, 0};
   }
 
   /*
