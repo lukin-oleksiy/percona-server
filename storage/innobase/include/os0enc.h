@@ -206,29 +206,18 @@ class Encryption {
   @return the string representation */
   [[nodiscard]] static const char *to_string(Type type) noexcept;
 
-  /** Check if the string is "empty" or "none".
+  /** Check if the string is "" or "n".
   @param[in]  algorithm  Encryption algorithm to check
   @return true if no algorithm requested */
   [[nodiscard]] static bool is_none(const char *algorithm) noexcept;
 
   /** Check if the NO algorithm was explicitly specified.
+  @param[in]      explicit_encryption was ENCRYPTION clause
+                  specified explicitly
   @param[in]      algorithm       Encryption algorithm to check
   @return true if no algorithm explicitly requested */
-  static bool none_explicitly_specified(ulong create_info_used_fields,
-                                        const char *algorithm) noexcept
-      MY_ATTRIBUTE((warn_unused_result));
-
-  static bool is_master_key_encryption(const char *algorithm) noexcept
-      MY_ATTRIBUTE((warn_unused_result));
-  [[nodiscard]] static bool is_empty(const char *algorithm) noexcept;
-
-  [[nodiscard]] static bool is_keyring(const char *algoritm) noexcept;
-
-  [[nodiscard]] static bool is_online_encryption_on() noexcept;
-
-  static bool should_be_keyring_encrypted(ulong create_info_used_fields,
-                                          const char *algorithm) noexcept
-      MY_ATTRIBUTE((warn_unused_result));
+  [[nodiscard]] static bool none_explicitly_specified(
+      bool explicit_encryption, const char *algorithm) noexcept;
 
   /** Generate random encryption value for key and iv.
   @param[in,out]  value Encryption value */

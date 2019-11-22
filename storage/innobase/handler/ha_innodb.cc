@@ -2856,16 +2856,12 @@ bool Encryption::is_none(const char *algorithm) noexcept {
   return (false);
 }
 
-bool Encryption::is_master_key_encryption(const char *algorithm) noexcept {
-  return innobase_strcasecmp(algorithm, "y") == 0;
-}
-
 /** Check if the NO algorithm was explicitly specified.
 @param[in]      algorithm       Encryption algorithm to check
 @return true if no algorithm explicitly requested */
-bool Encryption::none_explicitly_specified(ulong create_info_used_fields,
+bool Encryption::none_explicitly_specified(bool explicit_encryption,
                                            const char *algorithm) noexcept {
-  if (create_info_used_fields & HA_CREATE_USED_ENCRYPT) {
+  if (explicit_encryption) {
     ut_ad(algorithm != nullptr);
     return innobase_strcasecmp(algorithm, "n") == 0;
   }
@@ -12215,6 +12211,9 @@ dberr_t create_table_info_t::enable_encryption(dict_table_t *table) {
   dd::Object_id dd_space_id = dd::INVALID_OBJECT_ID;
   ulint actual_n_cols;
 
+  bool keyring_encryption_option_none = Encryption::none_explicitly_specified(
+      m_create_info->explicit_encryption, m_create_info->encrypt_type.str);
+
   uint32_t i_c = 0;
   uint32_t c_c = 0;
   uint32_t t_c = 0;
@@ -12585,7 +12584,9 @@ dberr_t create_table_info_t::enable_encryption(dict_table_t *table) {
     fts_add_doc_id_column(table, heap);
   }
 
-  err = enable_encryption(table);
+  if (!keyring_encryption_option_none) {
+    err = enable_encryption(table);
+  }
   if (err != DB_SUCCESS) {
     dict_mem_table_free(table);
     mem_heap_free(heap);
@@ -13255,7 +13256,8 @@ bool create_table_info_t::create_option_tablespace_is_valid() {
 
   if (!m_use_shared_space) {
     if (!m_use_file_per_table) {
-      if (m_create_info->encrypt_type.str != nullptr && is_temp) {
+      if (m_create_info->encrypt_type.str != nullptr &&
+          m_create_info->explicit_encryption && is_temp) {
         /* Temporary tablespace is being used for table */
         my_printf_error(ER_ILLEGAL_HA_CREATE_OPTION,
                         "InnoDB: ENCRYPTION is not accepted"

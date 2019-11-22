@@ -110,7 +110,8 @@ st_alter_tablespace::st_alter_tablespace(
       nodegroup_id{opts.nodegroup_id},
       wait_until_completed{opts.wait_until_completed},
       ts_comment{opts.ts_comment.str},
-      encryption{opts.encryption.str} {
+      encryption{opts.encryption.str},
+      explicit_encryption{opts.encryption.str != nullptr} {
   if (opts.autoextend_size.has_value()) {
     autoextend_size = opts.autoextend_size.value();
   }
@@ -530,6 +531,8 @@ bool Sql_cmd_create_tablespace::execute(THD *thd) {
   // - Disallow encryption='y', if SE does not support it.
   if (hton->flags & HTON_SUPPORTS_TABLE_ENCRYPTION) {
     tablespace->options().set("encryption", encrypt_type);
+    tablespace->options().set("explicit_encryption",
+                              m_options->encryption.str ? true : false);
   } else if (encrypt_tablespace) {
     my_error(ER_CHECK_NOT_IMPLEMENTED, MYF(0), "ENCRYPTION");
     return true;
@@ -981,6 +984,11 @@ bool Sql_cmd_alter_tablespace::execute(THD *thd) {
                                     &table_mdl_reqs))
         return true;
     }
+  }
+
+  if (hton->flags & HTON_SUPPORTS_TABLE_ENCRYPTION) {
+    tsmp.second->options().set("explicit_encryption",
+                               m_options->encryption.str ? true : false);
   }
 
   if (m_options->engine_attribute.str) {
