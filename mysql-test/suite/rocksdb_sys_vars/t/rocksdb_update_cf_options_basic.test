@@ -2,8 +2,9 @@
 
 call mtr.add_suppression("MyRocks: NULL is not a valid option for updates to column family settings.");
 call mtr.add_suppression("Invalid cf options, '=' expected *");
+call mtr.add_suppression("Failed to find options pair in override options *");
 call mtr.add_suppression("MyRocks: failed to parse the updated column family options = *");
-call mtr.add_suppression("Invalid cf config for default in override options *");
+call mtr.add_suppression("Invalid cf config for 'default' in override options: *");
 
 # Need a table which has multiple partitions and column families associated
 # with them to make sure that we're testing the valid scenario.
@@ -86,7 +87,11 @@ SELECT @@global.rocksdb_update_cf_options;
 
 SELECT * FROM INFORMATION_SCHEMA.ROCKSDB_CF_OPTIONS WHERE CF_NAME='cf3' AND OPTION_TYPE='TARGET_FILE_SIZE_BASE';
 
-# Some parts are good. Value still updated.
+# 'foo' column family does not exist, so changing its option is not possible.
+# See https://jira.percona.com/browse/PS-6125
+# Before above fix below SET created 'foo' column family
+call mtr.add_suppression("Column family 'foo' not found.");
+--error ER_WRONG_VALUE_FOR_VAR 
 SET @@global.rocksdb_update_cf_options = 'cf1={target_file_size_base=24m};foo={max_bytes_for_level_multiplier=8};';
 SELECT @@global.rocksdb_update_cf_options;
 
