@@ -49,6 +49,7 @@ use File::Copy;
 use File::Find;
 use File::Spec::Functions qw/splitdir/;
 use File::Temp qw/tempdir/;
+use My::Constants;
 use Getopt::Long;
 use IO::Select;
 use IO::Socket::INET;
@@ -69,6 +70,7 @@ use mtr_cases;
 use mtr_cases_from_list;
 use mtr_match;
 use mtr_report;
+use mtr_report_junit;
 use mtr_results;
 use mtr_unique;
 
@@ -1105,12 +1107,23 @@ sub main {
 
   print_total_times($opt_parallel) if $opt_report_times;
 
-  mtr_report_stats("Completed", $completed, $opt_accept_fail);
+  report_stats("Completed", $completed, $opt_accept_fail);
 
   remove_vardir_subs() if $opt_clean_vardir;
 
   exit(0);
 }
+
+sub report_stats($$;$) {
+  my ($prefix, $tests, $skip_error) = @_;
+
+  if ($opt_junit_output) {
+    mtr_report_stats_junit($tests, $opt_junit_output, $opt_junit_package);
+  }
+
+  mtr_report_stats($prefix, $tests, $skip_error);
+}
+
 
 # The word server here refers to the main control loop of MTR, not a
 # mysqld server. Worker threads have already been started when this sub
@@ -1283,7 +1296,7 @@ sub run_test_server ($$$) {
             } elsif ($opt_max_test_fail > 0 and
                      $num_failed_test >= $opt_max_test_fail) {
               push(@$completed, $result);
-              mtr_report_stats("Too many failed", $completed, 1);
+              report_stats("Too many failed", $completed, 1);
               mtr_report("Too many tests($num_failed_test) failed!",
                          "Terminating...");
               return undef;
@@ -1480,7 +1493,7 @@ sub run_test_server ($$$) {
 
     # Check if test suite timer expired
     if (has_expired($suite_timeout)) {
-      mtr_report_stats("Timeout", $completed, 1);
+      report_stats("Timeout", $completed, 1);
       mtr_report("Test suite timeout! Terminating...");
       return undef;
     }
@@ -1610,6 +1623,7 @@ sub run_worker ($) {
 sub shutdown_exit_reports() {
   my $found_report   = 0;
   my $clean_shutdown = 0;
+  my $all_exit_reports = {};
 
   foreach my $log_file (keys %logs) {
     my @culprits  = ();
@@ -1647,20 +1661,24 @@ sub shutdown_exit_reports() {
       }
     }
 
+    my $report_text = '';
+
     if ($found_report) {
-      mtr_print("Shutdown report from $log_file after tests:\n", @culprits);
-      mtr_print_line();
-      print("$crash_rep\n");
+      $report_text = $crash_rep;
     } else {
       # Print last 100 lines of log file since shutdown failed
       # for some reason.
-      mtr_print("Shutdown report from $log_file after tests:\n", @culprits);
-      mtr_print_line();
-      my $reason = mtr_lastlinesfromfile($log_file, 100) . "\n";
-      print("$reason");
+      $report_text = mtr_lastlinesfromfile($log_file, 100);
     }
+
+    $all_exit_reports->{$log_file} = {
+      text => $report_text,
+      after_tests => [@culprits],
+    };
     $LOGF = undef;
   }
+
+  return $all_exit_reports;
 }
 
 # Create a directory to store build thread id files
@@ -1965,6 +1983,8 @@ sub command_line_setup {
     'fast!'                  => \$opt_fast,
     'force-restart'         => \$opt_force_restart,
     'help|h'                => \$opt_usage,
+    'junit-output=s'        => \$opt_junit_output,
+    'junit-package=s'       => \$opt_junit_package,
     'keep-ndbfs'            => \$opt_keep_ndbfs,
     'max-connections=i'     => \$opt_max_connections,
     'print-testcases'       => \&collect_option,
@@ -2011,6 +2031,12 @@ sub command_line_setup {
 
   usage("") if $opt_usage;
   list_options(\%options) if $opt_list_options;
+
+  # Make sure that XML::Simple support exists for JUnit output
+  if ($opt_junit_output and !mtr_junit_supported()) {
+    mtr_error("JUnit XML reporting is not supported.  The XML::Simple package",
+              "could not be loaded.");
+  }
 
   check_platform() if defined $ENV{PB2WORKDIR};
 
@@ -5670,7 +5696,7 @@ sub run_testcase ($) {
             mtr_report_test_opt_passed($tinfo);
           } else {
             # Testcase itself tell us to skip this one
-            $tinfo->{skip_detected_by_test} = 1;
+            $tinfo->{skip_reason} = MTR_SKIP_BY_TEST;
 
             # Try to get reason from test log file
             find_testcase_skipped_reason($tinfo);
@@ -7183,14 +7209,38 @@ sub router_start ($$$) {
   return;
 }
 
+sub shutdown_processes {
+  my ($timeout, @servers)= @_;
+  my $append_exit_reports= 0;
+  my %status = My::SafeProcess::shutdown($timeout, @servers);
+
+  if ($status{failed}) {
+    $shutdown_report_text.= "mysqld abnormal exit\n";
+  }
+  if ($status{killed}) {
+    $shutdown_report_text.=
+      "mysqld was killed after it failed to properly shutdown\n";
+  }
+
+  if ($status{failed} or $status{killed}) {
+    $shutdown_report = 1;
+    my $reports= shutdown_exit_reports();
+    while (my ($log_file, $report) = each (%$reports)) {
+      $shutdown_report_text.= $log_file . " after tests: @{$report->{after_tests}}:\n".
+                              "----------SERVER LOG START-----------\n".
+                              $report->{text}.
+                              "----------SERVER LOG END-------------\n";
+    }
+  }
+}
+
 sub stop_all_servers () {
   my $shutdown_timeout = $_[0] or 0;
 
   mtr_verbose("Stopping all servers...");
 
   # Kill all started servers
-  my $ret =
-    My::SafeProcess::shutdown($shutdown_timeout, started(all_servers()));
+  shutdown_processes($shutdown_timeout, started(all_servers()));
 
   # Remove pidfiles
   foreach my $server (all_servers()) {
@@ -7200,7 +7250,6 @@ sub stop_all_servers () {
 
   # Mark servers as stopped
   map($_->{proc} = undef, all_servers());
-  return $ret;
 }
 
 sub is_slave {
@@ -7484,7 +7533,6 @@ sub stop_servers($$) {
 
   # Remember if we restarted for this test case (count restarts)
   $tinfo->{'restarted'} = 1;
-  my $ret;
 
   if (join('|', @servers) eq join('|', all_servers())) {
     # All servers are going down, use some kind of order to
@@ -7493,21 +7541,16 @@ sub stop_servers($$) {
     mtr_report("Restarting all servers");
 
     # mysqld processes
-    $ret = My::SafeProcess::shutdown($opt_shutdown_timeout, started(mysqlds()));
+    shutdown_processes($opt_shutdown_timeout, started(mysqlds()));
 
     # cluster processes
-    My::SafeProcess::shutdown($opt_shutdown_timeout,
-                              started(ndbds(), ndb_mgmds(), routers()));
+    shutdown_processes($opt_shutdown_timeout,
+                       started(ndbds(), ndb_mgmds(), routers()));
   } else {
     mtr_report("Restarting ", started(@servers));
 
     # Stop only some servers
-    $ret = My::SafeProcess::shutdown($opt_shutdown_timeout, started(@servers));
-  }
-
-  if ($ret) {
-    shutdown_exit_reports();
-    $shutdown_report = 1;
+    shutdown_processes($opt_shutdown_timeout, started(@servers));
   }
 
   foreach my $server (@servers) {
@@ -8316,7 +8359,7 @@ sub valgrind_arguments {
 # Search server logs for valgrind reports printed at mysqld termination
 # Also search for sanitize reports.
 sub valgrind_exit_reports() {
-  my $found_err = 0;
+  my $aggregate = '';
 
   foreach my $log_file (keys %logs) {
     my @culprits      = ();
@@ -8335,11 +8378,8 @@ sub valgrind_exit_reports() {
         # If we have a report, report it if needed and start new list of tests
         if ($found_report) {
           if ($err_in_report) {
-            mtr_print("$tool_name report from $log_file after tests:\n",
-                      @culprits);
-            mtr_print_line();
-            print("$valgrind_rep\n");
-            $found_err     = 1;
+            $aggregate .= "$tool_name report from $log_file after tests:\n";
+            $aggregate .= "@culprits\n$valgrind_rep\n";
             $err_in_report = 0;
           }
           # Make ready to collect new report
@@ -8382,19 +8422,19 @@ sub valgrind_exit_reports() {
         $err_in_report = 1 if $line =~ /.*runtime error: .*/;
         $err_in_report = 1 if $line =~ /^WARNING: ThreadSanitizer: .*/;
       }
+
+      $found_report = 1 if $line =~ / \[Note\] .*: Shutdown complete$/;
     }
 
     $LOGF = undef;
 
     if ($err_in_report) {
-      mtr_print("$tool_name report from $log_file after tests:\n", @culprits);
-      mtr_print_line();
-      print("$valgrind_rep\n");
-      $found_err = 1;
+      $aggregate.= "$tool_name report from $log_file after tests:\n";
+      $aggregate.= "@culprits\n$valgrind_rep\n";
     }
   }
 
-  return $found_err;
+  return $aggregate;
 }
 
 sub run_ctest() {
@@ -8493,6 +8533,7 @@ sub run_ctest() {
   $ctest_report .= "Report from unit tests in $ctfile";
   $tinfo->{failures} = ($tinfo->{result} eq 'MTR_RES_FAILED');
 
+  $tinfo->{comment} .= "\n" . $ctest_out;
   mark_time_used('test');
   mtr_report_test($tinfo);
   chdir($olddir);
@@ -8861,6 +8902,8 @@ Misc options
   warnings              Scan the log files for warnings. Use --nowarnings
                         to turn off.
   xml-report=FILE       Generate a XML report file compatible with JUnit.
+  junit-output=FILE     Output JUnit test summary XML to FILE.
+  junit-package=NAME    Set the JUnit package name to NAME for this test run.
 
 Some options that control enabling a feature for normal test runs,
 can be turned off by prepending 'no' to the option, e.g. --notimer.
