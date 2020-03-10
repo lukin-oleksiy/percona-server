@@ -502,6 +502,11 @@ static int rocksdb_check_bulk_load_allow_unsorted(
 static void rocksdb_set_max_background_jobs(THD *thd, struct SYS_VAR *const var,
                                             void *const var_ptr,
                                             const void *const save);
+static void rocksdb_set_max_background_compactions(THD *thd,
+                                                   struct SYS_VAR *const var,
+                                                   void *const var_ptr,
+                                                   const void *const save);
+
 static void rocksdb_set_bytes_per_sync(THD *thd, struct SYS_VAR *const var,
                                        void *const var_ptr,
                                        const void *const save);
@@ -594,6 +599,7 @@ static uint32_t rocksdb_validate_tables = 1;
 #endif  // defined(ROCKSDB_INCLUDE_VALIDATE_TABLES) &&
         // ROCKSDB_INCLUDE_VALIDATE_TABLES
 static char *rocksdb_datadir = nullptr;
+static uint32_t rocksdb_max_bottom_pri_background_compactions = 0;
 static uint32_t rocksdb_table_stats_sampling_pct =
     RDB_DEFAULT_TBL_STATS_SAMPLE_PCT;
 static uint32_t rocksdb_table_stats_recalc_threshold_pct = 10;
@@ -1345,6 +1351,33 @@ static MYSQL_SYSVAR_INT(max_background_jobs,
                         rocksdb_db_options->max_background_jobs,
                         /* min */ -1, /* max */ MAX_BACKGROUND_JOBS, 0);
 
+static MYSQL_SYSVAR_INT(max_background_flushes,
+                        rocksdb_db_options->max_background_flushes,
+                        PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
+                        "DBOptions::max_background_flushes for RocksDB",
+                        nullptr, nullptr,
+                        rocksdb_db_options->max_background_flushes,
+                        /* min */ -1, /* max */ 64, 0);
+
+static MYSQL_SYSVAR_INT(max_background_compactions,
+                        rocksdb_db_options->max_background_compactions,
+                        PLUGIN_VAR_RQCMDARG,
+                        "DBOptions::max_background_compactions for RocksDB",
+                        nullptr, rocksdb_set_max_background_compactions,
+                        rocksdb_db_options->max_background_compactions,
+                        /* min */ -1, /* max */ 64, 0);
+
+static MYSQL_SYSVAR_UINT(max_bottom_pri_background_compactions,
+                         rocksdb_max_bottom_pri_background_compactions,
+                         PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
+                         "Creating specified number of threads, setting lower "
+                         "CPU priority, and letting compactions use them. "
+                         "Maximum compaction concurrency is capped by "
+                         "rocksdb_max_background_compactions or "
+                         "rocksdb_max_background_jobs.",
+                         nullptr, nullptr, 0,
+                         /* min */ 0, /* max */ 64, 0);
+
 static MYSQL_SYSVAR_UINT(max_subcompactions,
                          rocksdb_db_options->max_subcompactions,
                          PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
@@ -2090,6 +2123,9 @@ static struct SYS_VAR *rocksdb_system_variables[] = {
     MYSQL_SYSVAR(persistent_cache_size_mb),
     MYSQL_SYSVAR(delete_obsolete_files_period_micros),
     MYSQL_SYSVAR(max_background_jobs),
+    MYSQL_SYSVAR(max_background_flushes),
+    MYSQL_SYSVAR(max_background_compactions),
+    MYSQL_SYSVAR(max_bottom_pri_background_compactions),
     MYSQL_SYSVAR(max_log_file_size),
     MYSQL_SYSVAR(max_subcompactions),
     MYSQL_SYSVAR(log_file_time_to_roll),
@@ -2353,7 +2389,7 @@ class Rdb_transaction {
 
   bool m_is_delayed_snapshot = false;
 
-  std::unordered_set<Rdb_tbl_def*> modified_tables;
+  std::unordered_set<Rdb_tbl_def *> modified_tables;
 
  private:
   /*
@@ -3007,13 +3043,10 @@ class Rdb_transaction {
     }
     modified_tables.clear();
   }
-  void on_rollback() {
-    modified_tables.clear();
-  }
+  void on_rollback() { modified_tables.clear(); }
+
  public:
-  void log_table_write_op(Rdb_tbl_def *tbl) {
-    modified_tables.insert(tbl);
-  }
+  void log_table_write_op(Rdb_tbl_def *tbl) { modified_tables.insert(tbl); }
 
   void set_initial_savepoint() {
     /*
@@ -5099,6 +5132,7 @@ static int rocksdb_init_internal(void *const p) {
   if (!rocksdb_tbl_options->no_block_cache) {
     std::shared_ptr<rocksdb::MemoryAllocator> memory_allocator;
     if (!rocksdb_cache_dump) {
+#ifdef HAVE_JEMALLOC
       size_t block_size = rocksdb_tbl_options->block_size;
       rocksdb::JemallocAllocatorOptions alloc_opt;
       // Limit jemalloc tcache memory usage. The range
@@ -5116,6 +5150,12 @@ static int rocksdb_init_internal(void *const p) {
         memory_allocator = nullptr;
         DBUG_RETURN(HA_EXIT_FAILURE);
       }
+#else
+      // NO_LINT_DEBUG
+      LogPluginErrMsg(
+          WARNING_LEVEL, 0,
+          "Ignoring rocksdb_cache_dump because jemalloc is missing.");
+#endif  // HAVE_JEMALLOC
     }
     std::shared_ptr<rocksdb::Cache> block_cache = rocksdb::NewLRUCache(
         rocksdb_block_cache_size, -1 /*num_shard_bits*/,
@@ -5382,6 +5422,21 @@ static int rocksdb_init_internal(void *const p) {
 
   // Skip cleaning up rdb_open_tables as we've succeeded
   rdb_open_tables_cleanup.skip();
+
+  // Set lower priority for compactions
+  if (rocksdb_max_bottom_pri_background_compactions > 0) {
+    // This creates background threads in rocksdb with BOTTOM priority pool.
+    // Compactions for bottommost level use threads in the BOTTOM pool, and
+    // the threads in the BOTTOM pool run with lower OS priority (19 in Linux).
+    rdb->GetEnv()->SetBackgroundThreads(
+        rocksdb_max_bottom_pri_background_compactions,
+        rocksdb::Env::Priority::BOTTOM);
+    rdb->GetEnv()->LowerThreadPoolCPUPriority(rocksdb::Env::Priority::BOTTOM);
+    LogPluginErrMsg(INFORMATION_LEVEL, 0,
+                    "Set %d compaction thread(s) with "
+                    "lower scheduling priority.",
+                    rocksdb_max_bottom_pri_background_compactions);
+  }
 
   DBUG_RETURN(HA_EXIT_SUCCESS);
 }
@@ -14500,6 +14555,35 @@ static void rocksdb_set_max_background_jobs(THD *thd, struct SYS_VAR *const var,
       LogPluginErrMsg(WARNING_LEVEL, 0,
                       "failed to update max_background_jobs. Status code = %d, "
                       "status = %s.",
+                      s.code(), s.ToString().c_str());
+    }
+  }
+
+  RDB_MUTEX_UNLOCK_CHECK(rdb_sysvars_mutex);
+}
+
+static void rocksdb_set_max_background_compactions(THD *thd,
+                                                   struct SYS_VAR *const var,
+                                                   void *const var_ptr,
+                                                   const void *const save) {
+  assert(save != nullptr);
+  assert(rocksdb_db_options != nullptr);
+  assert(rocksdb_db_options->env != nullptr);
+
+  RDB_MUTEX_LOCK_CHECK(rdb_sysvars_mutex);
+
+  const int new_val = *static_cast<const int *>(save);
+
+  if (rocksdb_db_options->max_background_compactions != new_val) {
+    rocksdb_db_options->max_background_compactions = new_val;
+    rocksdb::Status s = rdb->SetDBOptions(
+        {{"max_background_compactions", std::to_string(new_val)}});
+
+    if (!s.ok()) {
+      /* NO_LINT_DEBUG */
+      LogPluginErrMsg(WARNING_LEVEL, 0,
+                      "MyRocks: failed to update max_background_compactions. "
+                      "Status code = %d, status = %s.",
                       s.code(), s.ToString().c_str());
     }
   }
