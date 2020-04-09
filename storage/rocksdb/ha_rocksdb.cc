@@ -11869,6 +11869,11 @@ static void adjust_cardinality(
     if ((uint64_t)stat.m_rows > max_num_rows_scanned) {
       stat.adjust_cardinality(stat.m_rows / max_num_rows_scanned);
     }
+#ifndef NDEBUG
+    for (size_t i = 0; i < stat.m_distinct_keys_per_prefix.size(); i++) {
+      assert(stat.m_distinct_keys_per_prefix[i] <= stat.m_rows);
+    }
+#endif
   }
 }
 
@@ -13543,7 +13548,9 @@ static SHOW_VAR rocksdb_status_vars[] = {
                        SHOW_LONGLONG),
     DEF_STATUS_VAR_PTR("number_sst_entry_other", &rocksdb_num_sst_entry_other,
                        SHOW_LONGLONG),
-#ifndef DBUG_OFF
+    DEF_STATUS_VAR_PTR("additional_compaction_triggers",
+                       &rocksdb_additional_compaction_triggers, SHOW_LONGLONG),
+#ifndef NDEBUG
     DEF_STATUS_VAR_PTR("num_get_for_update_calls",
                        &rocksdb_num_get_for_update_calls, SHOW_LONGLONG),
 #endif
