@@ -2146,8 +2146,9 @@ using fix_tablespaces_empty_uuid_t = bool (*)(void);
  This is used by encryption threads. It updates innodb's copy of
  default_table_encryption variable according to the parameter.
  @param value for innodb's copy of default_table_encryption
+ @param is_starting True if the server is starting
 */
-using fix_default_table_encryption_t = void (*)(ulong);
+using fix_default_table_encryption_t = bool (*)(ulong value, bool is_starting);
 
 /**
   @brief
