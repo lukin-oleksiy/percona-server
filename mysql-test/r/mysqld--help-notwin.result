@@ -313,6 +313,9 @@ The following options may be given as the first argument:
  --container-aware   Determines if server adheres to container's resource
  limits
  --core-file         Write core on errors.
+ --coredumper[=name] Use coredumper library to generate coredumps. Specify a
+ path for coredump otherwise it will be generated on
+ datadir
  --create-admin-listener-thread 
  Use a dedicated thread for listening incoming connections
  on admin interface
@@ -1795,6 +1798,7 @@ connection-memory-limit 18446744073709551615
 connection-memory-status-limit 18446744073709551615
 console FALSE
 container-aware FALSE
+coredumper (No default value)
 create-admin-listener-thread FALSE
 cte-max-recursion-depth 1000
 daemonize FALSE
