@@ -29,6 +29,8 @@
 
 /* RocksDB header files */
 #include "rocksdb/db.h"
+#include "rocksdb/file_system.h"
+#include "rocksdb/io_status.h"
 #include "rocksdb/options.h"
 
 /* MyRocks header files */
@@ -309,7 +311,7 @@ Rdb_sst_info::Rdb_sst_info(rocksdb::DB *const db, const std::string &tablename,
       m_sst_file(nullptr),
       m_tracing(tracing),
       m_print_client_error(true) {
-  m_prefix = db->GetName() + "/";
+  m_prefix = db->GetName() + '/';
 
   std::string normalized_table;
   if (rdb_normalize_tablename(tablename.c_str(), &normalized_table)) {
@@ -326,6 +328,11 @@ Rdb_sst_info::Rdb_sst_info(rocksdb::DB *const db, const std::string &tablename,
   // Unique filename generated to prevent collisions when the same table
   // is loaded in parallel
   m_prefix += std::to_string(m_prefix_counter.fetch_add(1)) + "_";
+
+  if (rdb_has_wsenv()) {
+    // WSEnv doesn't like '#'
+    std::replace(m_prefix.begin(), m_prefix.end(), '#', '$');
+  }
 
   rocksdb::ColumnFamilyDescriptor cf_descr;
   const rocksdb::Status s = m_cf->GetDescriptor(&cf_descr);
@@ -513,31 +520,29 @@ void Rdb_sst_info::report_error_msg(const rocksdb::Status &s,
 }
 
 void Rdb_sst_info::init(const rocksdb::DB *const db) {
-  const std::string path = db->GetName() + FN_DIRSEP;
-  MY_DIR *const dir_info = my_dir(path.c_str(), MYF(MY_DONT_SORT));
+  const std::string dir = db->GetName();
+  const auto &fs = db->GetEnv()->GetFileSystem();
+  std::vector<std::string> files_in_dir;
 
-  // Access the directory
-  if (dir_info == nullptr) {
+  // Get the files in the specified directory
+  rocksdb::IOStatus s =
+      fs->GetChildren(dir, rocksdb::IOOptions(), &files_in_dir, nullptr);
+  if (!s.ok()) {
     LogPluginErrMsg(WARNING_LEVEL, 0, "Could not access database directory: %s",
-                    path.c_str());
+                    dir.c_str());
     return;
   }
 
   // Scan through the files in the directory
-  const struct fileinfo *file_info = dir_info->dir_entry;
-  for (uint ii = 0; ii < dir_info->number_off_files; ii++, file_info++) {
-    // find any files ending with m_suffix ...
-    const std::string name = file_info->name;
-    const size_t pos = name.find(m_suffix);
-    if (pos != std::string::npos && name.size() - pos == m_suffix.size()) {
-      // ... and remove them
-      const std::string fullname = path + name;
-      my_delete(fullname.c_str(), MYF(0));
+  for (const auto &file : files_in_dir) {
+    // Find any files ending with m_suffix ...
+    const size_t pos = file.find(m_suffix);
+    if (pos != std::string::npos && file.size() - pos == m_suffix.size()) {
+      // Remove
+      const auto fullname = rdb_concat_paths(dir, file);
+      fs->DeleteFile(fullname, rocksdb::IOOptions(), nullptr);
     }
   }
-
-  // Release the directory entry
-  my_dirend(dir_info);
 }
 
 std::atomic<uint64_t> Rdb_sst_info::m_prefix_counter(0);

@@ -2231,7 +2231,7 @@ void Rdb_key_def::report_checksum_mismatch(const bool is_key,
                   "Checksum mismatch in %s of key-value pair for index 0x%x",
                   is_key ? "key" : "value", get_index_number());
 
-  const std::string buf = rdb_hexdump(data, data_size, RDB_MAX_HEXDUMP_LEN);
+  const auto buf = rdb_hexdump(data, data_size);
   LogPluginErrMsg(ERROR_LEVEL, 0,
                   "Data with incorrect checksum (%" PRIu64 " bytes): %s",
                   (uint64_t)data_size, buf.c_str());
@@ -5509,7 +5509,7 @@ int Rdb_dict_manager::commit(rocksdb::WriteBatch *const batch,
   if (!batch) return HA_ERR_ROCKSDB_COMMIT_FAILED;
   int res = HA_EXIT_SUCCESS;
   rocksdb::WriteOptions options;
-  options.sync = sync;
+  options.sync = (sync && rdb_sync_wal_supported());
   rocksdb::TransactionDBWriteOptimizations optimize;
   optimize.skip_concurrency_control = true;
   rocksdb::Status s = m_db->Write(options, optimize, batch);
@@ -5517,6 +5517,11 @@ int Rdb_dict_manager::commit(rocksdb::WriteBatch *const batch,
   if (res) {
     rdb_handle_io_error(s, RDB_IO_ERROR_DICT_COMMIT);
   }
+  if (!rdb_sync_wal_supported()) {
+    // If we don't support SyncWAL, do a flush at least
+    m_db->FlushWAL(false);
+  }
+
   batch->Clear();
   return res;
 }
