@@ -36,6 +36,7 @@
 #include "./ha_rocksdb.h"
 #include "./properties_collector.h"
 #include "./rdb_buff.h"
+#include "./rdb_mutex_wrapper.h"
 #include "./rdb_utils.h"
 
 namespace myrocks {
@@ -1067,8 +1068,8 @@ struct Rdb_collation_codec {
   std::vector<std::array<uchar, 256>> m_dec_idx;
 };
 
-extern mysql_mutex_t rdb_collation_data_mutex;
-extern mysql_mutex_t rdb_mem_cmp_space_mutex;
+extern Rds_mysql_mutex rdb_collation_data_mutex;
+extern Rds_mysql_mutex rdb_mem_cmp_space_mutex;
 extern std::array<const Rdb_collation_codec *, MY_ALL_CHARSETS_SIZE>
     rdb_collation_data;
 
@@ -1388,7 +1389,7 @@ interface Rdb_tables_scanner {
   objects are shared among all threads.
 */
 
-class Rdb_ddl_manager {
+class Rdb_ddl_manager : public Ensure_initialized {
   Rdb_dict_manager *m_dict = nullptr;
   Rdb_cf_manager *m_cf_manager = nullptr;
 
@@ -1545,7 +1546,7 @@ class Rdb_ddl_manager {
   begin() and commit() to make it easier to do atomic operations.
 
 */
-class Rdb_dict_manager {
+class Rdb_dict_manager : public Ensure_initialized {
  private:
   mysql_mutex_t m_mutex;
   rocksdb::TransactionDB *m_db = nullptr;
@@ -1587,7 +1588,10 @@ class Rdb_dict_manager {
             Rdb_cf_manager *const cf_manager,
             const bool enable_remove_orphaned_cf_flags);
 
-  inline void cleanup() { mysql_mutex_destroy(&m_mutex); }
+  inline void cleanup() {
+    if (!initialized) return;
+    mysql_mutex_destroy(&m_mutex);
+  }
 
   inline void lock() { RDB_MUTEX_LOCK_CHECK(m_mutex); }
 
