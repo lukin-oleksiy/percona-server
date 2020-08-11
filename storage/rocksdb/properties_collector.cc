@@ -197,8 +197,7 @@ const char *Rdb_tbl_prop_coll::INDEXSTATS_KEY = "__indexstats__";
 */
 rocksdb::Status Rdb_tbl_prop_coll::Finish(
     rocksdb::UserCollectedProperties *const properties) {
-
-  DBUG_ASSERT(properties != nullptr);
+  assert(properties != nullptr);
 
   if (!m_recorded) {
     m_total_puts = 0;
