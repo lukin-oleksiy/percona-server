@@ -851,6 +851,11 @@ void thd_set_ha_data(MYSQL_THD thd, const struct handlerton *hton,
 */
 
 void remove_ssl_err_thread_state();
+
+typedef bool (*ssl_reload_callback_t)(void *);
+bool register_ssl_reload_callback(ssl_reload_callback_t);
+bool deregister_ssl_reload_callback(ssl_reload_callback_t);
+
 #ifdef __cplusplus
 }
 #endif
