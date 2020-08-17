@@ -125,6 +125,9 @@ void *thd_get_ha_data(const void * thd, const struct handlerton *hton);
 void thd_set_ha_data(void * thd, const struct handlerton *hton,
                      const void *ha_data);
 void remove_ssl_err_thread_state();
+typedef bool (*ssl_reload_callback_t)(void *);
+bool register_ssl_reload_callback(ssl_reload_callback_t);
+bool deregister_ssl_reload_callback(ssl_reload_callback_t);
 #include "plugin_auth_common.h"
 struct MYSQL_PLUGIN_VIO_INFO {
   enum {
