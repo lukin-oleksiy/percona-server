@@ -185,6 +185,7 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #include "dict0priv.h"
 #include "dict0sdi.h"
 #include "dict0upgrade.h"
+#include "sql/auth/auth_common.h"
 #include "sql/item.h"
 #include "sql_base.h"
 #include "srv0tmp.h"
@@ -8005,6 +8006,12 @@ int ha_innobase::open(const char *name, int, uint open_flags,
     if (m_share == nullptr) {
       dict_table_close(ib_table, false, false);
       return HA_ERR_SE_OUT_OF_MEMORY;
+    }
+
+    if (UNIV_UNLIKELY(m_share->ib_table && m_share->ib_table->is_corrupt &&
+                      srv_pass_corrupt_table <= 1)) {
+      free_share(m_share);
+      return HA_ERR_CRASHED_ON_USAGE;
     }
   }
 
