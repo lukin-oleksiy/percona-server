@@ -688,7 +688,7 @@ static int rdb_i_s_cfoptions_fill_table(
 
     // get table related options
     std::vector<std::string> table_options =
-        split_into_vector(opts.table_factory->GetPrintableTableOptions(), '\n');
+        split_into_vector(opts.table_factory->GetPrintableOptions(), '\n');
 
     for (std::string option : table_options) {
       option.erase(std::remove(option.begin(), option.end(), ' '),
@@ -999,11 +999,11 @@ static ST_FIELD_INFO rdb_i_s_ddl_fields_info[] = {
     ROCKSDB_FIELD_INFO_END};
 
 int Rdb_ddl_scanner::add_table(Rdb_tbl_def *tdef) {
-  DBUG_ASSERT(tdef != nullptr);
+  assert(tdef != nullptr);
 
   int ret = 0;
 
-  DBUG_ASSERT(m_table != nullptr);
+  assert(m_table != nullptr);
   Field **field = m_table->field;
   assert(field != nullptr);
   const Rdb_dict_manager *dict_manager = rdb_get_dict_manager();
@@ -1113,7 +1113,7 @@ static int rdb_i_s_ddl_init(void *const p) {
 static int rdb_i_s_cfoptions_init(void *const p) {
   DBUG_ENTER_FUNC();
 
-  DBUG_ASSERT(p != nullptr);
+  assert(p != nullptr);
 
   my_core::ST_SCHEMA_TABLE *schema;
 
@@ -1128,7 +1128,7 @@ static int rdb_i_s_cfoptions_init(void *const p) {
 static int rdb_i_s_global_info_init(void *const p) {
   DBUG_ENTER_FUNC();
 
-  DBUG_ASSERT(p != nullptr);
+  assert(p != nullptr);
 
   my_core::ST_SCHEMA_TABLE *schema;
 
@@ -1517,7 +1517,7 @@ static int rdb_i_s_index_file_map_fill_table(
 static int rdb_i_s_index_file_map_init(void *const p) {
   DBUG_ENTER_FUNC();
 
-  DBUG_ASSERT(p != nullptr);
+  assert(p != nullptr);
 
   my_core::ST_SCHEMA_TABLE *schema;
 
@@ -1608,7 +1608,7 @@ static int rdb_i_s_lock_info_fill_table(
 static int rdb_i_s_lock_info_init(void *const p) {
   DBUG_ENTER_FUNC();
 
-  DBUG_ASSERT(p != nullptr);
+  assert(p != nullptr);
 
   my_core::ST_SCHEMA_TABLE *schema;
 
@@ -1746,7 +1746,7 @@ static int rdb_i_s_trx_info_fill_table(
 static int rdb_i_s_trx_info_init(void *const p) {
   DBUG_ENTER_FUNC();
 
-  DBUG_ASSERT(p != nullptr);
+  assert(p != nullptr);
 
   my_core::ST_SCHEMA_TABLE *schema;
 
