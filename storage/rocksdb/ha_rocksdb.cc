@@ -668,6 +668,7 @@ static bool rocksdb_rollback_on_timeout = false;
 static bool rocksdb_enable_insert_with_update_caching = true;
 /* Use unsigned long long instead of uint64_t because of MySQL compatibility */
 static unsigned long long rocksdb_max_compaction_history = 0;
+static bool rocksdb_skip_locks_if_skip_unique_check = false;
 
 std::atomic<uint64_t> rocksdb_row_lock_deadlocks(0);
 std::atomic<uint64_t> rocksdb_row_lock_wait_timeouts(0);
@@ -2139,6 +2140,12 @@ static MYSQL_SYSVAR_ULONGLONG(
     RDB_DEFAULT_MAX_COMPACTION_HISTORY, 0ULL /* min */, UINT64_MAX /* max */,
     0 /* blk */);
 
+static MYSQL_SYSVAR_BOOL(skip_locks_if_skip_unique_check,
+                         rocksdb_skip_locks_if_skip_unique_check,
+                         PLUGIN_VAR_RQCMDARG,
+                         "Skip row locking when unique checks are disabled.",
+                         nullptr, nullptr, false);
+
 static const int ROCKSDB_ASSUMED_KEY_VALUE_DISK_SIZE = 100;
 
 static struct SYS_VAR *rocksdb_system_variables[] = {
@@ -2317,6 +2324,7 @@ static struct SYS_VAR *rocksdb_system_variables[] = {
     MYSQL_SYSVAR(enable_insert_with_update_caching),
     MYSQL_SYSVAR(trace_block_cache_access),
     MYSQL_SYSVAR(max_compaction_history),
+    MYSQL_SYSVAR(skip_locks_if_skip_unique_check),
     nullptr};
 
 static int rocksdb_compact_column_family(THD *const thd,
@@ -2707,6 +2715,14 @@ class Rdb_transaction {
     assert(snapshot != nullptr);
 
     m_read_opts.snapshot = snapshot;
+    // TODO: Use snapshot timestamp from rocksdb Snapshot object itself. This
+    // saves the extra call to fetch current time, and allows TTL compaction
+    // (which uses rocksdb timestamp) to be consistent with TTL read filtering
+    // (which uses this timestamp).
+    //
+    // There is no correctness problem though since m_snapshot_timestamp is
+    // generally set after the snapshot has been created, so compaction is
+    // not dropping anything that should have been visible.
     rdb->GetEnv()->GetCurrentTime(&m_snapshot_timestamp);
     m_is_delayed_snapshot = false;
   }
@@ -3367,6 +3383,7 @@ class Rdb_transaction_impl : public Rdb_transaction {
     }
 
     if (need_clear && m_rocksdb_tx != nullptr) m_rocksdb_tx->ClearSnapshot();
+    m_is_delayed_snapshot = false;
   }
 
   bool has_snapshot() { return m_read_opts.snapshot != nullptr; }
@@ -3500,6 +3517,7 @@ class Rdb_transaction_impl : public Rdb_transaction {
     set_initial_savepoint();
 
     m_ddl_transaction = false;
+    m_is_delayed_snapshot = false;
   }
 
   /* Implementations of do_*savepoint based on rocksdB::Transaction savepoints
@@ -3545,6 +3563,7 @@ class Rdb_transaction_impl : public Rdb_transaction {
         if (cur_snapshot != nullptr) {
           rdb->GetEnv()->GetCurrentTime(&m_snapshot_timestamp);
         } else {
+          m_rocksdb_tx->SetSnapshotOnNextOperation(m_notifier);
           m_is_delayed_snapshot = true;
         }
       }
@@ -6287,8 +6306,9 @@ bool ha_rocksdb::rpl_can_handle_stm_event() const noexcept {
 bool ha_rocksdb::should_hide_ttl_rec(const Rdb_key_def &kd,
                                      const rocksdb::Slice &ttl_rec_val,
                                      const int64_t curr_ts) {
-  DBUG_ASSERT(kd.has_ttl());
-  DBUG_ASSERT(kd.m_ttl_rec_offset != UINT_MAX);
+  assert(kd.has_ttl());
+  assert(kd.m_ttl_rec_offset != UINT_MAX);
+  THD *thd = ha_thd();
 
   /*
     Curr_ts can only be 0 if there are no snapshots open.
@@ -6300,7 +6320,10 @@ bool ha_rocksdb::should_hide_ttl_rec(const Rdb_key_def &kd,
     also log a warning and increment a diagnostic counter.
   */
   if (curr_ts == 0) {
-    update_row_stats(ROWS_HIDDEN_NO_SNAPSHOT);
+    assert(false);
+    push_warning_printf(thd, Sql_condition::SL_WARNING, ER_WRONG_ARGUMENTS,
+                        "TTL read filtering called with no snapshot.");
+    update_row_stats(ROWS_UNFILTERED_NO_SNAPSHOT);
     return false;
   }
 
@@ -6327,7 +6350,7 @@ bool ha_rocksdb::should_hide_ttl_rec(const Rdb_key_def &kd,
         ERROR_LEVEL, 0,
         "Decoding ttl from PK value failed, for index (%u,%u), val: %s",
         gl_index_id.cf_id, gl_index_id.index_id, buf.c_str());
-    DBUG_ASSERT(0);
+    assert(0);
     return false;
   }
 
@@ -6342,7 +6365,6 @@ bool ha_rocksdb::should_hide_ttl_rec(const Rdb_key_def &kd,
     update_row_stats(ROWS_FILTERED);
 
     /* increment examined row count when rows are skipped */
-    THD *thd = ha_thd();
     thd->inc_examined_row_count(1);
     DEBUG_SYNC(thd, "rocksdb.ttl_rows_examined");
   }
@@ -9640,11 +9662,14 @@ int ha_rocksdb::get_pk_for_update(struct update_row_info *const row_info) {
 */
 int ha_rocksdb::check_and_lock_unique_pk(const uint key_id,
                                          const struct update_row_info &row_info,
-                                         bool *const found) {
-  DBUG_ASSERT(found != nullptr);
+                                         bool *const found,
+                                         const bool skip_unique_check) {
+  assert(found != nullptr);
 
   assert(row_info.old_pk_slice.size() == 0 ||
          row_info.new_pk_slice.compare(row_info.old_pk_slice) != 0);
+
+  const bool ignore_pk_unique_check = skip_unique_check;
 
   /*
     Perform a read to determine if a duplicate entry exists. For primary
@@ -9665,24 +9690,25 @@ int ha_rocksdb::check_and_lock_unique_pk(const uint key_id,
     2) T1 Get(empty) -> T1 Put(insert, not committed yet) -> T2 Get(empty)
        -> T2 Put(insert, blocked) -> T1 commit -> T2 commit(overwrite)
   */
-  const rocksdb::Status s = get_for_update(
-      row_info.tx, *m_pk_descr, row_info.new_pk_slice, &m_retrieved_record);
+  const rocksdb::Status s =
+      get_for_update(row_info.tx, *m_pk_descr, row_info.new_pk_slice,
+                     ignore_pk_unique_check ? nullptr : &m_retrieved_record);
   if (!s.ok() && !s.IsNotFound()) {
     return row_info.tx->set_status_error(table->in_use, s,
                                          *m_key_descr_arr[key_id], m_tbl_def);
   }
 
-  bool key_found = !s.IsNotFound();
+  bool key_found = ignore_pk_unique_check ? false : !s.IsNotFound();
 
   /*
     If the pk key has ttl, we may need to pretend the row wasn't
     found if it is already expired.
   */
+  assert(row_info.tx->has_snapshot() &&
+         row_info.tx->m_snapshot_timestamp != 0);
   if (key_found && m_pk_descr->has_ttl() &&
       should_hide_ttl_rec(*m_pk_descr, m_retrieved_record,
-                          (row_info.tx->m_snapshot_timestamp
-                               ? row_info.tx->m_snapshot_timestamp
-                               : static_cast<int64_t>(std::time(nullptr))))) {
+                          row_info.tx->m_snapshot_timestamp)) {
     key_found = false;
   }
 
@@ -9715,10 +9741,11 @@ int ha_rocksdb::check_and_lock_unique_pk(const uint key_id,
     HA_EXIT_SUCCESS  OK
     other            HA_ERR error code (can be SE-specific)
 */
-int ha_rocksdb::check_and_lock_sk(const uint key_id,
-                                  const struct update_row_info &row_info,
-                                  bool *const found) {
-  DBUG_ASSERT(found != nullptr);
+int ha_rocksdb::check_and_lock_sk(
+    const uint key_id, const struct update_row_info &row_info,
+    bool *const found,
+    const bool skip_unique_check MY_ATTRIBUTE((__unused__))) {
+  assert(found != nullptr);
   *found = false;
 
   /*
@@ -9834,6 +9861,7 @@ int ha_rocksdb::check_and_lock_sk(const uint key_id,
     Also need to scan RocksDB and verify the key has not been deleted
     in the transaction.
   */
+  DBUG_ASSERT(row_info.tx->has_snapshot() &&
   */
   *found = !read_key_exact(kd, iter, all_parts_used, new_slice,
                            row_info.tx->m_snapshot_timestamp);
@@ -9873,7 +9901,11 @@ int ha_rocksdb::check_and_lock_sk(const uint key_id,
     other            HA_ERR error code (can be SE-specific)
 */
 int ha_rocksdb::check_uniqueness_and_lock(
-    const struct update_row_info &row_info, bool pk_changed) {
+    const struct update_row_info &row_info, bool pk_changed,
+    bool skip_unique_check) {
+  Rdb_transaction *const tx = get_or_create_tx(ha_thd());
+  tx->acquire_snapshot(false);
+
   /*
     Go through each index and determine if the index has uniqueness
     requirements. If it does, then try to obtain a row lock on the new values.
@@ -9889,11 +9921,12 @@ int ha_rocksdb::check_uniqueness_and_lock(
         found = false;
         rc = HA_EXIT_SUCCESS;
       } else {
-        rc = check_and_lock_unique_pk(key_id, row_info, &found);
+        rc = check_and_lock_unique_pk(key_id, row_info, &found,
+                                      skip_unique_check);
         DEBUG_SYNC(ha_thd(), "rocksdb.after_unique_pk_check");
       }
     } else {
-      rc = check_and_lock_sk(key_id, row_info, &found);
+      rc = check_and_lock_sk(key_id, row_info, &found, skip_unique_check);
       DEBUG_SYNC(ha_thd(), "rocksdb.after_unique_sk_check");
     }
 
@@ -10314,12 +10347,15 @@ int ha_rocksdb::update_write_row(const uchar *const old_data,
     pk_changed = row_info.new_pk_slice.compare(row_info.old_pk_slice) != 0;
   }
 
-  if (!skip_unique_check) {
+  // Case: We skip both unique checks and rows locks only when bulk load is
+  // enabled or if rocksdb_skip_locks_if_skip_unique_check is ON
+  if (!THDVAR(table->in_use, bulk_load) &&
+      (!rocksdb_skip_locks_if_skip_unique_check || !skip_unique_check)) {
     /*
       Check to see if we are going to have failures because of unique
       keys.  Also lock the appropriate key values.
     */
-    rc = check_uniqueness_and_lock(row_info, pk_changed);
+    rc = check_uniqueness_and_lock(row_info, pk_changed, skip_unique_check);
     if (rc != HA_EXIT_SUCCESS) {
       DBUG_RETURN(rc);
     }
@@ -13589,6 +13625,8 @@ static void myrocks_update_status() {
   export_stats.rows_updated = global_stats.rows[ROWS_UPDATED];
   export_stats.rows_expired = global_stats.rows[ROWS_EXPIRED];
   export_stats.rows_filtered = global_stats.rows[ROWS_FILTERED];
+  export_stats.rows_unfiltered_no_snapshot =
+      global_stats.rows[ROWS_UNFILTERED_NO_SNAPSHOT];
 
   export_stats.system_rows_deleted = global_stats.system_rows[ROWS_DELETED];
   export_stats.system_rows_inserted = global_stats.system_rows[ROWS_INSERTED];
@@ -13635,6 +13673,9 @@ static SHOW_VAR myrocks_status_variables[] = {
     DEF_STATUS_VAR_FUNC("rows_expired", &export_stats.rows_expired,
                         SHOW_LONGLONG),
     DEF_STATUS_VAR_FUNC("rows_filtered", &export_stats.rows_filtered,
+                        SHOW_LONGLONG),
+    DEF_STATUS_VAR_FUNC("rows_unfiltered_no_snapshot",
+                        &export_stats.rows_unfiltered_no_snapshot,
                         SHOW_LONGLONG),
     DEF_STATUS_VAR_FUNC("system_rows_deleted",
                         &export_stats.system_rows_deleted, SHOW_LONGLONG),
