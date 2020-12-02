@@ -67,7 +67,9 @@ usr/lib/mysql/plugin/component_log_sink_json.so
 usr/lib/mysql/plugin/component_log_sink_syseventlog.so
 usr/lib/mysql/plugin/component_validate_password.so
 usr/lib/mysql/plugin/component_audit_api_message_emit.so
+usr/lib/mysql/plugin/component_query_attributes.so
 usr/lib/mysql/plugin/component_test_udf_services.so
+usr/lib/mysql/plugin/component_reference_cache.so
 usr/lib/mysql/plugin/mysql_clone.so
 usr/lib/mysql/plugin/data_masking.*
 usr/lib/mysql/plugin/component_mysqlbackup.so
@@ -94,7 +96,9 @@ usr/lib/mysql/plugin/debug/connection_control.so
 usr/lib/mysql/plugin/debug/group_replication.so
 usr/lib/mysql/plugin/debug/authentication_ldap_sasl_client.so
 usr/lib/mysql/plugin/debug/component_test_udf_services.so
+usr/lib/mysql/plugin/debug/component_query_attributes.so
 usr/lib/mysql/plugin/debug/component_test_component_deinit.so
+usr/lib/mysql/plugin/debug/component_reference_cache.so
 
 # Percona plugins
 usr/lib/mysql/plugin/audit_log.so
@@ -120,6 +124,10 @@ usr/lib/mysql/plugin/debug/keyring_vault.so
 usr/lib/mysql/plugin/keyring_vault.so
 usr/lib/mysql/plugin/authentication_ldap_simple.so
 usr/lib/mysql/plugin/component_test_component_deinit.so
+usr/lib/mysql/plugin/binlog_utils_udf.so
+usr/lib/mysql/plugin/test_udf_wrappers.so
+usr/lib/mysql/plugin/debug/binlog_utils_udf.so
+usr/lib/mysql/plugin/debug/test_udf_wrappers.so
 # support files
 usr/share/mysql/dictionary.txt
 usr/share/mysql/mysql-log-rotate
