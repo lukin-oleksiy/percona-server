@@ -984,7 +984,6 @@ rocksdb_max_total_wal_size	2147483648
 rocksdb_merge_buf_size	67108864
 rocksdb_merge_combine_read_size	1073741824
 rocksdb_merge_tmp_file_removal_delay_ms	0
-rocksdb_new_table_reader_for_compaction_inputs	OFF
 rocksdb_no_block_cache	OFF
 rocksdb_no_create_column_family	OFF
 rocksdb_override_cf_options	
@@ -1025,6 +1024,7 @@ rocksdb_table_stats_use_table_scan	OFF
 rocksdb_tmpdir	
 rocksdb_trace_block_cache_access	
 rocksdb_trace_sst_api	OFF
+rocksdb_track_and_verify_wals_in_manifest	ON
 rocksdb_two_write_queues	ON
 rocksdb_unsafe_for_binlog	OFF
 rocksdb_update_cf_options	
