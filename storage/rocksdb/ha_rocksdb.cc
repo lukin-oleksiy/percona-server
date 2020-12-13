@@ -46,8 +46,9 @@
 #include "my_sys.h"
 #include "mysql/thread_pool_priv.h"
 #include "mysys_err.h"
+#include "scope_guard.h"
 #include "sql/debug_sync.h"
-#include "sql/json_dom.h"
+#include "sql-common/json_dom.h"
 #include "sql/mysqld.h"
 #include "sql/sql_audit.h"
 #include "sql/sql_lex.h"
@@ -6338,14 +6339,14 @@ ha_rocksdb::ha_rocksdb(my_core::handlerton *const hton,
       m_pack_buffer(nullptr),
       m_lock_rows(RDB_LOCK_NONE),
       m_keyread_only(false),
+      m_iteration_only(false),
       m_insert_with_update(false),
-      m_dup_key_found(false)
+      m_dup_key_found(false),
 #if defined(ROCKSDB_INCLUDE_RFR) && ROCKSDB_INCLUDE_RFR
-      ,
       m_in_rpl_delete_rows(false),
-      m_in_rpl_update_rows(false)
+      m_in_rpl_update_rows(false),
 #endif  // defined(ROCKSDB_INCLUDE_RFR) && ROCKSDB_INCLUDE_RFR
-{
+      m_need_build_decoder(false) {
 }
 
 ha_rocksdb::~ha_rocksdb() {
@@ -7906,8 +7907,7 @@ int ha_rocksdb::create(const char *const name, TABLE *const table_arg,
 */
 int ha_rocksdb::truncate_table(Rdb_tbl_def *tbl_def_arg,
                                const std::string &actual_user_table_name,
-                               const TABLE *table_arg,
-                               ulonglong auto_increment_value,
+                               TABLE *table_arg, ulonglong auto_increment_value,
                                dd::Table *table_def) {
   DBUG_ENTER_FUNC();
 
@@ -7993,6 +7993,7 @@ int ha_rocksdb::truncate_table(Rdb_tbl_def *tbl_def_arg,
 
   /* Update the local m_tbl_def reference */
   m_tbl_def = ddl_manager.find(orig_tablename);
+  m_converter.reset(new Rdb_converter(ha_thd(), m_tbl_def, table_arg));
   DBUG_RETURN(err);
 }
 
@@ -8294,8 +8295,9 @@ int ha_rocksdb::read_row_from_secondary_key(uchar *const buf,
 #endif  // !defined(DBUG_OFF)
   DBUG_EXECUTE_IF("dbug.rocksdb.HA_EXTRA_KEYREAD", { m_keyread_only = true; });
 
-  bool covered_lookup = (m_keyread_only && kd.can_cover_lookup()) ||
-                        kd.covers_lookup(&value, &m_lookup_bitmap);
+  bool covered_lookup =
+      (m_keyread_only && kd.can_cover_lookup()) ||
+      kd.covers_lookup(&value, m_converter->get_lookup_bitmap());
 
 #if !defined(DBUG_OFF)
   m_keyread_only = save_keyread_only;
@@ -8408,6 +8410,11 @@ int ha_rocksdb::secondary_index_read(const int keyno, uchar *const buf) {
 
     /* Check if we've ran out of records of this index */
     if (m_key_descr_arr[keyno]->covers_key(key)) {
+      if (m_iteration_only) {
+        table->set_found_row();
+        return 0;
+      }
+
       int rc = 0;
 
       // TODO: We could here check if we have ran out of range we're scanning
@@ -8423,7 +8430,8 @@ int ha_rocksdb::secondary_index_read(const int keyno, uchar *const buf) {
       rocksdb::Slice value = m_scan_it->value();
       bool covered_lookup =
           (m_keyread_only && m_key_descr_arr[keyno]->can_cover_lookup()) ||
-          m_key_descr_arr[keyno]->covers_lookup(&value, &m_lookup_bitmap);
+          m_key_descr_arr[keyno]->covers_lookup(
+              &value, m_converter->get_lookup_bitmap());
       if (covered_lookup && m_lock_rows == RDB_LOCK_NONE) {
         rc = m_key_descr_arr[keyno]->unpack_record(
             table, buf, &key, &value,
@@ -8462,6 +8470,8 @@ int ha_rocksdb::index_read_map(uchar *const buf, const uchar *const key,
                                key_part_map keypart_map,
                                enum ha_rkey_function find_flag) {
   DBUG_ENTER_FUNC();
+
+  check_build_decoder();
 
   int rc = 0;
 
@@ -9036,6 +9046,22 @@ int ha_rocksdb::get_row_by_rowid(uchar *const buf, const char *const rowid,
   DBUG_RETURN(rc);
 }
 
+int ha_rocksdb::records(ha_rows *num_rows) {
+  m_iteration_only = true;
+  auto iteration_guard =
+      create_scope_guard([this]() { m_iteration_only = false; });
+  int count = handler::records(num_rows);
+  return count;
+}
+
+int ha_rocksdb::records_from_index(ha_rows *num_rows, uint index) {
+  m_iteration_only = true;
+  auto iteration_guard =
+      create_scope_guard([this]() { m_iteration_only = false; });
+  int count = handler::records_from_index(num_rows, index);
+  return count;
+}
+
 /**
   @return
     HA_EXIT_SUCCESS  OK
@@ -9043,6 +9069,8 @@ int ha_rocksdb::get_row_by_rowid(uchar *const buf, const char *const rowid,
 */
 int ha_rocksdb::index_next(uchar *const buf) {
   DBUG_ENTER_FUNC();
+
+  check_build_decoder();
 
   bool moves_forward = true;
   ha_statistic_increment(&System_status_var::ha_read_next_count);
@@ -9063,6 +9091,8 @@ int ha_rocksdb::index_next(uchar *const buf) {
 */
 int ha_rocksdb::index_prev(uchar *const buf) {
   DBUG_ENTER_FUNC();
+
+  check_build_decoder();
 
   bool moves_forward = false;
   ha_statistic_increment(&System_status_var::ha_read_prev_count);
@@ -9126,6 +9156,8 @@ int ha_rocksdb::index_next_with_direction(uchar *const buf, bool move_forward) {
 int ha_rocksdb::index_first(uchar *const buf) {
   DBUG_ENTER_FUNC();
 
+  check_build_decoder();
+
   m_sk_match_prefix = nullptr;
   ha_statistic_increment(&System_status_var::ha_read_first_count);
   int rc = m_key_descr_arr[active_index]->m_is_reverse_cf
@@ -9143,6 +9175,8 @@ int ha_rocksdb::index_first(uchar *const buf) {
 */
 int ha_rocksdb::index_last(uchar *const buf) {
   DBUG_ENTER_FUNC();
+
+  check_build_decoder();
 
   m_sk_match_prefix = nullptr;
   ha_statistic_increment(&System_status_var::ha_read_last_count);
@@ -10548,16 +10582,15 @@ void ha_rocksdb::setup_iterator_for_rnd_scan() {
 int ha_rocksdb::rnd_init(bool scan) {
   DBUG_ENTER_FUNC();
 
+  m_need_build_decoder = true;
+  active_index = table->s->primary_key;
+
   THD *thd = ha_thd();
   if (thd && thd->killed) {
     DBUG_RETURN(HA_ERR_QUERY_INTERRUPTED);
   }
 
   Rdb_transaction *const tx = get_or_create_tx(table->in_use);
-
-  // when this table is being updated, decode all fields
-  m_converter->setup_field_decoders(table->read_set,
-                                    m_lock_rows == RDB_LOCK_WRITE);
 
   if (scan) {
     m_rnd_scan_is_new_snapshot = !tx->has_snapshot();
@@ -10581,6 +10614,8 @@ int ha_rocksdb::rnd_init(bool scan) {
 */
 int ha_rocksdb::rnd_next(uchar *const buf) {
   DBUG_ENTER_FUNC();
+
+  check_build_decoder();
 
   int rc;
   ha_statistic_increment(&System_status_var::ha_read_rnd_next_count);
@@ -10609,7 +10644,7 @@ int ha_rocksdb::rnd_next(uchar *const buf) {
 int ha_rocksdb::rnd_next_with_direction(uchar *const buf, bool move_forward) {
   DBUG_ENTER_FUNC();
 
-  int rc;
+  int rc = 0;
   THD *thd = ha_thd();
 
   if (!m_scan_it || !is_valid(m_scan_it)) {
@@ -10650,6 +10685,11 @@ int ha_rocksdb::rnd_next_with_direction(uchar *const buf, bool move_forward) {
     const rocksdb::Slice key = m_scan_it->key();
     if (!m_pk_descr->covers_key(key)) {
       rc = HA_ERR_END_OF_FILE;
+      break;
+    }
+
+    if (m_iteration_only) {
+      table->set_found_row();
       break;
     }
 
@@ -10714,9 +10754,24 @@ int ha_rocksdb::rnd_next_with_direction(uchar *const buf, bool move_forward) {
 int ha_rocksdb::rnd_end() {
   DBUG_ENTER_FUNC();
 
+  m_need_build_decoder = false;
+
   release_scan_iterator();
 
   DBUG_RETURN(HA_EXIT_SUCCESS);
+}
+
+void ha_rocksdb::build_decoder() {
+  m_converter->setup_field_decoders(table->read_set, active_index,
+                                    m_keyread_only,
+                                    m_lock_rows == RDB_LOCK_WRITE);
+}
+
+void ha_rocksdb::check_build_decoder() {
+  if (m_need_build_decoder) {
+    build_decoder();
+    m_need_build_decoder = false;
+  }
 }
 
 /**
@@ -10727,6 +10782,9 @@ int ha_rocksdb::rnd_end() {
 int ha_rocksdb::index_init(uint idx, bool sorted) {
   DBUG_ENTER_FUNC();
 
+  m_need_build_decoder = true;
+  active_index = idx;
+
   THD *thd = ha_thd();
   if (thd && thd->killed) {
     DBUG_RETURN(HA_ERR_QUERY_INTERRUPTED);
@@ -10735,20 +10793,10 @@ int ha_rocksdb::index_init(uint idx, bool sorted) {
   Rdb_transaction *const tx = get_or_create_tx(table->in_use);
   DBUG_ASSERT(tx != nullptr);
 
-  // when this table is being updated, decode all fields
-  m_converter->setup_field_decoders(table->read_set,
-                                    m_lock_rows == RDB_LOCK_WRITE);
-
-  if (!m_keyread_only) {
-    m_key_descr_arr[idx]->get_lookup_bitmap(table, &m_lookup_bitmap);
-  }
-
   // If m_lock_rows is not RDB_LOCK_NONE then we will be doing a get_for_update
   // when accessing the index, so don't acquire the snapshot right away.
   // Otherwise acquire the snapshot immediately.
   tx->acquire_snapshot(m_lock_rows == RDB_LOCK_NONE);
-
-  active_index = idx;
 
   DBUG_RETURN(HA_EXIT_SUCCESS);
 }
@@ -10760,9 +10808,9 @@ int ha_rocksdb::index_init(uint idx, bool sorted) {
 int ha_rocksdb::index_end() {
   DBUG_ENTER_FUNC();
 
-  release_scan_iterator();
+  m_need_build_decoder = false;
 
-  bitmap_free(&m_lookup_bitmap);
+  release_scan_iterator();
 
   active_index = MAX_KEY;
   in_range_check_pushed_down = false;
@@ -11098,6 +11146,8 @@ void ha_rocksdb::position(const uchar *const record) {
 */
 int ha_rocksdb::rnd_pos(uchar *const buf, uchar *const pos) {
   DBUG_ENTER_FUNC();
+
+  check_build_decoder();
 
   int rc;
   size_t len;
