@@ -273,6 +273,9 @@ class ha_rocksdb : public my_core::handler {
   /* true means we're doing an index-only read. false means otherwise. */
   bool m_keyread_only;
 
+  /* We only iterate but don't need to decode anything */
+  bool m_iteration_only;
+
   bool m_skip_scan_it_next_call;
 
   /* true means we are accessing the first row after a snapshot was created */
@@ -387,13 +390,6 @@ class ha_rocksdb : public my_core::handler {
   void update_row_stats(const operation_type &type);
 
   void set_last_rowkey(const uchar *const old_data);
-
-  /*
-    For the active index, indicates which columns must be covered for the
-    current lookup to be covered. If the bitmap field is null, that means this
-    index does not cover the current lookup for any record.
-   */
-  MY_BITMAP m_lookup_bitmap;
 
   int alloc_key_buffers(const TABLE *const table_arg,
                         const Rdb_tbl_def *const tbl_def_arg,
@@ -911,7 +907,7 @@ class ha_rocksdb : public my_core::handler {
                    dd::Table *table_def);
   int truncate_table(Rdb_tbl_def *tbl_def,
                      const std::string &actual_user_table_name,
-                     const TABLE *table_arg, ulonglong auto_increment_value,
+                     TABLE *table_arg, ulonglong auto_increment_value,
                      dd::Table *table_def);
   bool check_if_incompatible_data(HA_CREATE_INFO *const info,
                                   uint table_changes) override
@@ -960,6 +956,13 @@ class ha_rocksdb : public my_core::handler {
   int adjust_handler_stats_sst_and_memtable();
   int adjust_handler_stats_table_scan();
 
+  void build_decoder();
+  void check_build_decoder();
+
+ protected:
+  int records(ha_rows *num_rows) override;
+  int records_from_index(ha_rows *num_rows, uint index) override;
+
 #if defined(ROCKSDB_INCLUDE_RFR) && ROCKSDB_INCLUDE_RFR
  public:
   virtual void rpl_before_delete_rows() override;
@@ -993,6 +996,9 @@ class ha_rocksdb : public my_core::handler {
   bool m_in_rpl_delete_rows;
   bool m_in_rpl_update_rows;
 #endif  // defined(ROCKSDB_INCLUDE_RFR) && ROCKSDB_INCLUDE_RFR
+
+  /* Need to build decoder on next read operation */
+  bool m_need_build_decoder;
 };
 
 /*
