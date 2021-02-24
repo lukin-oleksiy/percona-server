@@ -102,12 +102,6 @@ struct Rdb_table_handler {
   /* Stores cumulative table statistics */
   my_io_perf_atomic_t m_io_perf_read;
   Rdb_atomic_perf_counters m_table_perf_context;
-
-  /* Stores cached memtable estimate statistics */
-  std::atomic_uint m_mtcache_lock;
-  uint64_t m_mtcache_count;
-  uint64_t m_mtcache_size;
-  uint64_t m_mtcache_last_update;
 };
 
 }  // namespace myrocks
@@ -387,7 +381,7 @@ class ha_rocksdb : public my_core::handler {
   bool has_hidden_pk(const TABLE *const table) const
       MY_ATTRIBUTE((__warn_unused_result__));
 
-  void update_row_stats(const operation_type &type);
+  void update_row_stats(const operation_type &type, ulonglong count = 1);
 
   void set_last_rowkey(const uchar *const old_data);
 
@@ -398,7 +392,7 @@ class ha_rocksdb : public my_core::handler {
   void free_key_buffers();
 
   // the buffer size should be at least 2*Rdb_key_def::INDEX_NUMBER_SIZE
-  rocksdb::Range get_range(const int i, uchar buf[]) const;
+  [[nodiscard]] rocksdb::Range get_range(int i, uchar *buf) const;
 
   void records_in_range_internal(uint inx, key_range *const min_key,
                                  key_range *const max_key, int64 disk_size,
@@ -410,12 +404,16 @@ class ha_rocksdb : public my_core::handler {
   */
   Rdb_io_perf m_io_perf;
 
+ public:
+  [[nodiscard]] static rocksdb::Range get_range(const Rdb_key_def &kd,
+                                                uchar *buf);
+
   /*
     Update stats
   */
-  void update_stats(void);
+  static int update_stats(ha_statistics *ha_stats, Rdb_tbl_def *tbl_def,
+                          bool from_handler = false);
 
- public:
   /*
     Controls whether writes include checksums. This is updated from the session
     variable
@@ -953,8 +951,13 @@ class ha_rocksdb : public my_core::handler {
       const dd::Table *old_table_def, dd::Table *new_table_def) override;
 
   bool is_read_free_rpl_table() const;
-  int adjust_handler_stats_sst_and_memtable();
-  int adjust_handler_stats_table_scan();
+  static int adjust_handler_stats_sst_and_memtable(ha_statistics *ha_stats,
+                                                   Rdb_tbl_def *tbl_def);
+  static int adjust_handler_stats_table_scan(ha_statistics *ha_stats,
+                                             Rdb_tbl_def *tbl_def);
+
+  void update_row_read(ulonglong count);
+  static void inc_covered_sk_lookup();
 
   void build_decoder();
   void check_build_decoder();
