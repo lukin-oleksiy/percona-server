@@ -370,7 +370,7 @@ class Rdb_key_def {
   // b describes the lookup key, which can be a prefix of a.
   // b might be outside of the index_number range, if successor() is called.
   int cmp_full_keys(const rocksdb::Slice &a, const rocksdb::Slice &b) const {
-    assert(covers_key(a));
+    DBUG_ASSERT(covers_key(a));
 
     return memcmp(a.data(), b.data(), std::min(a.size(), b.size()));
   }
@@ -912,12 +912,12 @@ class Rdb_key_def {
   static bool is_variable_length_field(const enum_field_types type);
 
  private:
-#ifndef NDEBUG
+#ifndef DBUG_OFF
   inline bool is_storage_available(const int offset, const int needed) const {
     const int storage_length = static_cast<int>(max_storage_fmt_length());
     return (storage_length - offset) >= needed;
   }
-#endif  // NDEBUG
+#endif  // DBUG_OFF
 
   /* Global number of this index (used as prefix in StorageFormat) */
   const uint32 m_index_number;
@@ -1277,17 +1277,17 @@ class Rdb_field_encoder {
 
 inline Field *Rdb_key_def::get_table_field_for_part_no(TABLE *table,
                                                        uint part_no) const {
-  assert(part_no < get_key_parts());
+  DBUG_ASSERT(part_no < get_key_parts());
   return m_pack_info[part_no].get_field_in_table(table);
 }
 
 inline bool Rdb_key_def::can_unpack(const uint kp) const {
-  assert(kp < m_key_parts);
+  DBUG_ASSERT(kp < m_key_parts);
   return (m_pack_info[kp].m_unpack_func != nullptr);
 }
 
 inline bool Rdb_key_def::has_unpack_info(const uint kp) const {
-  assert(kp < m_key_parts);
+  DBUG_ASSERT(kp < m_key_parts);
   return m_pack_info[kp].uses_unpack_info();
 }
 
@@ -1318,12 +1318,37 @@ class Rdb_tbl_def {
   Rdb_tbl_def(const Rdb_tbl_def &) = delete;
   Rdb_tbl_def &operator=(const Rdb_tbl_def &) = delete;
 
+  explicit Rdb_tbl_def(const std::string &name, Rdb_tbl_def &&other)
+      : m_key_descr_arr(other.m_key_descr_arr),
+        m_hidden_pk_val(0),
+        m_auto_incr_val(0),
+        m_pk_index(other.m_pk_index),
+        m_tbl_stats(other.m_tbl_stats),
+        m_update_time(0),
+        m_mtcache_lock(0),
+        m_mtcache_count(0),
+        m_mtcache_size(0),
+        m_mtcache_last_update(0) {
+    set_name(name);
+    m_auto_incr_val = other.m_auto_incr_val.load(std::memory_order_relaxed);
+    m_hidden_pk_val = other.m_hidden_pk_val.load(std::memory_order_relaxed);
+    m_key_count = other.m_key_count;
+
+    // so that it's not free'd when deleting the old rec
+    other.m_key_descr_arr = nullptr;
+  }
+
   explicit Rdb_tbl_def(const std::string &name)
       : m_key_descr_arr(nullptr),
         m_hidden_pk_val(0),
         m_auto_incr_val(0),
+        m_pk_index(MAX_INDEXES + 1),
         m_tbl_stats(),
         m_update_time(0),
+        m_mtcache_lock(0),
+        m_mtcache_count(0),
+        m_mtcache_size(0),
+        m_mtcache_last_update(0),
         m_create_time(CREATE_TIME_UNKNOWN) {
     set_name(name);
   }
@@ -1332,8 +1357,13 @@ class Rdb_tbl_def {
       : m_key_descr_arr(nullptr),
         m_hidden_pk_val(0),
         m_auto_incr_val(0),
+        m_pk_index(MAX_INDEXES + 1),
         m_tbl_stats(),
         m_update_time(0),
+        m_mtcache_lock(0),
+        m_mtcache_count(0),
+        m_mtcache_size(0),
+        m_mtcache_last_update(0),
         m_create_time(CREATE_TIME_UNKNOWN) {
     set_name(std::string(name, len));
   }
@@ -1342,8 +1372,13 @@ class Rdb_tbl_def {
       : m_key_descr_arr(nullptr),
         m_hidden_pk_val(0),
         m_auto_incr_val(0),
+        m_pk_index(MAX_INDEXES + 1),
         m_tbl_stats(),
         m_update_time(0),
+        m_mtcache_lock(0),
+        m_mtcache_count(0),
+        m_mtcache_size(0),
+        m_mtcache_last_update(0),
         m_create_time(CREATE_TIME_UNKNOWN) {
     set_name(std::string(slice.data() + pos, slice.size() - pos));
   }
@@ -1367,6 +1402,22 @@ class Rdb_tbl_def {
   /* Is this table read free repl enabled */
   std::atomic_bool m_is_read_free_rpl_table{false};
 
+  /*
+    PK index on the table, or MAX_INDEXES if has hidden PK
+    This is assigned during creation/alter, and read from MyRocks DD in
+    recovery
+  */
+  uint m_pk_index;
+
+  uint get_pk_index() const {
+    DBUG_ASSERT(m_pk_index <= MAX_INDEXES);
+    return (m_pk_index == MAX_INDEXES ? m_key_count - 1 : m_pk_index);
+  }
+
+  std::shared_ptr<Rdb_key_def> &get_pk_def() const {
+    return m_key_descr_arr[get_pk_index()];
+  }
+
   Rdb_table_stats m_tbl_stats;
 
   bool put_dict(Rdb_dict_manager *const dict, Rdb_cf_manager *const cf_manager,
@@ -1380,6 +1431,13 @@ class Rdb_tbl_def {
 
   time_t get_create_time();
   std::atomic<time_t> m_update_time;  // in-memory only value
+
+  /* Stores cached memtable estimate statistics */
+  std::atomic_uint m_mtcache_lock;
+  uint64_t m_mtcache_count;
+  uint64_t m_mtcache_size;
+  uint64_t m_mtcache_last_update;
+
  private:
   const time_t CREATE_TIME_UNKNOWN = 1;
   // CREATE_TIME_UNKNOWN means "didn't try to read, yet"
@@ -1802,7 +1860,7 @@ class Rdb_system_merge_op : public rocksdb::AssociativeMergeOperator {
   bool Merge(const rocksdb::Slice &key, const rocksdb::Slice *existing_value,
              const rocksdb::Slice &value, std::string *new_value,
              rocksdb::Logger *logger) const override {
-    assert(new_value != nullptr);
+    DBUG_ASSERT(new_value != nullptr);
 
     if (key.size() != Rdb_key_def::INDEX_NUMBER_SIZE * 3 ||
         GetKeyType(key) != Rdb_key_def::AUTO_INC ||
