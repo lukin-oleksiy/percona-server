@@ -44,19 +44,20 @@ using keyring_common::data::Data;
 using keyring_common::meta::Metadata;
 using keyring_vault::config::Vault_version_type;
 
+enum class ParseStatus { Ok, Fail, DataDeleted };
+
 class Keyring_vault_parser_composer final {
  public:
   static bool parse_keys(const pfs_string &payload, Vault_keys_container *keys);
-  static bool parse_key_data(const pfs_string &payload, Data *key,
-                             Vault_version_type vault_version);
+  static ParseStatus parse_key_data(const pfs_string &payload, Data *key,
+                                    Vault_version_type vault_version);
   static bool parse_key_signature(const pfs_string &base64_key_signature,
                                   std::unique_ptr<Metadata> &key);
   static bool parse_errors(const pfs_string &payload, pfs_string *errors);
 
-  static bool parse_mount_point_config(const pfs_string &config_payload,
-                                       std::size_t &max_versions,
-                                       bool &cas_required,
-                                       pfs_string &delete_version_after);
+  static bool parse_mount_point_config(
+      const pfs_string &config_payload, std::size_t &max_versions,
+      bool &cas_required, pfs_optional_string &delete_version_after);
   static bool compose_write_key_postdata(const Data &data,
                                          const pfs_string &encoded_key_data,
                                          Vault_version_type vault_version,

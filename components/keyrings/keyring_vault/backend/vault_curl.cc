@@ -127,7 +127,7 @@ bool Keyring_vault_curl::init() {
 
   std::size_t max_versions{0};
   bool cas_required{false};
-  pfs_string delete_version_after;
+  pfs_optional_string delete_version_after;
 
   pfs_string::const_iterator bg = m_config->secret_mount_point.begin();
   pfs_string::const_iterator en = m_config->secret_mount_point.end();

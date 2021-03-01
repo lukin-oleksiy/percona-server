@@ -18,6 +18,8 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include <memory>
+#include <optional>
+
 #include "components/keyrings/common/data/data.h"
 #include "components/keyrings/common/data/meta.h"
 #include "components/keyrings/common/data/pfs_string.h"
@@ -172,8 +174,9 @@ TEST_F(Vault_parser_test, ParseKeyData) {
       "\"wrap_info\":null,\"warnings\":null,\"auth\":null}");
 
   auto key = Data("key1", "rob");
-  EXPECT_FALSE(Keyring_vault_parser_composer::parse_key_data(
-      payload, &key, keyring_vault::config::Vault_version_v1));
+  EXPECT_EQ(keyring_vault::backend::ParseStatus::Ok,
+            Keyring_vault_parser_composer::parse_key_data(
+                payload, &key, keyring_vault::config::Vault_version_v1));
   ASSERT_TRUE(memcmp(key.data().decode().c_str(), "Robi",
                      key.data().decode().size()) == 0);
   EXPECT_STREQ("AES", key.type().c_str());
@@ -187,8 +190,9 @@ TEST_F(Vault_parser_test, ParseKeyDataMissingTypeTag) {
       "\"wrap_info\":null,\"warnings\":null,\"auth\":null}");
 
   auto key_data = Data{"key1", "rob"};
-  EXPECT_TRUE(Keyring_vault_parser_composer::parse_key_data(
-      payload, &key_data, keyring_vault::config::Vault_version_v1));
+  EXPECT_EQ(keyring_vault::backend::ParseStatus::Fail,
+            Keyring_vault_parser_composer::parse_key_data(
+                payload, &key_data, keyring_vault::config::Vault_version_v1));
 }
 
 TEST_F(Vault_parser_test, ParseKeyDataMissingValueTag) {
@@ -199,14 +203,32 @@ TEST_F(Vault_parser_test, ParseKeyDataMissingValueTag) {
       "\"wrap_info\":null,\"warnings\":null,\"auth\":null}");
 
   auto key_data = Data{"key1", "rob"};
-  EXPECT_TRUE(Keyring_vault_parser_composer::parse_key_data(
-      payload, &key_data, keyring_vault::config::Vault_version_v1));
+  EXPECT_EQ(keyring_vault::backend::ParseStatus::Fail,
+            Keyring_vault_parser_composer::parse_key_data(
+                payload, &key_data, keyring_vault::config::Vault_version_v1));
+}
+
+TEST_F(Vault_parser_test, ParseKeyDataDeleted) {
+  pfs_string payload(
+      "{\"request_id\":\"4559df83-fc5f-9959-314a-443c85eef27c\","
+      "\"lease_id\":\"\",\"renewable\":false,\"lease_duration\":0,"
+      "\"data\":{\"data\":null,\"metadata\":{"
+      "\"created_time\":\"2023-09-27T14:44:07.703848947Z\","
+      "\"custom_metadata\":null,"
+      "\"deletion_time\":\"2023-09-27T14:44:07.705030251Z\","
+      "\"destroyed\":false,\"version\":1}},"
+      "\"wrap_info\":null,\"warnings\":null,\"auth\":null}");
+
+  Data key{};
+  EXPECT_EQ(keyring_vault::backend::ParseStatus::DataDeleted,
+            Keyring_vault_parser_composer::parse_key_data(
+                payload, &key, keyring_vault::config::Vault_version_v2));
 }
 
 TEST_F(Vault_parser_test, GetMountConfig) {
   std::size_t max_versions = 0;
   bool cas_required = false;
-  pfs_string delete_version_after;
+  pfs_optional_string delete_version_after;
 
   pfs_string payload(
       "{"
@@ -228,7 +250,28 @@ TEST_F(Vault_parser_test, GetMountConfig) {
       payload, max_versions, cas_required, delete_version_after));
   EXPECT_EQ(max_versions, 42U);
   EXPECT_TRUE(cas_required);
-  EXPECT_STREQ(delete_version_after.c_str(), "0s");
+  EXPECT_TRUE(delete_version_after != std::nullopt);
+  EXPECT_STREQ(delete_version_after.value().c_str(), "0s");
+
+  payload =
+      "{"
+      "  \"request_id\": \"a2c9306a-7f82-6a59-ebfa-bc6142d66c39\","
+      "  \"lease_id\": \"\","
+      "  \"renewable\": false,"
+      "  \"lease_duration\": 0,"
+      "  \"data\": {"
+      "    \"max_versions\": 43,"
+      "    \"cas_required\": false"
+      "  },"
+      "  \"wrap_info\": null,"
+      "  \"warnings\": null,"
+      "  \"auth\": null"
+      "}";
+  EXPECT_FALSE(Keyring_vault_parser_composer::parse_mount_point_config(
+      payload, max_versions, cas_required, delete_version_after));
+  EXPECT_EQ(max_versions, 43U);
+  EXPECT_FALSE(cas_required);
+  EXPECT_TRUE(delete_version_after == std::nullopt);
 }
 
 TEST_F(Vault_parser_test, GetMountConfigNull) {
@@ -246,7 +289,7 @@ TEST_F(Vault_parser_test, GetMountConfigNull) {
 
   std::size_t max_versions = 0;
   bool cas_required = false;
-  pfs_string delete_version_after;
+  pfs_optional_string delete_version_after;
   EXPECT_TRUE(Keyring_vault_parser_composer::parse_mount_point_config(
       payload, max_versions, cas_required, delete_version_after));
 }
@@ -268,7 +311,7 @@ TEST_F(Vault_parser_test, GetMountConfigIncomplete) {
 
   std::size_t max_versions = 0;
   bool cas_required = false;
-  pfs_string delete_version_after;
+  pfs_optional_string delete_version_after;
   EXPECT_TRUE(Keyring_vault_parser_composer::parse_mount_point_config(
       payload, max_versions, cas_required, delete_version_after));
 }
@@ -279,8 +322,9 @@ TEST_F(Vault_parser_test, ParsePayloadThatsGarbage) {
   pfs_string payload(reinterpret_cast<char *>(garbage), sizeof(garbage));
 
   auto key_data = Data{"key1", "rob"};
-  EXPECT_TRUE(Keyring_vault_parser_composer::parse_key_data(
-      payload, &key_data, keyring_vault::config::Vault_version_v1));
+  EXPECT_EQ(keyring_vault::backend::ParseStatus::Fail,
+            Keyring_vault_parser_composer::parse_key_data(
+                payload, &key_data, keyring_vault::config::Vault_version_v1));
 }
 
 }  // namespace keyring_vault_parser_unittest
