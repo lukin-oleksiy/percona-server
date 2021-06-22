@@ -3091,6 +3091,8 @@ void update_temptable_max_ram_default();
 void update_parser_max_mem_size();
 void update_optimizer_switch();
 
+extern std::size_t buffered_error_log_size;
+
 class Sys_var_enum_default_table_encryption : public Sys_var_enum {
  public:
   Sys_var_enum_default_table_encryption(

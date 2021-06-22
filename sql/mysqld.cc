@@ -774,6 +774,7 @@ MySQL clients support the protocol:
 #include "mysql_time.h"
 #include "mysql_version.h"
 #include "mysqld_error.h"
+#include "mysys/buffered_error_log.h"
 #include "mysys/build_id.h"
 #include "mysys_err.h"  // EXIT_OUT_OF_MEMORY
 #include "nulls.h"
@@ -2957,6 +2958,9 @@ static void clean_up(bool print_message) {
     the component system unregister_ variable()  api's, hence we need
     to call the sys_var_end() after component_infrastructure_deinit()
   */
+  buffered_error_log.write_to_disk();
+  buffered_error_log
+      .close();  // buffered_error_log_filename will be freed by sys_var_end()
   sys_var_end();
   free_status_vars();
 
@@ -8382,6 +8386,8 @@ static void init_icu_data_directory() {
 #endif  // MYSQL_ICU_DATADIR
 
 static int init_server_components() {
+  buffered_error_log.resize(buffered_error_log_size * 1024);
+
   DBUG_TRACE;
   /*
     We need to call each of these following functions to ensure that
