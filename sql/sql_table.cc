@@ -628,6 +628,13 @@ static char *add_identifier(THD *thd, char *to_p, const char *end_p,
   diagnostic, error etc. when it would be useful to know what a particular
   file [and directory] means. Such as SHOW ENGINE STATUS, error messages etc.
 
+  Examples:
+
+    t1#P#p1                 table t1 partition p1
+    t1#P#p1#SP#sp1          table t1 partition p1 subpartition sp1
+    t1#P#p1#SP#sp1#TMP#     table t1 partition p1 subpartition sp1 temporary
+    t1#P#p1#SP#sp1#REN#     table t1 partition p1 subpartition sp1 renamed
+
    @param      thd          Thread handle
    @param      from         Path name in my_charset_filename
                             Null terminated in my_charset_filename, normalized
@@ -3458,7 +3465,18 @@ bool mysql_rm_table_no_locks(THD *thd, Table_ref *tables, bool if_exists,
 
           built_query.add_table(table);
 
-          if (built_query.write_bin_log()) goto err_with_rollback;
+          if (thd->variables.binlog_ddl_skip_rewrite ||
+              thd->system_thread == SYSTEM_THREAD_SLAVE_SQL ||
+              thd->system_thread == SYSTEM_THREAD_SLAVE_WORKER ||
+              thd->is_binlog_applier()) {
+            if (write_bin_log(thd, true, thd->query().str, thd->query().length,
+                              false)) {
+              goto err_with_rollback;
+            }
+
+          } else {
+            if (built_query.write_bin_log()) goto err_with_rollback;
+          }
         }
 
         if (drop_ctx.has_no_gtid_single_table_group() ||
@@ -3631,7 +3649,18 @@ bool mysql_rm_table_no_locks(THD *thd, Table_ref *tables, bool if_exists,
 
       thd->thread_specific_used = true;
 
-      if (built_query.write_bin_log()) goto err_with_rollback;
+      if (thd->variables.binlog_ddl_skip_rewrite ||
+          thd->system_thread == SYSTEM_THREAD_SLAVE_SQL ||
+          thd->system_thread == SYSTEM_THREAD_SLAVE_WORKER ||
+          thd->is_binlog_applier()) {
+        if (write_bin_log(thd, true, thd->query().str, thd->query().length,
+                          drop_ctx.has_base_atomic_tables())) {
+          goto err_with_rollback;
+        }
+
+      } else {
+        if (built_query.write_bin_log()) goto err_with_rollback;
+      }
 
       if (drop_ctx.has_no_gtid_single_table_group() ||
           drop_ctx.has_gtid_single_table_group()) {
