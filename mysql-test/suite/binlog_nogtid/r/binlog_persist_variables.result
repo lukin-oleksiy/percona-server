@@ -30,6 +30,7 @@ include/assert.inc [Expect 112 variables in the table.]
 # Test SET PERSIST
 SET PERSIST binlog_cache_size = @@GLOBAL.binlog_cache_size;
 SET PERSIST binlog_checksum = @@GLOBAL.binlog_checksum;
+SET PERSIST binlog_ddl_skip_rewrite = @@GLOBAL.binlog_ddl_skip_rewrite;
 SET PERSIST binlog_direct_non_transactional_updates = @@GLOBAL.binlog_direct_non_transactional_updates;
 SET PERSIST binlog_encryption = @@GLOBAL.binlog_encryption;
 SET PERSIST binlog_error_action = @@GLOBAL.binlog_error_action;
@@ -251,6 +252,7 @@ include/assert.inc [Expect 87 persisted variables with matching persisted and gl
 #    settings are removed.
 RESET PERSIST IF EXISTS binlog_cache_size;
 RESET PERSIST IF EXISTS binlog_checksum;
+RESET PERSIST IF EXISTS binlog_ddl_skip_rewrite;
 RESET PERSIST IF EXISTS binlog_direct_non_transactional_updates;
 RESET PERSIST IF EXISTS binlog_encryption;
 RESET PERSIST IF EXISTS binlog_error_action;
