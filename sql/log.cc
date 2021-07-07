@@ -1941,75 +1941,20 @@ bool log_slow_applicable(THD *thd, int sp_sql_command) {
   if (unlikely(thd->is_error()) &&
       (unlikely(thd->get_stmt_da()->mysql_errno() == ER_PARSE_ERROR)))
     return false;
-  /* Follow the slow log filter configuration. */
-  if (thd->variables.log_slow_filter != 0 &&
-      !(thd->variables.log_slow_filter & thd->query_plan_flags))
-    return false;
 
+  /* Collect query exec time as the first step. */
   ulonglong query_exec_time = get_query_exec_time(thd);
 
-  /*
-    Don't log the CALL statement if slow statements logging
-    inside of stored procedures is enabled.
-  */
-  if (opt_log_slow_sp_statements > 0 && thd->lex) {
-    if (thd->lex->sql_command == SQLCOM_CALL) {
-      if (!thd->stmt_arena->is_regular()) {
-        assert(sp_sql_command != -1);
-        if (sp_sql_command == SQLCOM_CALL) return false;
-      } else
-        return false;
-    } else if (thd->lex->sql_command == SQLCOM_EXECUTE) {
-      Prepared_statement *stmt;
-      LEX_CSTRING *name = &thd->lex->prepared_stmt_name;
-      if ((stmt = thd->stmt_map.find_by_name(*name)) != NULL && stmt->m_lex &&
-          stmt->m_lex->sql_command == SQLCOM_CALL)
-        return false;
-    }
-  }
-
-  /*
-    Low long_query_time value most likely means user is debugging stuff and even
-    though some thread's queries are not supposed to be logged b/c of the rate
-    limit, if one of them takes long enough (>= 1 second) it will be sensible
-    to make an exception and write to slow log anyway.
-  */
-
-  System_variables const &g = global_system_variables;
-  copy_global_to_session(thd, SLOG_UG_LOG_SLOW_FILTER, &g.log_slow_filter);
-  copy_global_to_session(thd, SLOG_UG_LOG_SLOW_RATE_LIMIT,
-                         &g.log_slow_rate_limit);
-  copy_global_to_session(thd, SLOG_UG_LOG_SLOW_VERBOSITY,
-                         &g.log_slow_verbosity);
-  copy_global_to_session(thd, SLOG_UG_LONG_QUERY_TIME, &g.long_query_time);
-  copy_global_to_session(thd, SLOG_UG_MIN_EXAMINED_ROW_LIMIT,
-                         &g.min_examined_row_limit);
-
-  if (opt_slow_query_log_rate_type == SLOG_RT_QUERY &&
-      thd->variables.log_slow_rate_limit &&
-      my_rnd(&thd->slog_rand) * ((double)thd->variables.log_slow_rate_limit) >
-          1.0 &&
-      query_exec_time < slow_query_log_always_write_time &&
-      (thd->variables.long_query_time >= 1000000 ||
-       (ulong)query_exec_time < 1000000)) {
-    return false;
-  }
-  if (opt_slow_query_log_rate_type == SLOG_RT_SESSION &&
-      thd->variables.log_slow_rate_limit &&
-      thd->thread_id() % thd->variables.log_slow_rate_limit &&
-      query_exec_time < slow_query_log_always_write_time &&
-      (thd->variables.long_query_time >= 1000000 ||
-       (ulong)query_exec_time < 1000000)) {
-    return false;
-  }
-
+  /* Log queries failing with predefined error */
+  bool warn_failed_query = false;
   const bool warn_no_index =
       ((thd->server_status &
         (SERVER_QUERY_NO_INDEX_USED | SERVER_QUERY_NO_GOOD_INDEX_USED)) &&
        opt_log_queries_not_using_indexes &&
        !(sql_command_flags[thd->lex->sql_command] & CF_STATUS_COMMAND));
   const bool log_this_query =
-      ((thd->server_status & SERVER_QUERY_WAS_SLOW) || warn_no_index) &&
+      ((thd->server_status & SERVER_QUERY_WAS_SLOW) || warn_no_index ||
+       warn_failed_query) &&
       (thd->get_examined_row_count() >= thd->variables.min_examined_row_limit);
 
   // The docs say slow queries must be counted even when the log is off.
@@ -2022,10 +1967,74 @@ bool log_slow_applicable(THD *thd, int sp_sql_command) {
   PSI_LogRecord rec(key_slow_query_logger, OTELLogLevel::TLOG_WARN, "");
   const bool telemetry_log = rec.check_enabled();
   if ((thd->enable_slow_log && opt_slow_log) || telemetry_log) {
-    const bool suppress_logging = log_throttle_qni.log(thd, warn_no_index);
+    /*
+      Copy all needed global variables into a session one before doing all
+      checks.
+
+      Low long_query_time value most likely means user is debugging stuff and
+      even though some thread's queries are not supposed to be logged b/c of the
+      rate limit, if one of them takes long enough (>= 1 second) it will be
+      sensible to make an exception and write to slow log anyway.
+    */
+    System_variables const &g = global_system_variables;
+    copy_global_to_session(thd, SLOG_UG_LOG_SLOW_FILTER, &g.log_slow_filter);
+    copy_global_to_session(thd, SLOG_UG_LOG_SLOW_RATE_LIMIT,
+                           &g.log_slow_rate_limit);
+    copy_global_to_session(thd, SLOG_UG_LOG_SLOW_VERBOSITY,
+                           &g.log_slow_verbosity);
+    copy_global_to_session(thd, SLOG_UG_LONG_QUERY_TIME, &g.long_query_time);
+    copy_global_to_session(thd, SLOG_UG_MIN_EXAMINED_ROW_LIMIT,
+                           &g.min_examined_row_limit);
+
+    /* Follow the slow log filter configuration. */
+    if (thd->variables.log_slow_filter != 0 &&
+        !(thd->variables.log_slow_filter & thd->query_plan_flags))
+      return false;
+
+    /*
+      Don't log the CALL statement if slow statements logging
+      inside of stored procedures is enabled.
+    */
+    if (opt_log_slow_sp_statements > 0 && thd->lex) {
+      if (thd->lex->sql_command == SQLCOM_CALL) {
+        if (!thd->stmt_arena->is_regular()) {
+          assert(sp_sql_command != -1);
+          if (sp_sql_command == SQLCOM_CALL) return false;
+        } else
+          return false;
+      } else if (thd->lex->sql_command == SQLCOM_EXECUTE) {
+        Prepared_statement *stmt;
+        LEX_CSTRING *name = &thd->lex->prepared_stmt_name;
+        if ((stmt = thd->stmt_map.find_by_name(*name)) != NULL && stmt->m_lex &&
+            stmt->m_lex->sql_command == SQLCOM_CALL)
+          return false;
+      }
+    }
+
+    if (opt_slow_query_log_rate_type == SLOG_RT_QUERY &&
+        thd->variables.log_slow_rate_limit &&
+        my_rnd(&thd->slog_rand) * ((double)thd->variables.log_slow_rate_limit) >
+            1.0 &&
+        query_exec_time < slow_query_log_always_write_time &&
+        (thd->variables.long_query_time >= 1000000 ||
+         (ulong)query_exec_time < 1000000)) {
+      return false;
+    }
+    if (opt_slow_query_log_rate_type == SLOG_RT_SESSION &&
+        thd->variables.log_slow_rate_limit &&
+        thd->thread_id() % thd->variables.log_slow_rate_limit &&
+        query_exec_time < slow_query_log_always_write_time &&
+        (thd->variables.long_query_time >= 1000000 ||
+         (ulong)query_exec_time < 1000000)) {
+      return false;
+    }
+
+    const bool suppress_logging =
+        log_throttle_qni.log(thd, warn_no_index && warn_failed_query);
 
     if (!suppress_logging && log_this_query) return true;
   }
+
   return false;
 }
 
