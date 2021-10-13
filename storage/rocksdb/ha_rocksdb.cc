@@ -127,6 +127,8 @@ static std::vector<std::string> rdb_tables_to_recalc;
 
 static Rdb_exec_time st_rdb_exec_time;
 
+int mysql_value_to_bool(struct st_mysql_value *value, bool *return_value);
+
 /**
   Updates row counters based on the table type and operation type.
 */
@@ -401,6 +403,11 @@ static void rocksdb_force_flush_memtable_now_stub(
 static int rocksdb_force_flush_memtable_now(
     THD *const thd, struct SYS_VAR *const var, void *const var_ptr,
     struct st_mysql_value *const value) {
+  bool parsed_value = false;
+  if (mysql_value_to_bool(value, &parsed_value) != 0 || !parsed_value) {
+    return 1;
+  }
+
   LogPluginErrMsg(INFORMATION_LEVEL, 0, "Manual memtable flush.");
   rocksdb_flush_all_memtables();
   return HA_EXIT_SUCCESS;
@@ -669,7 +676,7 @@ static char *rocksdb_trace_options_str = nullptr;
 static bool rocksdb_signal_drop_index_thread = false;
 static bool rocksdb_ignore_unknown_options = true;
 static bool rocksdb_collect_sst_properties = true;
-static bool rocksdb_force_flush_memtable_now_var = false;
+static bool rocksdb_force_flush_memtable_now_var = true;
 static bool rocksdb_force_flush_memtable_and_lzero_now_var = false;
 static bool rocksdb_cancel_manual_compactions_var = false;
 static bool rocksdb_enable_ttl = true;
@@ -1789,13 +1796,6 @@ static MYSQL_SYSVAR_ENUM(index_type, rocksdb_index_type,
                          &index_type_typelib);
 
 static MYSQL_SYSVAR_BOOL(
-    hash_index_allow_collision,
-    *static_cast<bool *>(&rocksdb_tbl_options->hash_index_allow_collision),
-    PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
-    "BlockBasedTableOptions::hash_index_allow_collision for RocksDB", nullptr,
-    nullptr, rocksdb_tbl_options->hash_index_allow_collision);
-
-static MYSQL_SYSVAR_BOOL(
     no_block_cache, *static_cast<bool *>(&rocksdb_tbl_options->no_block_cache),
     PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
     "BlockBasedTableOptions::no_block_cache for RocksDB", nullptr, nullptr,
@@ -2061,7 +2061,7 @@ static MYSQL_SYSVAR_BOOL(
     PLUGIN_VAR_RQCMDARG,
     "Forces memstore flush which may block all write requests so be careful",
     rocksdb_force_flush_memtable_now, rocksdb_force_flush_memtable_now_stub,
-    false);
+    true);
 
 static MYSQL_SYSVAR_BOOL(
     force_flush_memtable_and_lzero_now,
@@ -2418,7 +2418,6 @@ static struct SYS_VAR *rocksdb_system_variables[] = {
     MYSQL_SYSVAR(cache_index_and_filter_with_high_priority),
     MYSQL_SYSVAR(pin_l0_filter_and_index_blocks_in_cache),
     MYSQL_SYSVAR(index_type),
-    MYSQL_SYSVAR(hash_index_allow_collision),
     MYSQL_SYSVAR(no_block_cache),
     MYSQL_SYSVAR(block_size),
     MYSQL_SYSVAR(block_size_deviation),
