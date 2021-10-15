@@ -742,20 +742,23 @@ bool File_query_log::write_slow(THD *thd, ulonglong current_utime,
     pointer to that state in THD's copy_status_var_ptr.
   */
   if (!thd->copy_status_var_ptr) {
-    if (my_b_printf(&log_file,
-                    "# Schema: %s  Last_errno: %u  Killed: %u\n"
-                    "# Query_time: %s  Lock_time: %s"
-                    "  Rows_sent: %llu  Rows_examined: %llu"
-                    "  Rows_affected: %llu  Bytes_sent: %lu\n",
-                    (thd->db().str ? thd->db().str : ""), thd->last_errno,
-                    (uint)thd->killed, query_time_buff, lock_time_buff,
-                    (ulonglong)thd->get_sent_row_count(),
-                    (ulonglong)thd->get_examined_row_count(),
-                    (thd->get_row_count_func() > 0)
-                        ? (ulonglong)thd->get_row_count_func()
-                        : 0,
-                    (ulong)(thd->status_var.bytes_sent -
-                            thd->bytes_sent_old)) == (uint)-1)
+    if (my_b_printf(
+            &log_file,
+            "# Schema: %s  Last_errno: %lu  Killed: %u\n"
+            "# Query_time: %s  Lock_time: %s"
+            "  Rows_sent: %llu  Rows_examined: %llu"
+            "  Rows_affected: %llu  Bytes_sent: %lu\n",
+            (thd->db().str ? thd->db().str : ""),
+            static_cast<ulong>(
+                thd->is_error() ? thd->get_stmt_da()->mysql_errno() : 0),
+            (uint)thd->killed, query_time_buff, lock_time_buff,
+            (ulonglong)thd->get_sent_row_count(),
+            (ulonglong)thd->get_examined_row_count(),
+            (thd->get_row_count_func() > 0)
+                ? (ulonglong)thd->get_row_count_func()
+                : 0,
+            (ulong)(thd->status_var.bytes_sent - thd->bytes_sent_old)) ==
+        (uint)-1)
       goto err; /* purecov: inspected */
   } else {
     char start_time_buff[iso8601_size];
