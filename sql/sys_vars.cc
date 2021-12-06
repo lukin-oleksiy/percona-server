@@ -3137,6 +3137,22 @@ static Sys_var_ulong Sys_max_relay_log_size(
     NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(nullptr),
     ON_UPDATE(fix_max_relay_log_size));
 
+static Sys_var_ulong Sys_max_slowlog_size(
+    "max_slowlog_size",
+    "Slow query log will be rotated automatically when the size exceeds "
+    "this value. The default is 0, don't limit the size.",
+    GLOBAL_VAR(max_slowlog_size), CMD_LINE(REQUIRED_ARG),
+    VALID_RANGE(0, 1024 * 1024L * 1024L), DEFAULT(0L), BLOCK_SIZE(IO_SIZE));
+
+static Sys_var_ulong Sys_max_slowlog_files(
+    "max_slowlog_files",
+    "Maximum number of slow query log files. Used with --max-slowlog-size "
+    "this can be used to limit the total amount of disk space used for the "
+    "slow query log. "
+    "Default is 0, don't limit.",
+    GLOBAL_VAR(max_slowlog_files), CMD_LINE(REQUIRED_ARG),
+    VALID_RANGE(0, 102400), DEFAULT(0), BLOCK_SIZE(1));
+
 static Sys_var_ulong Sys_max_sort_length(
     "max_sort_length",
     "The number of bytes to use when sorting long values with PAD SPACE "
@@ -6192,9 +6208,9 @@ static Sys_var_charptr Sys_slow_log_path(
     "Log slow queries to given log file. "
     "Defaults logging to hostname-slow.log. Must be enabled to activate "
     "other slow log options",
-    GLOBAL_VAR(opt_slow_logname), CMD_LINE(REQUIRED_ARG), IN_FS_CHARSET,
-    DEFAULT(nullptr), NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(check_log_path),
-    ON_UPDATE(fix_slow_log_file));
+    PREALLOCATED GLOBAL_VAR(opt_slow_logname), CMD_LINE(REQUIRED_ARG),
+    IN_FS_CHARSET, DEFAULT(nullptr), NO_MUTEX_GUARD, NOT_IN_BINLOG,
+    ON_CHECK(check_log_path), ON_UPDATE(fix_slow_log_file));
 
 static Sys_var_have Sys_have_compress(
     "have_compress", "have_compress",
