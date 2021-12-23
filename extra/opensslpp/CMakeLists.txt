@@ -48,10 +48,13 @@ set(
   core_error_fwd.hpp
   digest_context.hpp
   digest_context_fwd.hpp
+  digest_operations.hpp
+  rsa_encrypt_decrypt_operations.hpp
   rsa_key.hpp
   rsa_key_fwd.hpp
   rsa_padding.hpp
   rsa_padding_fwd.hpp
+  rsa_sign_verify_operations.hpp
 )
 list(TRANSFORM PUBLIC_HEADER_LIST PREPEND "${PUBLIC_INCLUDE_DIR_EX}/")
 set(
@@ -63,6 +66,7 @@ set(
   bio_fwd.hpp
   digest_context_accessor.hpp
   rsa_key_accessor.hpp
+  rsa_padding_conversions.hpp
   typed_accessor.hpp
 )
 list(TRANSFORM PRIVATE_HEADER_LIST PREPEND "${PRIVATE_INCLUDE_DIR_EX}/")
@@ -72,7 +76,10 @@ set(
   bio.cpp
   core_error.cpp
   digest_context.cpp
+  digest_operations.cpp
+  rsa_encrypt_decrypt_operations.cpp
   rsa_key.cpp
+  rsa_sign_verify_operations.cpp
 )
 list(TRANSFORM SOURCE_LIST PREPEND "${SRC_DIR_EX}/")
 
