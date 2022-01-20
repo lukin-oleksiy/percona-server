@@ -28,6 +28,12 @@ class accessor {
   static const void *get_impl(const WrapperType &obj) noexcept {
     return obj.impl_.get();
   }
+  static void set_impl(WrapperType &obj, void *impl_raw) noexcept {
+    obj.impl_.reset(impl_raw);
+  }
+  static void *release(WrapperType &obj) noexcept {
+    return obj.impl_.release();
+  }
 };
 
 }  // namespace opensslpp

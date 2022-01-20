@@ -73,15 +73,18 @@ bool rsa_key::is_private() const noexcept {
 }
 
 std::size_t rsa_key::get_size_in_bits() const noexcept {
+  assert(!is_empty());
   return RSA_bits(rsa_key_accessor::get_impl(*this));
 }
 
 std::size_t rsa_key::get_size_in_bytes() const noexcept {
+  assert(!is_empty());
   return RSA_size(rsa_key_accessor::get_impl(*this));
 }
 
 std::size_t rsa_key::get_max_block_size_in_bytes(
     rsa_padding padding) const noexcept {
+  assert(!is_empty());
   std::size_t padding_bytes = 0;
   switch (padding) {
     case rsa_padding::no:
@@ -126,7 +129,7 @@ std::string rsa_key::export_private_pem(const rsa_key &key) {
   assert(!key.is_empty());
 
   if (!key.is_private())
-    throw core_error("RSA key does not have private components");
+    throw core_error{"RSA key does not have private components"};
 
   auto sink = bio{};
   const int r =
@@ -181,6 +184,7 @@ rsa_key rsa_key::import_public_pem(const std::string &pem) {
 }
 
 std::ostream &operator<<(std::ostream &os, const rsa_key &obj) {
+  assert(!obj.is_empty());
   return os << (obj.is_private() ? rsa_key::export_private_pem(obj)
                                  : rsa_key::export_public_pem(obj));
 }
