@@ -4134,6 +4134,13 @@ static Sys_var_charptr Sys_secure_file_priv(
     CMD_LINE(REQUIRED_ARG), IN_FS_CHARSET,
     DEFAULT(DEFAULT_SECURE_FILE_PRIV_DIR));
 
+static Sys_var_charptr Sys_secure_log_path(
+    "secure_log_path",
+    "Limit location of general log, slow log and buffered error log"
+    "within specified directory",
+    READ_ONLY NON_PERSIST GLOBAL_VAR(opt_secure_log_path),
+    CMD_LINE(REQUIRED_ARG), IN_FS_CHARSET, DEFAULT(""));
+
 static bool fix_server_id(sys_var *, THD *thd, enum_var_type) {
   // server_id is 'MYSQL_PLUGIN_IMPORT ulong'
   // So we cast here, rather than change its type.
@@ -6127,6 +6134,8 @@ static bool check_log_path(sys_var *self, THD *, set_var *var) {
     return false;
 
   if (my_access(path, (F_OK | W_OK))) return true;  // directory is not writable
+
+  if (!is_secure_log_path((path))) return true;
 
   return false;
 }
