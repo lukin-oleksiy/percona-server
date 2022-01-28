@@ -3160,7 +3160,7 @@ class Rdb_transaction {
                 !keydef->value_matches_prefix(merge_key, cur_prefix)) {
               // This is a new group, so clear any rows buffered from a prior
               // group.
-              free_root(&mem_root, MYF(MY_KEEP_PREALLOC));
+              mem_root.ClearForReuse();
               keys.clear();
               materialized = false;
 
@@ -5643,14 +5643,6 @@ static int rocksdb_init_internal(void *const p) {
   // Validate the assumption about the size of ROCKSDB_SIZEOF_HIDDEN_PK_COLUMN.
   static_assert(sizeof(longlong) == 8, "Assuming that longlong is 8 bytes.");
 
-  if (THDVAR(nullptr, write_disable_wal) &&
-      rocksdb_flush_log_at_trx_commit == FLUSH_LOG_SYNC) {
-    LogPluginErrMsg(ERROR_LEVEL, 0,
-                    "Invalid argument: Sync writes "
-                    "(rocksdb_flush_log_at_trx_commit == 1) has to enable WAL");
-    DBUG_RETURN(1);
-  }
-
   // Lock the handlertons initialized status flag for writing
   Rdb_hton_init_state::Scoped_lock state_lock(*rdb_get_hton_init_state(), true);
   SHIP_ASSERT(!rdb_get_hton_init_state()->initialized());
@@ -5658,6 +5650,14 @@ static int rocksdb_init_internal(void *const p) {
   // Initialize error logging service.
   if (init_logging_service_for_plugin(&reg_srv, &log_bi, &log_bs)) {
     DBUG_RETURN(HA_EXIT_FAILURE);
+  }
+
+  if (THDVAR(nullptr, write_disable_wal) &&
+      rocksdb_flush_log_at_trx_commit == FLUSH_LOG_SYNC) {
+    LogPluginErrMsg(ERROR_LEVEL, 0,
+                    "Invalid argument: Sync writes "
+                    "(rocksdb_flush_log_at_trx_commit == 1) has to enable WAL");
+    DBUG_RETURN(1);
   }
 
 #ifdef FB_HAVE_WSENV
@@ -5862,7 +5862,6 @@ static int rocksdb_init_internal(void *const p) {
     LogPluginErrMsg(
         ERROR_LEVEL, 0,
         "Can't enable both use_direct_reads and allow_mmap_reads\n");
-    deinit_logging_service_for_plugin(&reg_srv, &log_bi, &log_bs);
     DBUG_RETURN(HA_EXIT_FAILURE);
   }
 
@@ -5906,7 +5905,6 @@ static int rocksdb_init_internal(void *const p) {
     LogPluginErrMsg(ERROR_LEVEL, 0,
                     "Can't enable both use_direct_io_for_flush_and_compaction "
                     "and allow_mmap_writes\n");
-    deinit_logging_service_for_plugin(&reg_srv, &log_bi, &log_bs);
     DBUG_RETURN(HA_EXIT_FAILURE);
   }
 
@@ -5915,7 +5913,6 @@ static int rocksdb_init_internal(void *const p) {
     LogPluginErrMsg(ERROR_LEVEL, 0,
                     "rocksdb_flush_log_at_trx_commit needs to be 0 to use "
                     "allow_mmap_writes");
-    deinit_logging_service_for_plugin(&reg_srv, &log_bi, &log_bs);
     DBUG_RETURN(HA_EXIT_FAILURE);
   }
 
@@ -6018,6 +6015,40 @@ static int rocksdb_init_internal(void *const p) {
   }
 
   if (rocksdb_persistent_cache_size_mb > 0) {
+    // TODO: This is the limitations in RocksDB.
+    // 1. Persistent cache size RocksDB has to be at least cache_file_size.
+    //
+    // utilities/persistent_cache/persistent_cache_tier.h:112
+    // Status ValidateSettings() const {
+    // ...
+    // if (cache_size < cache_file_size ...) {
+    // ...
+    // cache_file_size is set here.
+    //
+    // utilities/persistent_cache/persistent_cache_tier.h:165
+    // uint32_t cache_file_size = 100ULL * 1024 * 1024;
+    //
+    // 2. rocksdb_persistent_cache_path required persistent cache parameter
+    //
+    // utilities/persistent_cache/persistent_cache_tier.h:104
+    // Status ValidateSettings() const {
+    // ...
+    // if (!env || path.empty()) {
+    // ...
+    static constexpr int persistent_cache_size_mb_min = 100;
+    if (rocksdb_persistent_cache_size_mb < persistent_cache_size_mb_min) {
+      LogPluginErrMsg(ERROR_LEVEL, 0,
+                      "Invalid value for rocksdb_persistent_cache_size_mb. It "
+                      "has to be at least %i",
+                      persistent_cache_size_mb_min);
+      DBUG_RETURN(HA_EXIT_FAILURE);
+    }
+    if (!strlen(rocksdb_persistent_cache_path)) {
+      LogPluginErrMsg(ERROR_LEVEL, 0,
+                      "Specify rocksdb_persistent_cache_size_path");
+      DBUG_RETURN(HA_EXIT_FAILURE);
+    }
+
     std::shared_ptr<rocksdb::PersistentCache> pcache;
     uint64_t cache_size_bytes = rocksdb_persistent_cache_size_mb * 1024 * 1024;
     status = rocksdb::NewPersistentCache(
@@ -6026,14 +6057,12 @@ static int rocksdb_init_internal(void *const p) {
     if (!status.ok()) {
       LogPluginErrMsg(ERROR_LEVEL, 0, "Persistent cache returned error: (%s)",
                       status.getState());
-      deinit_logging_service_for_plugin(&reg_srv, &log_bi, &log_bs);
       DBUG_RETURN(HA_EXIT_FAILURE);
     }
     rocksdb_tbl_options->persistent_cache = pcache;
   } else if (strlen(rocksdb_persistent_cache_path)) {
     LogPluginErrMsg(ERROR_LEVEL, 0,
                     "ust specify rocksdb_persistent_cache_size_mb");
-    deinit_logging_service_for_plugin(&reg_srv, &log_bi, &log_bs);
     DBUG_RETURN(HA_EXIT_FAILURE);
   }
 
@@ -6046,7 +6075,6 @@ static int rocksdb_init_internal(void *const p) {
                             rocksdb_default_cf_options,
                             rocksdb_override_cf_options)) {
     LogPluginErrMsg(ERROR_LEVEL, 0, "Failed to initialize CF options map.");
-    deinit_logging_service_for_plugin(&reg_srv, &log_bi, &log_bs);
     DBUG_RETURN(HA_EXIT_FAILURE);
   }
 
@@ -6134,7 +6162,6 @@ static int rocksdb_init_internal(void *const p) {
                                  rocksdb_enable_remove_orphaned_dropped_cfs);
       })) {
     LogPluginErrMsg(ERROR_LEVEL, 0, "Failed to initialize data dictionary.");
-    deinit_logging_service_for_plugin(&reg_srv, &log_bi, &log_bs);
     DBUG_RETURN(HA_EXIT_FAILURE);
   }
 
@@ -6150,7 +6177,6 @@ static int rocksdb_init_internal(void *const p) {
         // ROCKSDB_INCLUDE_VALIDATE_TABLES
       })) {
     LogPluginErrMsg(ERROR_LEVEL, 0, "Failed to initialize DDL manager.");
-    deinit_logging_service_for_plugin(&reg_srv, &log_bi, &log_bs);
     DBUG_RETURN(HA_EXIT_FAILURE);
   }
 
@@ -6195,7 +6221,6 @@ static int rocksdb_init_internal(void *const p) {
   if (err != 0) {
     LogPluginErrMsg(ERROR_LEVEL, 0,
                     "Couldn't start the background thread: (errno=%d)", err);
-    deinit_logging_service_for_plugin(&reg_srv, &log_bi, &log_bs);
     DBUG_RETURN(HA_EXIT_FAILURE);
   }
 
@@ -6208,7 +6233,6 @@ static int rocksdb_init_internal(void *const p) {
   if (err != 0) {
     LogPluginErrMsg(ERROR_LEVEL, 0,
                     "Couldn't start the drop index thread: (errno=%d)", err);
-    deinit_logging_service_for_plugin(&reg_srv, &log_bi, &log_bs);
     DBUG_RETURN(HA_EXIT_FAILURE);
   }
 
@@ -6250,7 +6274,6 @@ static int rocksdb_init_internal(void *const p) {
                           HA_ERR_ROCKSDB_LAST);
   if (err != 0) {
     LogPluginErrMsg(ERROR_LEVEL, 0, "Couldn't initialize error messages");
-    deinit_logging_service_for_plugin(&reg_srv, &log_bi, &log_bs);
     DBUG_RETURN(HA_EXIT_FAILURE);
   }
 
@@ -12043,7 +12066,8 @@ void ha_rocksdb::records_in_range_internal(uint inx, key_range *const min_key,
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
   // Getting statistics, including from Memtables
-  uint8_t include_flags = rocksdb::DB::INCLUDE_FILES;
+  rocksdb::DB::SizeApproximationFlags include_flags =
+      rocksdb::DB::SizeApproximationFlags::INCLUDE_FILES;
   rdb->GetApproximateSizes(kd.get_cf(), &r, 1, &sz, include_flags);
   *row_count = rows * ((double)sz / (double)disk_size);
   *total_size = sz;
@@ -12315,7 +12339,7 @@ static int read_stats_from_ssts(
     }
   }
 
-  int num_sst = 0;
+  int num_sst [[maybe_unused]] = 0;
   for (const auto &it : props) {
     std::vector<Rdb_index_stats> sst_stats;
     Rdb_tbl_prop_coll::read_stats_from_tbl_props(it.second, &sst_stats);
@@ -12502,7 +12526,8 @@ int ha_rocksdb::adjust_handler_stats_sst_and_memtable(ha_statistics *ha_stats,
     auto r = ha_rocksdb::get_range(*pk_def, buf);
     uint64_t sz = 0;
 
-    uint8_t include_flags = rocksdb::DB::INCLUDE_FILES;
+    rocksdb::DB::SizeApproximationFlags include_flags =
+        rocksdb::DB::SizeApproximationFlags::INCLUDE_FILES;
 
     // recompute SST files stats only if records count is 0
     if (ha_stats->records == 0) {
