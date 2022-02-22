@@ -46,6 +46,11 @@ set(
   big_number_fwd.hpp
   core_error.hpp
   core_error_fwd.hpp
+  dh_compute_operations.hpp
+  dh_key.hpp
+  dh_key_fwd.hpp
+  dh_padding.hpp
+  dh_padding_fwd.hpp
   digest_context.hpp
   digest_context_fwd.hpp
   digest_operations.hpp
