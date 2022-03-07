@@ -19,7 +19,7 @@
 
 #include <openssl/err.h>
 
-#include "opensslpp/core_error.hpp"
+#include <opensslpp/core_error.hpp>
 
 namespace opensslpp {
 
@@ -34,11 +34,13 @@ static constexpr std::size_t error_message_buffer_size = 256;
   buffer_type buffer;
 
   unsigned long err = ERR_get_error();
-  assert(err != 0);
-  if (!prefix.empty()) message += ": ";
+  if (err != 0) {
+    if (!prefix.empty()) message += ": ";
 
-  ERR_error_string_n(err, buffer.data(), buffer.size());
-  message += buffer.data();
+    ERR_error_string_n(err, buffer.data(), buffer.size());
+    message += buffer.data();
+    ERR_clear_error();
+  }
 
   throw core_error{message};
 }

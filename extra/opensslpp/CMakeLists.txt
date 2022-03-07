@@ -39,6 +39,15 @@ set(PUBLIC_INCLUDE_DIR_EX ${PUBLIC_INCLUDE_DIR}/${NAMESPACE_SUBDIR})
 set(PRIVATE_INCLUDE_DIR_EX ${PRIVATE_INCLUDE_DIR}/${NAMESPACE_SUBDIR})
 set(SRC_DIR_EX ${SRC_DIR}/${NAMESPACE_SUBDIR})
 
+# list(TRANSFORM ... PREPEND ...) emulation for older CMake
+function(list_transform_prepend var prefix)
+    set(temp "")
+    foreach(f ${${var}})
+        list(APPEND temp "${prefix}${f}")
+    endforeach()
+    set(${var} "${temp}" PARENT_SCOPE)
+endfunction()
+
 set(
   PUBLIC_HEADER_LIST
   accessor_fwd.hpp
@@ -64,7 +73,7 @@ set(
   rsa_padding_fwd.hpp
   rsa_sign_verify_operations.hpp
 )
-list(TRANSFORM PUBLIC_HEADER_LIST PREPEND "${PUBLIC_INCLUDE_DIR_EX}/")
+list_transform_prepend(PUBLIC_HEADER_LIST "${PUBLIC_INCLUDE_DIR_EX}/")
 set(
   PRIVATE_HEADER_LIST
   accessor.hpp
@@ -72,18 +81,21 @@ set(
   bio.hpp
   bio_accessor.hpp
   bio_fwd.hpp
+  dh_key_accessor.hpp
   digest_context_accessor.hpp
   dsa_key_accessor.hpp
   rsa_key_accessor.hpp
   rsa_padding_conversions.hpp
   typed_accessor.hpp
 )
-list(TRANSFORM PRIVATE_HEADER_LIST PREPEND "${PRIVATE_INCLUDE_DIR_EX}/")
+list_transform_prepend(PRIVATE_HEADER_LIST "${PRIVATE_INCLUDE_DIR_EX}/")
 set(
   SOURCE_LIST
   big_number.cpp
   bio.cpp
   core_error.cpp
+  dh_compute_operations.cpp
+  dh_key.cpp
   digest_context.cpp
   digest_operations.cpp
   dsa_key.cpp
@@ -92,7 +104,7 @@ set(
   rsa_key.cpp
   rsa_sign_verify_operations.cpp
 )
-list(TRANSFORM SOURCE_LIST PREPEND "${SRC_DIR_EX}/")
+list_transform_prepend(SOURCE_LIST "${SRC_DIR_EX}/")
 
 add_library(${PROJECT_NAME} STATIC ${SOURCE_LIST} ${PUBLIC_HEADER_LIST} ${PRIVATE_HEADER_LIST})
 add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
