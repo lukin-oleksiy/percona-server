@@ -21,15 +21,16 @@
 #include <openssl/pem.h>
 #include <openssl/rsa.h>
 
-#include "opensslpp/rsa_key.hpp"
+#include <opensslpp/rsa_key.hpp>
 
-#include "opensslpp/big_number.hpp"
+#include <opensslpp/big_number.hpp>
+#include <opensslpp/core_error.hpp>
+#include <opensslpp/rsa_padding.hpp>
+
 #include "opensslpp/big_number_accessor.hpp"
 #include "opensslpp/bio.hpp"
 #include "opensslpp/bio_accessor.hpp"
-#include "opensslpp/core_error.hpp"
 #include "opensslpp/rsa_key_accessor.hpp"
-#include "opensslpp/rsa_padding.hpp"
 
 namespace opensslpp {
 
@@ -53,7 +54,7 @@ rsa_key::rsa_key(const rsa_key &obj)
               : RSAPublicKey_dup(
                     rsa_key_accessor::get_impl_const_casted(obj))} {
   if (!obj.is_empty() && is_empty())
-    core_error::raise_with_error_string("cannot duplicate RSA key");
+    throw core_error{"cannot duplicate RSA key"};
 }
 
 rsa_key &rsa_key::operator=(const rsa_key &obj) {
@@ -68,13 +69,24 @@ bool rsa_key::is_private() const noexcept {
   assert(!is_empty());
   const BIGNUM *p = nullptr;
   const BIGNUM *q = nullptr;
-  RSA_get0_factors(rsa_key_accessor::get_impl(*this), &p, &q);
+  const auto *rsa_raw = rsa_key_accessor::get_impl(*this);
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+  p = rsa_raw->p;
+  q = rsa_raw->q;
+#else
+  RSA_get0_factors(rsa_raw, &p, &q);
+#endif
   return p != nullptr && q != nullptr;
 }
 
 std::size_t rsa_key::get_size_in_bits() const noexcept {
   assert(!is_empty());
-  return RSA_bits(rsa_key_accessor::get_impl(*this));
+  const auto *rsa_raw = rsa_key_accessor::get_impl(*this);
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+  return BN_num_bits(rsa_raw->n);
+#else
+  return RSA_bits(rsa_raw);
+#endif
 }
 
 std::size_t rsa_key::get_size_in_bytes() const noexcept {
@@ -101,10 +113,9 @@ std::size_t rsa_key::get_max_block_size_in_bytes(
 rsa_key rsa_key::derive_public_key() const {
   assert(!is_empty());
   rsa_key res{};
-  res.impl_.reset(
-      RSAPublicKey_dup(rsa_key_accessor::get_impl_const_casted(*this)));
-  if (res.is_empty())
-    core_error::raise_with_error_string("cannot derive public RSA key");
+  rsa_key_accessor::set_impl(
+      res, RSAPublicKey_dup(rsa_key_accessor::get_impl_const_casted(*this)));
+  if (res.is_empty()) throw core_error{"cannot derive public RSA key"};
 
   return res;
 }
@@ -113,9 +124,8 @@ rsa_key rsa_key::derive_public_key() const {
 rsa_key rsa_key::generate(std::uint32_t bits,
                           const big_number &exponent /* = default_exponent */) {
   auto res = rsa_key{};
-  res.impl_.reset(RSA_new());
-  if (res.is_empty())
-    core_error::raise_with_error_string("cannot create RSA key");
+  rsa_key_accessor::set_impl(res, RSA_new());
+  if (res.is_empty()) throw core_error{"cannot create RSA key"};
 
   if (RSA_generate_key_ex(
           rsa_key_accessor::get_impl(res), static_cast<int>(bits),
@@ -148,8 +158,9 @@ std::string rsa_key::export_public_pem(const rsa_key &key) {
   assert(!key.is_empty());
 
   auto sink = bio{};
-  const int r = PEM_write_bio_RSAPublicKey(bio_accessor::get_impl(sink),
-                                           rsa_key_accessor::get_impl(key));
+  const int r =
+      PEM_write_bio_RSA_PUBKEY(bio_accessor::get_impl(sink),
+                               rsa_key_accessor::get_impl_const_casted(key));
   if (r == 0)
     core_error::raise_with_error_string(
         "cannot export RSA key to PEM PUBLIC KEY");
@@ -161,8 +172,9 @@ std::string rsa_key::export_public_pem(const rsa_key &key) {
 rsa_key rsa_key::import_private_pem(const std::string &pem) {
   auto source = bio{pem};
   rsa_key res{};
-  res.impl_.reset(PEM_read_bio_RSAPrivateKey(bio_accessor::get_impl(source),
-                                             nullptr, nullptr, nullptr));
+  rsa_key_accessor::set_impl(
+      res, PEM_read_bio_RSAPrivateKey(bio_accessor::get_impl(source), nullptr,
+                                      nullptr, nullptr));
   if (res.is_empty())
     core_error::raise_with_error_string(
         "cannot import RSA key from PEM PRIVATE KEY");
@@ -174,8 +186,9 @@ rsa_key rsa_key::import_private_pem(const std::string &pem) {
 rsa_key rsa_key::import_public_pem(const std::string &pem) {
   auto source = bio{pem};
   rsa_key res{};
-  res.impl_.reset(PEM_read_bio_RSAPublicKey(bio_accessor::get_impl(source),
-                                            nullptr, nullptr, nullptr));
+  rsa_key_accessor::set_impl(
+      res, PEM_read_bio_RSA_PUBKEY(bio_accessor::get_impl(source), nullptr,
+                                   nullptr, nullptr));
   if (res.is_empty())
     core_error::raise_with_error_string(
         "cannot import RSA key from PEM PUBLIC KEY");

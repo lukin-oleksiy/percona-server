@@ -18,10 +18,11 @@
 
 #include <openssl/bn.h>
 
-#include "opensslpp/big_number.hpp"
+#include <opensslpp/big_number.hpp>
+
+#include <opensslpp/core_error.hpp>
 
 #include "opensslpp/big_number_accessor.hpp"
-#include "opensslpp/core_error.hpp"
 
 namespace opensslpp {
 
@@ -78,14 +79,14 @@ void big_number::set_primitive_value(std::uintmax_t value) {
 big_number &big_number::operator++() {
   assert(!is_empty());
   if (BN_add_word(big_number_accessor::get_impl(*this), 1) == 0)
-    throw core_error{"cannot increment big value"};
+    throw core_error{"cannot increment big number value"};
   return *this;
 }
 
 big_number &big_number::operator--() {
   assert(!is_empty());
   if (BN_sub_word(big_number_accessor::get_impl(*this), 1) == 0)
-    throw core_error{"cannot increment big value"};
+    throw core_error{"cannot decrement big number value"};
   return *this;
 }
 

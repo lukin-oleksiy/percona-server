@@ -21,13 +21,14 @@
 #include <openssl/dsa.h>
 #include <openssl/pem.h>
 
-#include "opensslpp/dsa_key.hpp"
+#include <opensslpp/dsa_key.hpp>
 
-#include "opensslpp/big_number.hpp"
+#include <opensslpp/big_number.hpp>
+#include <opensslpp/core_error.hpp>
+
 #include "opensslpp/big_number_accessor.hpp"
 #include "opensslpp/bio.hpp"
 #include "opensslpp/bio_accessor.hpp"
-#include "opensslpp/core_error.hpp"
 #include "opensslpp/dsa_key_accessor.hpp"
 
 namespace opensslpp {
@@ -41,14 +42,23 @@ dsa_key::dsa_key(const dsa_key &obj)
                 ? nullptr
                 : DSAparams_dup(dsa_key_accessor::get_impl_const_casted(obj))} {
   if (!obj.is_empty()) {
-    if (is_empty())
-      core_error::raise_with_error_string("cannot duplicate DSA key");
+    if (is_empty()) throw core_error{"cannot duplicate DSA key"};
 
     auto public_component = obj.get_public_component();
     auto private_component = obj.get_private_component();
-    if (DSA_set0_key(dsa_key_accessor::get_impl(*this),
-                     big_number_accessor::get_impl(public_component),
-                     big_number_accessor::get_impl(private_component)) == 0)
+
+    auto *dsa_raw = dsa_key_accessor::get_impl(*this);
+    int set_result;
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+    dsa_raw->pub_key = big_number_accessor::get_impl(public_component);
+    dsa_raw->priv_key = big_number_accessor::get_impl(private_component);
+    set_result = 1;
+#else
+    set_result =
+        DSA_set0_key(dsa_raw, big_number_accessor::get_impl(public_component),
+                     big_number_accessor::get_impl(private_component));
+#endif
+    if (set_result == 0)
       throw core_error{
           "cannot set private/public components when duplicating DSA key"};
     big_number_accessor::release(public_component);
@@ -66,17 +76,32 @@ void dsa_key::swap(dsa_key &obj) noexcept { impl_.swap(obj.impl_); }
 
 bool dsa_key::has_public_component() const noexcept {
   assert(!is_empty());
-  return DSA_get0_pub_key(dsa_key_accessor::get_impl(*this)) != nullptr;
+  const auto *dsa_raw = dsa_key_accessor::get_impl(*this);
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+  return dsa_raw->pub_key != nullptr;
+#else
+  return DSA_get0_pub_key(dsa_raw) != nullptr;
+#endif
 }
 
 bool dsa_key::has_private_component() const noexcept {
   assert(!is_empty());
-  return DSA_get0_priv_key(dsa_key_accessor::get_impl(*this)) != nullptr;
+  const auto *dsa_raw = dsa_key_accessor::get_impl(*this);
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+  return dsa_raw->priv_key != nullptr;
+#else
+  return DSA_get0_priv_key(dsa_raw) != nullptr;
+#endif
 }
 
 std::size_t dsa_key::get_size_in_bits() const noexcept {
   assert(!is_empty());
-  return DSA_bits(dsa_key_accessor::get_impl(*this));
+  const auto *dsa_raw = dsa_key_accessor::get_impl(*this);
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+  return BN_num_bits(dsa_raw->p);
+#else
+  return DSA_bits(dsa_raw);
+#endif
 }
 
 std::size_t dsa_key::get_size_in_bytes() const noexcept {
@@ -86,13 +111,42 @@ std::size_t dsa_key::get_size_in_bytes() const noexcept {
 
 std::size_t dsa_key::get_security_size_in_bits() const noexcept {
   assert(!is_empty());
-  return DSA_security_bits(dsa_key_accessor::get_impl(*this));
+  const auto *dsa_raw = dsa_key_accessor::get_impl(*this);
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+  int l = BN_num_bits(dsa_raw->p);
+  int n = BN_num_bits(dsa_raw->q);
+
+  int secbits, bits;
+  if (l >= 15360)
+    secbits = 256;
+  else if (l >= 7680)
+    secbits = 192;
+  else if (l >= 3072)
+    secbits = 128;
+  else if (l >= 2048)
+    secbits = 112;
+  else if (l >= 1024)
+    secbits = 80;
+  else
+    return 0;
+  if (n == -1) return secbits;
+  bits = n / 2;
+  if (bits < 80) return 0;
+  return bits >= secbits ? secbits : bits;
+#else
+  return DSA_security_bits(dsa_raw);
+#endif
 }
 
 big_number dsa_key::get_public_component() const {
   assert(!is_empty());
+  const auto *dsa_raw = dsa_key_accessor::get_impl(*this);
   auto public_component_raw =
-      DSA_get0_priv_key(dsa_key_accessor::get_impl(*this));
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+      dsa_raw->pub_key;
+#else
+      DSA_get0_pub_key(dsa_raw);
+#endif
   if (public_component_raw == nullptr) return {};
   big_number res;
   auto public_component_raw_copy = BN_dup(public_component_raw);
@@ -104,8 +158,13 @@ big_number dsa_key::get_public_component() const {
 
 big_number dsa_key::get_private_component() const {
   assert(!is_empty());
+  const auto *dsa_raw = dsa_key_accessor::get_impl(*this);
   auto private_component_raw =
-      DSA_get0_priv_key(dsa_key_accessor::get_impl(*this));
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+      dsa_raw->priv_key;
+#else
+      DSA_get0_priv_key(dsa_raw);
+#endif
   if (private_component_raw == nullptr) return {};
   big_number res;
   auto private_component_raw_copy = BN_dup(private_component_raw);
@@ -134,13 +193,18 @@ dsa_key dsa_key::derive_public_key() const {
   dsa_key res{};
   dsa_key_accessor::set_impl(
       res, DSAparams_dup(dsa_key_accessor::get_impl_const_casted(*this)));
-  if (res.is_empty())
-    core_error::raise_with_error_string(
-        "cannot derive public key from DSA key");
+  if (res.is_empty()) throw core_error{"cannot derive public key from DSA key"};
 
-  if (DSA_set0_key(dsa_key_accessor::get_impl(res),
-                   big_number_accessor::get_impl(public_component),
-                   nullptr) == 0)
+  auto *dsa_raw = dsa_key_accessor::get_impl(res);
+  int set_result;
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+  dsa_raw->pub_key = big_number_accessor::get_impl(public_component);
+  set_result = 1;
+#else
+  set_result = DSA_set0_key(
+      dsa_raw, big_number_accessor::get_impl(public_component), nullptr);
+#endif
+  if (set_result == 0)
     throw core_error{"cannot set public component when deriving from DSA key"};
 
   big_number_accessor::release(public_component);
@@ -151,9 +215,8 @@ dsa_key dsa_key::derive_public_key() const {
 /*static*/
 dsa_key dsa_key::generate_parameters(std::uint32_t bits) {
   auto res = dsa_key{};
-  res.impl_.reset(DSA_new());
-  if (res.is_empty())
-    core_error::raise_with_error_string("cannot create DSA key");
+  dsa_key_accessor::set_impl(res, DSA_new());
+  if (res.is_empty()) throw core_error{"cannot create DSA key"};
 
   if (DSA_generate_parameters_ex(dsa_key_accessor::get_impl(res),
                                  static_cast<int>(bits), nullptr, 0, nullptr,
@@ -218,8 +281,9 @@ std::string dsa_key::export_public_pem(const dsa_key &key) {
 dsa_key dsa_key::import_parameters_pem(const std::string &pem) {
   auto source = bio{pem};
   dsa_key res{};
-  res.impl_.reset(PEM_read_bio_DSAparams(bio_accessor::get_impl(source),
-                                         nullptr, nullptr, nullptr));
+  dsa_key_accessor::set_impl(
+      res, PEM_read_bio_DSAparams(bio_accessor::get_impl(source), nullptr,
+                                  nullptr, nullptr));
   if (res.is_empty())
     core_error::raise_with_error_string(
         "cannot import DSA key from PEM PARAMETERS");
@@ -231,8 +295,9 @@ dsa_key dsa_key::import_parameters_pem(const std::string &pem) {
 dsa_key dsa_key::import_private_pem(const std::string &pem) {
   auto source = bio{pem};
   dsa_key res{};
-  res.impl_.reset(PEM_read_bio_DSAPrivateKey(bio_accessor::get_impl(source),
-                                             nullptr, nullptr, nullptr));
+  dsa_key_accessor::set_impl(
+      res, PEM_read_bio_DSAPrivateKey(bio_accessor::get_impl(source), nullptr,
+                                      nullptr, nullptr));
   if (res.is_empty())
     core_error::raise_with_error_string(
         "cannot import DSA key from PEM PRIVATE KEY");
@@ -244,8 +309,9 @@ dsa_key dsa_key::import_private_pem(const std::string &pem) {
 dsa_key dsa_key::import_public_pem(const std::string &pem) {
   auto source = bio{pem};
   dsa_key res{};
-  res.impl_.reset(PEM_read_bio_DSA_PUBKEY(bio_accessor::get_impl(source),
-                                          nullptr, nullptr, nullptr));
+  dsa_key_accessor::set_impl(
+      res, PEM_read_bio_DSA_PUBKEY(bio_accessor::get_impl(source), nullptr,
+                                   nullptr, nullptr));
   if (res.is_empty())
     core_error::raise_with_error_string(
         "cannot import DSA key from PEM PUBLIC KEY");
