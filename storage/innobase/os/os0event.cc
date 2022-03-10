@@ -637,7 +637,7 @@ void os_event_global_init() {
 }
 
 void os_event_global_destroy() {
-  ut_a(os_event::global_initialized);
+  if (!os_event::global_initialized) return;
   ut_ad(os_event::n_objects_alive.load() == 0);
 #ifndef _WIN32
   os_event::cond_attr_has_monotonic_clock = false;

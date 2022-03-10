@@ -47,11 +47,6 @@ void deinit_keyring_services(SERVICE_TYPE(registry) * reg_srv);
 class IORequest;
 struct Encryption_key;
 
-enum class Encryption_rotation : std::uint8_t {
-  NO_ROTATION,
-  MASTER_KEY_TO_KEYRING
-};
-
 // Forward declaration.
 struct Encryption_metadata;
 

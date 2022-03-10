@@ -4418,7 +4418,8 @@ buf_block_t *Buf_fetch<T>::single_page() {
   }
 #endif /* UNIV_DEBUG */
 
-  ut_ad(is_possibly_freed() || !block->page.file_page_was_freed);
+  ut_ad(is_possibly_freed() || m_mode == Page_fetch::PEEK_IF_IN_POOL ||
+        !block->page.file_page_was_freed);
 
   /* Check if this is the first access to the page */
   const auto access_time = buf_page_is_accessed(&block->page);
@@ -7106,6 +7107,8 @@ const char *buf_block_t::get_page_type_str() const noexcept {
 #ifndef UNIV_HOTBACKUP
 /** Frees the buffer pool instances and the global data structures. */
 void buf_pool_free_all() {
+  if (!buf_pool_ptr) return;
+
   for (ulint i = 0; i < srv_buf_pool_instances; ++i) {
     buf_pool_t *ptr = &buf_pool_ptr[i];
 
