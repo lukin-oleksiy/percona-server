@@ -756,6 +756,8 @@ static void recv_writer_thread() {
 
 /** Frees the recovery system. */
 void recv_sys_free() {
+  if (!recv_sys) return;
+
   mutex_enter(&recv_sys->mutex);
 
   recv_sys_finish();
@@ -1610,7 +1612,6 @@ specified.
 @param[in]      end_ptr         End of buffer
 @param[in]      space_id        Tablespace identifier
 @param[in]      page_no         Page number
-@param[in]	apply		Whether to apply the record
 @param[in,out]  block           Buffer block, or nullptr if
                                 a page log record should not be applied
                                 or if it is a MLOG_FILE_ operation
@@ -2722,7 +2723,6 @@ void recv_recover_page_func(
 @param[in]      end_ptr         end of the buffer
 @param[out]     space_id        tablespace identifier
 @param[out]     page_no         page number
-@param[in]      apply           whether to apply the record
 @param[out]     body            start of log record body
 @return length of the record, or 0 if the record was not complete */
 ulint recv_parse_log_rec(mlog_id_t *type, const byte *ptr, const byte *end_ptr,

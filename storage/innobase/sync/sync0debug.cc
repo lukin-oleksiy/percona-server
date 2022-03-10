@@ -1696,6 +1696,8 @@ void sync_check_init(size_t max_threads) {
 /** Frees the resources in InnoDB's own synchronization data structures. Use
 os_sync_free() after calling this. */
 void sync_check_close() {
+  if (!mutex_monitor) return;
+
   ut_d(LatchDebug::shutdown());
 
   mutex_free(&rw_lock_list_mutex);
