@@ -27,6 +27,7 @@
 #include <openssl/rsa.h>
 #include <stddef.h>
 #include <sys/types.h>
+#include <map>
 #include <vector>
 
 #include "lex_string.h"
@@ -243,6 +244,10 @@ class Cached_authentication_plugins {
   bool m_valid;
 };
 
+using name_and_host_t = std::pair<std::string, std::string>;
+using external_roles_t =
+    std::map<name_and_host_t, std::vector<name_and_host_t>>;
+extern external_roles_t g_external_roles;
 extern Cached_authentication_plugins *g_cached_authentication_plugins;
 
 ACL_USER *decoy_user(const LEX_CSTRING &username, const LEX_CSTRING &hostname,
