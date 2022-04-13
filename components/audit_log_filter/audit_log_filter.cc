@@ -1,0 +1,584 @@
+/* Copyright (c) 2022 Percona LLC and/or its affiliates. All rights reserved.
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; version 2 of the License.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA */
+
+#define ALLOW_COMPONENT_INCLUDE  // for my_io.h and plugin.h
+#include "components/audit_log_filter/audit_log_filter.h"
+#include "components/audit_log_filter/audit_filter.h"
+#include "components/audit_log_filter/audit_psi_info.h"
+#include "components/audit_log_filter/audit_rule.h"
+#include "components/audit_log_filter/audit_rule_registry.h"
+#include "components/audit_log_filter/audit_udf.h"
+#include "components/audit_log_filter/log_record_formatter.h"
+#include "components/audit_log_filter/log_writer.h"
+#include "components/audit_log_filter/sys_vars.h"
+
+#include <mysql/components/component_implementation.h>
+#include <mysql/components/service_implementation.h>
+
+#include <mysql/components/services/security_context.h>
+
+#include <mysql/components/services/event_tracking_authentication_service.h>
+#include <mysql/components/services/event_tracking_command_service.h>
+#include <mysql/components/services/event_tracking_connection_service.h>
+#include <mysql/components/services/event_tracking_general_service.h>
+#include <mysql/components/services/event_tracking_global_variable_service.h>
+#include <mysql/components/services/event_tracking_lifecycle_service.h>
+#include <mysql/components/services/event_tracking_message_service.h>
+#include <mysql/components/services/event_tracking_parse_service.h>
+#include <mysql/components/services/event_tracking_query_service.h>
+#include <mysql/components/services/event_tracking_stored_program_service.h>
+#include <mysql/components/services/event_tracking_table_access_service.h>
+
+#include <mysql/psi/mysql_memory.h>
+
+#include "sql/sql_class.h"
+
+#include <array>
+#include <memory>
+#include <variant>
+
+#ifdef WIN32
+#define PLUGIN_EXPORT extern "C" __declspec(dllexport)
+#else
+#define PLUGIN_EXPORT extern "C"
+#endif
+
+/** Dependencies */
+REQUIRES_SERVICE_PLACEHOLDER(log_builtins);
+REQUIRES_SERVICE_PLACEHOLDER(log_builtins_string);
+REQUIRES_SERVICE_PLACEHOLDER(mysql_current_thread_reader);
+REQUIRES_PSI_MEMORY_SERVICE_PLACEHOLDER;
+
+SERVICE_TYPE(log_builtins) *log_bi = nullptr;
+SERVICE_TYPE(log_builtins_string) *log_bs = nullptr;
+
+namespace audit_log_filter {
+namespace {
+AuditLogFilter *audit_log_filter = nullptr;
+
+void my_plugin_perror() noexcept {
+  char errbuf[MYSYS_STRERROR_SIZE];
+  my_strerror(errbuf, sizeof(errbuf), errno);
+  LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG, "Error: %s", errbuf);
+}
+
+class EventsConsumer {
+ public:
+  static mysql_service_status_t notify(
+      const mysql_event_tracking_authentication_data *event_data) {
+    return audit_log_filter->notify_event(
+        audit_event_class_t::AUDIT_AUTHENTICATION_CLASS,
+        static_cast<const void *>(event_data));
+  }
+  static mysql_service_status_t notify(
+      const mysql_event_tracking_command_data *event_data) {
+    return audit_log_filter->notify_event(
+        audit_event_class_t::AUDIT_COMMAND_CLASS,
+        static_cast<const void *>(event_data));
+  }
+  static mysql_service_status_t notify(
+      const mysql_event_tracking_connection_data *event_data) {
+    return audit_log_filter->notify_event(
+        audit_event_class_t::AUDIT_CONNECTION_CLASS,
+        static_cast<const void *>(event_data));
+  }
+  static mysql_service_status_t notify(
+      const mysql_event_tracking_general_data *event_data) {
+    return audit_log_filter->notify_event(
+        audit_event_class_t::AUDIT_GENERAL_CLASS,
+        static_cast<const void *>(event_data));
+  }
+  static mysql_service_status_t notify(
+      const mysql_event_tracking_global_variable_data *event_data) {
+    return audit_log_filter->notify_event(
+        audit_event_class_t::AUDIT_GLOBAL_VARIABLE_CLASS,
+        static_cast<const void *>(event_data));
+  }
+  static mysql_service_status_t notify(
+      const mysql_event_tracking_startup_data *event_data) {
+    return audit_log_filter->notify_event(
+        audit_event_class_t::AUDIT_SERVER_STARTUP_CLASS,
+        static_cast<const void *>(event_data));
+  }
+  static mysql_service_status_t notify(
+      const mysql_event_tracking_shutdown_data *event_data) {
+    return audit_log_filter->notify_event(
+        audit_event_class_t::AUDIT_SERVER_SHUTDOWN_CLASS,
+        static_cast<const void *>(event_data));
+  }
+  static mysql_service_status_t notify(
+      const mysql_event_tracking_message_data *event_data) {
+    return audit_log_filter->notify_event(
+        audit_event_class_t::AUDIT_MESSAGE_CLASS,
+        static_cast<const void *>(event_data));
+  }
+  static mysql_service_status_t notify(
+      mysql_event_tracking_parse_data *event_data) {
+    return audit_log_filter->notify_event(
+        audit_event_class_t::AUDIT_PARSE_CLASS,
+        static_cast<const void *>(event_data));
+  }
+  static mysql_service_status_t notify(
+      const mysql_event_tracking_query_data *event_data) {
+    return audit_log_filter->notify_event(
+        audit_event_class_t::AUDIT_QUERY_CLASS,
+        static_cast<const void *>(event_data));
+  }
+  static mysql_service_status_t notify(
+      const mysql_event_tracking_stored_program_data *event_data) {
+    return audit_log_filter->notify_event(
+        audit_event_class_t::AUDIT_STORED_PROGRAM_CLASS,
+        static_cast<const void *>(event_data));
+  }
+  static mysql_service_status_t notify(
+      const mysql_event_tracking_table_access_data *event_data) {
+    return audit_log_filter->notify_event(
+        audit_event_class_t::AUDIT_TABLE_ACCESS_CLASS,
+        static_cast<const void *>(event_data));
+  }
+};
+
+}  // namespace
+
+AuditLogFilter *get_audit_log_filter_instance() noexcept {
+  return audit_log_filter;
+}
+
+/*
+ * Audit UDF functions
+ */
+
+#define DECLARE_AUDIT_UDF_INIT(NAME)                                      \
+  PLUGIN_EXPORT                                                           \
+  bool NAME##_udf_init(UDF_INIT *initid, UDF_ARGS *args, char *message) { \
+    return audit_log_filter::AuditUdf::NAME##_udf_init(                   \
+        audit_log_filter->get_udf(), initid, args, message);              \
+  }
+
+#define DECLARE_AUDIT_UDF_STR_FUNC(NAME)                                       \
+  PLUGIN_EXPORT                                                                \
+  char *NAME##_udf(UDF_INIT *initid, UDF_ARGS *args, char *result,             \
+                   unsigned long *length, unsigned char *is_null,              \
+                   unsigned char *error) {                                     \
+    return audit_log_filter::AuditUdf::NAME##_udf(audit_log_filter->get_udf(), \
+                                                  initid, args, result,        \
+                                                  length, is_null, error);     \
+  }
+
+#define DECLARE_AUDIT_UDF_INT_FUNC(NAME)                               \
+  PLUGIN_EXPORT                                                        \
+  long long NAME##_udf(UDF_INIT *initid, UDF_ARGS *args,               \
+                       unsigned char *is_null, unsigned char *error) { \
+    return audit_log_filter::AuditUdf::NAME##_udf(                     \
+        audit_log_filter->get_udf(), initid, args, is_null, error);    \
+  }
+
+#define DECLARE_AUDIT_UDF_DEINIT(NAME)                     \
+  PLUGIN_EXPORT                                            \
+  void NAME##_udf_deinit(UDF_INIT *initid) {               \
+    audit_log_filter::AuditUdf::NAME##_udf_deinit(initid); \
+  }
+
+#define DECLARE_AUDIT_STR_UDF(NAME) \
+  DECLARE_AUDIT_UDF_INIT(NAME)      \
+  DECLARE_AUDIT_UDF_STR_FUNC(NAME)  \
+  DECLARE_AUDIT_UDF_DEINIT(NAME)
+
+#define DECLARE_AUDIT_INT_UDF(NAME) \
+  DECLARE_AUDIT_UDF_INIT(NAME)      \
+  DECLARE_AUDIT_UDF_INT_FUNC(NAME)  \
+  DECLARE_AUDIT_UDF_DEINIT(NAME)
+
+DECLARE_AUDIT_STR_UDF(audit_log_filter_set_filter)
+DECLARE_AUDIT_STR_UDF(audit_log_filter_remove_filter)
+DECLARE_AUDIT_STR_UDF(audit_log_filter_set_user)
+DECLARE_AUDIT_STR_UDF(audit_log_filter_remove_user)
+DECLARE_AUDIT_STR_UDF(audit_log_filter_flush)
+DECLARE_AUDIT_STR_UDF(audit_log_read)
+DECLARE_AUDIT_STR_UDF(audit_log_read_bookmark)
+
+#define DECLARE_AUDIT_STR_UDF_INFO(NAME)                          \
+  UdfFuncInfo {                                                   \
+#NAME, STRING_RESULT, &NAME##_udf, nullptr, &NAME##_udf_init, \
+        &NAME##_udf_deinit                                        \
+  }
+#define DECLARE_AUDIT_INT_UDF_INFO(NAME)                       \
+  UdfFuncInfo {                                                \
+#NAME, INT_RESULT, nullptr, &NAME##_udf, &NAME##_udf_init, \
+        &NAME##_udf_deinit                                     \
+  }
+
+static std::array udfs_list{
+    DECLARE_AUDIT_STR_UDF_INFO(audit_log_filter_set_filter),
+    DECLARE_AUDIT_STR_UDF_INFO(audit_log_filter_remove_filter),
+    DECLARE_AUDIT_STR_UDF_INFO(audit_log_filter_set_user),
+    DECLARE_AUDIT_STR_UDF_INFO(audit_log_filter_remove_user),
+    DECLARE_AUDIT_STR_UDF_INFO(audit_log_filter_flush),
+    DECLARE_AUDIT_STR_UDF_INFO(audit_log_read),
+    DECLARE_AUDIT_STR_UDF_INFO(audit_log_read_bookmark)};
+
+/**
+ * @brief Initialize the component at server start or component installation.
+ *
+ * @return Initialization status, 0 in case of success or non zero
+ *         code otherwise
+ */
+mysql_service_status_t audit_log_filter_init() {
+  auto *all_mem_info = get_all_memory_info();
+  mysql_memory_register(AUDIT_LOG_FILTER_PSI_CATEGORY, all_mem_info,
+                        sizeof(*all_mem_info) / sizeof(PSI_memory_info));
+
+  log_bi = mysql_service_log_builtins;
+  log_bs = mysql_service_log_builtins_string;
+
+  LogComponentErr(INFORMATION_LEVEL, ER_AUDIT_INIT_STARTED);
+
+  auto comp_registry_srv = get_component_registry_service();
+
+  if (comp_registry_srv == nullptr) {
+    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
+                    "Failed to acquire components registry service");
+    return 1;
+  }
+
+  auto sys_vars = std::make_unique<SysVars>(comp_registry_srv.get());
+
+  if (sys_vars == nullptr) {
+    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
+                    "Failed to create sys vars handler instance");
+    return 1;
+  }
+
+  if (!sys_vars->init()) {
+    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG, "Failed to init sys vars");
+    return 1;
+  }
+
+  auto audit_udf = std::make_unique<AuditUdf>(comp_registry_srv.get());
+
+  if (audit_udf == nullptr) {
+    LogComponentErr(ERROR_LEVEL, ER_AUDIT_INIT_UDF_CREATE_FAILURE);
+    return 1;
+  }
+
+  if (!audit_udf->init(udfs_list.begin(), udfs_list.end())) {
+    LogComponentErr(ERROR_LEVEL, ER_AUDIT_INIT_UDF_INIT_FAILURE);
+    return 1;
+  }
+
+  auto audit_rule_registry =
+      std::make_unique<AuditRuleRegistry>(comp_registry_srv.get());
+
+  if (audit_rule_registry == nullptr) {
+    LogComponentErr(ERROR_LEVEL, ER_AUDIT_INIT_FILTERS_INIT_FAILURE);
+    return 1;
+  }
+
+  if (!audit_rule_registry->load()) {
+    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
+                    "Failed to load filtering rules");
+    return 1;
+  }
+
+  auto formatter = get_log_record_formatter(sys_vars->get_format_type());
+
+  if (formatter == nullptr) {
+    LogComponentErr(ERROR_LEVEL, ER_AUDIT_INIT_FORMATTER_INIT_FAILURE);
+    return 1;
+  }
+
+  auto log_writer = get_log_writer(
+      {
+          // file
+          sys_vars->get_handler_type(),
+          sys_vars->get_file_name(),
+          sys_vars->get_rotate_on_size(),
+          sys_vars->get_rotations(),
+          sys_vars->get_buffer_size(),
+          sys_vars->get_file_strategy(),
+          // syslog
+          sys_vars->get_syslog_ident(),
+          sys_vars->get_syslog_facility(),
+          sys_vars->get_syslog_priority(),
+      },
+      std::move(formatter));
+
+  if (log_writer == nullptr) {
+    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
+                    "Failed to create log writer instance");
+    return 1;
+  }
+
+  if (!log_writer->open()) {
+    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG, "Cannot open log writer");
+    my_plugin_perror();
+    return 1;
+  }
+
+  audit_log_filter = new AuditLogFilter(
+      std::move(comp_registry_srv), std::move(audit_rule_registry),
+      std::move(audit_udf), std::move(sys_vars), std::move(log_writer));
+
+  return 0;
+}
+
+/**
+ * @brief Terminate the component at server shutdown or component
+ *        deinstallation.
+ *
+ * @return Plugin deinit status, 0 in case of success or non zero
+ *         code otherwise
+ */
+mysql_service_status_t audit_log_filter_deinit() {
+  LogComponentErr(INFORMATION_LEVEL, ER_AUDIT_DEINIT_DONE);
+
+  if (audit_log_filter == nullptr) {
+    return 0;
+  }
+
+  delete audit_log_filter;
+  audit_log_filter = nullptr;
+
+  return 0;
+}
+
+AuditLogFilter::AuditLogFilter(
+    comp_registry_srv_container_t comp_registry_srv,
+    std::unique_ptr<AuditRuleRegistry> audit_rules_registry,
+    std::unique_ptr<AuditUdf> audit_udf, std::unique_ptr<SysVars> sys_vars,
+    std::unique_ptr<log_writer::LogWriterBase> log_writer)
+    : m_comp_registry_srv{std::move(comp_registry_srv)},
+      m_audit_rules_registry{std::move(audit_rules_registry)},
+      m_audit_udf{std::move(audit_udf)},
+      m_sys_vars{std::move(sys_vars)},
+      m_log_writer{std::move(log_writer)},
+      m_filter{std::make_unique<AuditEventFilter>()} {}
+
+int AuditLogFilter::notify_event(audit_event_class_t event_class,
+                                 const void *event_data) {
+  LogComponentErr(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+                  "Audit event %i received ===================", event_class);
+
+  MYSQL_THD thd = nullptr;
+
+  if (mysql_service_mysql_current_thread_reader->get(&thd) == 1 ||
+      thd == nullptr) {
+    return 0;
+  }
+
+  std::string user_name;
+  std::string user_host;
+
+  if (!get_connection_user(thd, user_name, user_host)) {
+    return 0;
+  }
+
+  LogComponentErr(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+                  "Connection user: %s, host: %s", user_name.c_str(),
+                  user_host.c_str());
+
+  // Get connection specific filtering rule
+  std::string rule_name;
+
+  if (!m_audit_rules_registry->lookup_rule_name(user_name, user_host,
+                                                rule_name)) {
+    LogComponentErr(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+                    "No filtering rule found for user %s@%s, do nothing",
+                    user_name.c_str(), user_host.c_str());
+    return 0;
+  }
+
+  LogComponentErr(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+                  "Found '%s' filtering rule for user %s@%s", rule_name.c_str(),
+                  user_name.c_str(), user_host.c_str());
+
+  auto *filter_rule = m_audit_rules_registry->get_rule(rule_name);
+
+  if (filter_rule == nullptr) {
+    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
+                    "Failed to find '%s' filtering rule", rule_name.c_str());
+    return 0;
+  }
+
+  LogComponentErr(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+                  "Found filtering rule '%s' with the definition '%s'",
+                  rule_name.c_str(), filter_rule->to_string().c_str());
+
+  // Get actual event info based on event class
+  AuditRecordVariant audit_record = get_audit_record(event_class, event_data);
+
+  if (std::holds_alternative<AuditRecordUnknown>(audit_record)) {
+    LogComponentErr(WARNING_LEVEL, ER_LOG_PRINTF_MSG,
+                    "Unsupported audit event class with ID %i received",
+                    event_class);
+    return 0;
+  }
+
+  auto ev_name = std::visit(
+      [](const auto &rec) -> std::string_view { return rec.event_class_name; },
+      audit_record);
+
+  LogComponentErr(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+                  "Constructed audit record with name '%s'", ev_name.data());
+
+  // Apply filtering rule
+  AuditAction filter_result = m_filter->apply(filter_rule, audit_record);
+
+  if (filter_result == AuditAction::Skip) {
+    LogComponentErr(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+                    "Skip logging audit event '%s' with class %i",
+                    ev_name.data(), event_class);
+    return 0;
+  }
+
+  if (filter_result == AuditAction::Block) {
+    auto ev_name = std::visit(
+        [](const auto &rec) -> std::string_view {
+          return rec.event_class_name;
+        },
+        audit_record);
+    LogComponentErr(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+                    "Blocked audit event '%s' with class %i", ev_name.data(),
+                    event_class);
+    return 0;
+  }
+
+  LogComponentErr(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+                  "Writing audit event '%s' with class %i to audit log",
+                  ev_name.data(), event_class);
+
+  m_log_writer->write(audit_record);
+
+  return 0;
+}
+
+void AuditLogFilter::on_audit_rule_flush_requested() noexcept {
+  m_audit_rules_registry->load();
+
+  DBUG_EXECUTE_IF("audit_log_filter_rotate_after_audit_rules_flush",
+                  { m_log_writer->rotate(); });
+}
+
+bool AuditLogFilter::get_connection_user(MYSQL_THD thd, std::string &user_name,
+                                         std::string &user_host) noexcept {
+  my_service<SERVICE_TYPE(mysql_thd_security_context)> security_context_service(
+      "mysql_thd_security_context", m_comp_registry_srv.get());
+  my_service<SERVICE_TYPE(mysql_security_context_options)>
+      security_context_opts_service("mysql_security_context_options",
+                                    m_comp_registry_srv.get());
+
+  if (!security_context_service.is_valid() ||
+      !security_context_opts_service.is_valid()) {
+    return false;
+  }
+
+  Security_context_handle ctx;
+
+  if (security_context_service->get(thd, &ctx)) {
+    LogComponentErr(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+                    "Can not get security context");
+    return false;
+  }
+
+  MYSQL_LEX_CSTRING user{"", 0};
+  MYSQL_LEX_CSTRING host{"", 0};
+
+  if (security_context_opts_service->get(ctx, "user", &user)) {
+    LogComponentErr(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+                    "Can not get user name from security context");
+    return false;
+  }
+
+  if (security_context_opts_service->get(ctx, "host", &host)) {
+    LogComponentErr(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+                    "Can not get user host from security context");
+    return false;
+  }
+
+  if (user.length == 0 || host.length == 0) {
+    LogComponentErr(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
+                    "No user name or host name found in security context");
+    return false;
+  }
+
+  user_name = user.str;
+  user_host = host.str;
+
+  return true;
+}
+
+}  // namespace audit_log_filter
+
+BEGIN_SERVICE_IMPLEMENTATION(component_audit_log_filter,
+                             event_tracking_authentication)
+audit_log_filter::EventsConsumer::notify END_SERVICE_IMPLEMENTATION();
+BEGIN_SERVICE_IMPLEMENTATION(component_audit_log_filter, event_tracking_command)
+audit_log_filter::EventsConsumer::notify END_SERVICE_IMPLEMENTATION();
+BEGIN_SERVICE_IMPLEMENTATION(component_audit_log_filter,
+                             event_tracking_connection)
+audit_log_filter::EventsConsumer::notify END_SERVICE_IMPLEMENTATION();
+BEGIN_SERVICE_IMPLEMENTATION(component_audit_log_filter, event_tracking_general)
+audit_log_filter::EventsConsumer::notify END_SERVICE_IMPLEMENTATION();
+BEGIN_SERVICE_IMPLEMENTATION(component_audit_log_filter,
+                             event_tracking_global_variable)
+audit_log_filter::EventsConsumer::notify END_SERVICE_IMPLEMENTATION();
+BEGIN_SERVICE_IMPLEMENTATION(component_audit_log_filter,
+                             event_tracking_lifecycle)
+audit_log_filter::EventsConsumer::notify,
+    audit_log_filter::EventsConsumer::notify END_SERVICE_IMPLEMENTATION();
+BEGIN_SERVICE_IMPLEMENTATION(component_audit_log_filter, event_tracking_message)
+audit_log_filter::EventsConsumer::notify END_SERVICE_IMPLEMENTATION();
+BEGIN_SERVICE_IMPLEMENTATION(component_audit_log_filter, event_tracking_parse)
+audit_log_filter::EventsConsumer::notify END_SERVICE_IMPLEMENTATION();
+BEGIN_SERVICE_IMPLEMENTATION(component_audit_log_filter, event_tracking_query)
+audit_log_filter::EventsConsumer::notify END_SERVICE_IMPLEMENTATION();
+BEGIN_SERVICE_IMPLEMENTATION(component_audit_log_filter,
+                             event_tracking_stored_program)
+audit_log_filter::EventsConsumer::notify END_SERVICE_IMPLEMENTATION();
+BEGIN_SERVICE_IMPLEMENTATION(component_audit_log_filter,
+                             event_tracking_table_access)
+audit_log_filter::EventsConsumer::notify END_SERVICE_IMPLEMENTATION();
+
+BEGIN_COMPONENT_PROVIDES(component_audit_log_filter)
+PROVIDES_SERVICE(component_audit_log_filter, event_tracking_authentication),
+    PROVIDES_SERVICE(component_audit_log_filter, event_tracking_command),
+    PROVIDES_SERVICE(component_audit_log_filter, event_tracking_connection),
+    PROVIDES_SERVICE(component_audit_log_filter, event_tracking_general),
+    PROVIDES_SERVICE(component_audit_log_filter,
+                     event_tracking_global_variable),
+    PROVIDES_SERVICE(component_audit_log_filter, event_tracking_lifecycle),
+    PROVIDES_SERVICE(component_audit_log_filter, event_tracking_message),
+    PROVIDES_SERVICE(component_audit_log_filter, event_tracking_parse),
+    PROVIDES_SERVICE(component_audit_log_filter, event_tracking_query),
+    PROVIDES_SERVICE(component_audit_log_filter, event_tracking_stored_program),
+    PROVIDES_SERVICE(component_audit_log_filter, event_tracking_table_access),
+    END_COMPONENT_PROVIDES();
+
+BEGIN_COMPONENT_REQUIRES(component_audit_log_filter)
+REQUIRES_SERVICE(registry), REQUIRES_SERVICE(log_builtins),
+    REQUIRES_SERVICE(log_builtins_string),
+    REQUIRES_SERVICE(mysql_current_thread_reader), REQUIRES_PSI_MEMORY_SERVICE,
+    END_COMPONENT_REQUIRES();
+
+BEGIN_COMPONENT_METADATA(component_audit_log_filter)
+METADATA("mysql.author", "Percona Corporation"),
+    METADATA("mysql.license", "GPL"), END_COMPONENT_METADATA();
+
+DECLARE_COMPONENT(component_audit_log_filter, "component_audit_log_filter")
+audit_log_filter::audit_log_filter_init,
+    audit_log_filter::audit_log_filter_deinit END_DECLARE_COMPONENT();
+
+DECLARE_LIBRARY_COMPONENTS &COMPONENT_REF(component_audit_log_filter)
+    END_DECLARE_LIBRARY_COMPONENTS

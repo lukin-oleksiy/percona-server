@@ -314,7 +314,7 @@ our @DEFAULT_SUITES = qw(
   jdv
 
   auth_openid_connect
-  audit_log_filter
+  component_audit_log_filter
   component_encryption_udf
   percona
   percona_binlog
