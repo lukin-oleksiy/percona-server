@@ -1,0 +1,3 @@
+$AUDIT_LOG_COMPONENT_OPT
+--loose-audit-log-filter.file=test_audit_filter.log
+--loose-audit-log-filter.strategy=SYNCHRONOUS
