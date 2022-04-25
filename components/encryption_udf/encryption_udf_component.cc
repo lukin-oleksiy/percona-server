@@ -16,8 +16,10 @@
 
 #include <array>
 #include <bitset>
+#include <chrono>
 #include <stdexcept>
 #include <string>
+#include <thread>
 
 #include <boost/algorithm/string/predicate.hpp>
 
@@ -28,9 +30,12 @@
 #include <mysql/components/component_implementation.h>
 
 #include <mysql/components/services/component_sys_var_service.h>
+#include <mysql/components/services/mysql_current_thread_reader.h>
 #include <mysql/components/services/mysql_runtime_error.h>
+#include <mysql/components/services/mysql_system_variable.h>
 #include <mysql/components/services/udf_registration.h>
 
+#include <mysqlpp/udf_registration.hpp>
 #include <mysqlpp/udf_wrappers.hpp>
 
 #include <opensslpp/core_error.hpp>
@@ -40,10 +45,13 @@
 #include <opensslpp/digest_operations.hpp>
 #include <opensslpp/dsa_key.hpp>
 #include <opensslpp/dsa_sign_verify_operations.hpp>
+#include <opensslpp/operation_cancelled_error.hpp>
 #include <opensslpp/rsa_encrypt_decrypt_operations.hpp>
 #include <opensslpp/rsa_key.hpp>
 #include <opensslpp/rsa_padding.hpp>
 #include <opensslpp/rsa_sign_verify_operations.hpp>
+
+#include "server_helpers.h"
 
 // defined as a macro because needed both raw and stringized
 #define CURRENT_COMPONENT_NAME encryption_udf
@@ -53,6 +61,8 @@ REQUIRES_SERVICE_PLACEHOLDER(mysql_runtime_error);
 REQUIRES_SERVICE_PLACEHOLDER(udf_registration);
 REQUIRES_SERVICE_PLACEHOLDER(component_sys_variable_register);
 REQUIRES_SERVICE_PLACEHOLDER(component_sys_variable_unregister);
+REQUIRES_SERVICE_PLACEHOLDER(mysql_current_thread_reader);
+REQUIRES_SERVICE_PLACEHOLDER(mysql_system_variable_reader);
 
 namespace {
 
@@ -138,9 +148,9 @@ bool check_if_bits_in_range(udf_int_arg_raw_type value,
   void *var_buffer_ptr = var_buffer.data();
   std::size_t var_length = var_buffer_length;
 
-  if (mysql_service_component_sys_variable_register->get_variable(
-          CURRENT_COMPONENT_NAME_STR, threshold.var_name, &var_buffer_ptr,
-          &var_length) == 0) {
+  if (mysql_service_mysql_system_variable_reader->get(
+          nullptr, "GLOBAL", CURRENT_COMPONENT_NAME_STR, threshold.var_name,
+          &var_buffer_ptr, &var_length) == 0) {
     std::size_t extracted_var_value = 0;
     if (boost::conversion::try_lexical_convert(
             static_cast<char *>(var_buffer_ptr), var_length,
@@ -150,6 +160,15 @@ bool check_if_bits_in_range(udf_int_arg_raw_type value,
 
   if (value > static_cast<udf_int_arg_raw_type>(max_value)) return false;
   return true;
+}
+
+opensslpp::key_generation_cancellation_callback create_cancellation_callback() {
+  THD *local_thd = nullptr;
+  if (mysql_service_mysql_current_thread_reader->get(&local_thd) != 0 ||
+      local_thd == nullptr)
+    throw std::invalid_argument("Cannot extract current THD");
+
+  return [local_thd]() noexcept -> bool { return is_thd_killed(local_thd); };
 }
 
 // CREATE_ASYMMETRIC_PRIV_KEY(@algorithm, {@key_len|@dh_parameters})
@@ -202,12 +221,25 @@ mysqlpp::udf_result_t<STRING_RESULT> create_asymmetric_priv_key_impl::calculate(
     if (algorithm_id == algorithm_id_type::rsa) {
       if (!check_if_bits_in_range(length, threshold_index_type::rsa))
         throw std::invalid_argument("Invalid RSA key length specified");
-      auto key = opensslpp::rsa_key::generate(length);
+      opensslpp::rsa_key key;
+      try {
+        key = opensslpp::rsa_key::generate(length,
+                                           opensslpp::rsa_key::default_exponent,
+                                           create_cancellation_callback());
+      } catch (const opensslpp::operation_cancelled_error &e) {
+        throw mysqlpp::udf_exception{e.what(), ER_QUERY_INTERRUPTED};
+      }
       pem = opensslpp::rsa_key::export_private_pem(key);
     } else if (algorithm_id == algorithm_id_type::dsa) {
       if (!check_if_bits_in_range(length, threshold_index_type::dsa))
         throw std::invalid_argument("Invalid DSA key length specified");
-      auto key = opensslpp::dsa_key::generate_parameters(length);
+      opensslpp::dsa_key key;
+      try {
+        key = opensslpp::dsa_key::generate_parameters(
+            length, create_cancellation_callback());
+      } catch (const opensslpp::operation_cancelled_error &e) {
+        throw mysqlpp::udf_exception{e.what(), ER_QUERY_INTERRUPTED};
+      }
       key.promote_to_key();
       pem = opensslpp::dsa_key::export_private_pem(key);
     }
@@ -608,7 +640,14 @@ mysqlpp::udf_result_t<STRING_RESULT> create_dh_parameters_impl::calculate(
   if (!check_if_bits_in_range(length, threshold_index_type::dh))
     throw std::invalid_argument("Invalid DH parameters length specified");
 
-  auto key = opensslpp::dh_key::generate_parameters(length);
+  opensslpp::dh_key key;
+  try {
+    key = opensslpp::dh_key::generate_parameters(
+        length, opensslpp::dh_key::default_generator,
+        create_cancellation_callback());
+  } catch (const opensslpp::operation_cancelled_error &e) {
+    throw mysqlpp::udf_exception{e.what(), ER_QUERY_INTERRUPTED};
+  }
   key.promote_to_key();
 
   return {opensslpp::dh_key::export_parameters_pem(key)};
@@ -659,50 +698,49 @@ mysqlpp::udf_result_t<STRING_RESULT> asymmetric_derive_impl::calculate(
 
 }  // end of anonymous namespace
 
-DECLARE_STRING_UDF(create_asymmetric_priv_key_impl, create_asymmetric_priv_key)
-DECLARE_STRING_UDF(create_asymmetric_pub_key_impl, create_asymmetric_pub_key)
-DECLARE_STRING_UDF(asymmetric_encrypt_impl, asymmetric_encrypt)
-DECLARE_STRING_UDF(asymmetric_decrypt_impl, asymmetric_decrypt)
-DECLARE_STRING_UDF(create_digest_impl, create_digest)
-DECLARE_STRING_UDF(asymmetric_sign_impl, asymmetric_sign)
-DECLARE_INT_UDF(asymmetric_verify_impl, asymmetric_verify)
-DECLARE_STRING_UDF(create_dh_parameters_impl, create_dh_parameters)
-DECLARE_STRING_UDF(asymmetric_derive_impl, asymmetric_derive)
+DECLARE_STRING_UDF_AUTO(create_asymmetric_priv_key)
+DECLARE_STRING_UDF_AUTO(create_asymmetric_pub_key)
+DECLARE_STRING_UDF_AUTO(asymmetric_encrypt)
+DECLARE_STRING_UDF_AUTO(asymmetric_decrypt)
+DECLARE_STRING_UDF_AUTO(create_digest)
+DECLARE_STRING_UDF_AUTO(asymmetric_sign)
+DECLARE_INT_UDF_AUTO(asymmetric_verify)
+DECLARE_STRING_UDF_AUTO(create_dh_parameters)
+DECLARE_STRING_UDF_AUTO(asymmetric_derive)
 
-struct udf_info {
-  const char *name;
-  Item_result return_type;
-  Udf_func_any func;
-  Udf_func_init init_func;
-  Udf_func_deinit deinit_func;
-};
-
-#define DECLARE_UDF_INFO(NAME, TYPE)                               \
-  udf_info {                                                       \
-#NAME, TYPE, (Udf_func_any)&NAME, &NAME##_init, &NAME##_deinit \
-  }
-
+// TODO: in c++20 (where CTAD works for alias templates) this shoud be changed
+// to 'static const udf_info_container known_udfs'
 static const std::array known_udfs{
-    DECLARE_UDF_INFO(create_asymmetric_priv_key, STRING_RESULT),
-    DECLARE_UDF_INFO(create_asymmetric_pub_key, STRING_RESULT),
-    DECLARE_UDF_INFO(asymmetric_encrypt, STRING_RESULT),
-    DECLARE_UDF_INFO(asymmetric_decrypt, STRING_RESULT),
-    DECLARE_UDF_INFO(create_digest, STRING_RESULT),
-    DECLARE_UDF_INFO(asymmetric_sign, STRING_RESULT),
-    DECLARE_UDF_INFO(asymmetric_verify, INT_RESULT),
-    DECLARE_UDF_INFO(create_dh_parameters, STRING_RESULT),
-    DECLARE_UDF_INFO(asymmetric_derive, STRING_RESULT)};
+    DECLARE_UDF_INFO_AUTO(create_asymmetric_priv_key),
+    DECLARE_UDF_INFO_AUTO(create_asymmetric_pub_key),
+    DECLARE_UDF_INFO_AUTO(asymmetric_encrypt),
+    DECLARE_UDF_INFO_AUTO(asymmetric_decrypt),
+    DECLARE_UDF_INFO_AUTO(create_digest),
+    DECLARE_UDF_INFO_AUTO(asymmetric_sign),
+    DECLARE_UDF_INFO_AUTO(asymmetric_verify),
+    DECLARE_UDF_INFO_AUTO(create_dh_parameters),
+    DECLARE_UDF_INFO_AUTO(asymmetric_derive)};
 
-#undef DECLARE_UDF_INFO
+static void encryption_udf_my_error(int error_id, myf flags, ...) {
+  va_list args;
+  va_start(args, flags);
+  mysql_service_mysql_runtime_error->emit(error_id, flags, args);
+  va_end(args);
+}
 
 using udf_bitset_type =
-    std::bitset<std::tuple_size<decltype(known_udfs)>::value>;
+    mysqlpp::udf_bitset<std::tuple_size_v<decltype(known_udfs)>>;
 static udf_bitset_type registered_udfs;
 
 using threshold_bitset_type = std::bitset<number_of_thresholds>;
 static threshold_bitset_type registered_thresholds;
 
 static mysql_service_status_t component_init() {
+  // here, we use a custom error reporting function 'encryption_udf_my_error()'
+  // based on the 'mysql_service_mysql_runtime_error' service instead of
+  // the standard 'my_error()' from 'mysys' to get rid of the 'mysys'
+  // dependency for this component
+  mysqlpp::udf_error_reporter::instance() = &encryption_udf_my_error;
   std::size_t index = 0U;
 
   for (const auto &threshold : thresholds) {
@@ -723,34 +761,16 @@ static mysql_service_status_t component_init() {
     ++index;
   }
 
-  index = 0U;
-  for (const auto &element : known_udfs) {
-    if (!registered_udfs.test(index)) {
-      if (mysql_service_udf_registration->udf_register(
-              element.name, element.return_type, element.func,
-              element.init_func, element.deinit_func) == 0)
-        registered_udfs.set(index);
-    }
-    ++index;
-  }
+  mysqlpp::register_udfs(mysql_service_udf_registration, known_udfs,
+                         registered_udfs);
   return registered_udfs.all() && registered_thresholds.all() ? 0 : 1;
 }
 
 static mysql_service_status_t component_deinit() {
-  int was_present = 0;
+  mysqlpp::unregister_udfs(mysql_service_udf_registration, known_udfs,
+                           registered_udfs);
 
-  std::size_t index = 0U;
-
-  for (const auto &element : known_udfs) {
-    if (registered_udfs.test(index)) {
-      if (mysql_service_udf_registration->udf_unregister(element.name,
-                                                         &was_present) == 0)
-        registered_udfs.reset(index);
-    }
-    ++index;
-  }
-
-  index = 0;
+  std::size_t index = 0;
   for (const auto &threshold : thresholds) {
     if (registered_thresholds.test(index)) {
       if (mysql_service_component_sys_variable_unregister->unregister_variable(
@@ -763,19 +783,6 @@ static mysql_service_status_t component_deinit() {
   return registered_udfs.none() && registered_thresholds.none() ? 0 : 1;
 }
 
-// Currently UDF wrappers exception handling is build so that
-// 'generic_udf_base<...>::handle_exception()' calls 'my_error()'
-// to report errors with codes. In order to avoid linking 'mysys'
-// (a static library where 'my_error()' is defined) as a dependency
-// we simply define this function here. Internally it just redirects
-// everything to the 'mysql_runtime_error' service.
-void my_error(int error_id, myf flags, ...) {
-  va_list args;
-  va_start(args, flags);
-  mysql_service_mysql_runtime_error->emit(error_id, flags, args);
-  va_end(args);
-}
-
 // clang-format off
 BEGIN_COMPONENT_PROVIDES(CURRENT_COMPONENT_NAME)
 END_COMPONENT_PROVIDES();
@@ -785,6 +792,8 @@ BEGIN_COMPONENT_REQUIRES(CURRENT_COMPONENT_NAME)
   REQUIRES_SERVICE(udf_registration),
   REQUIRES_SERVICE(component_sys_variable_register),
   REQUIRES_SERVICE(component_sys_variable_unregister),
+  REQUIRES_SERVICE(mysql_current_thread_reader),
+  REQUIRES_SERVICE(mysql_system_variable_reader),
 END_COMPONENT_REQUIRES();
 
 BEGIN_COMPONENT_METADATA(CURRENT_COMPONENT_NAME)

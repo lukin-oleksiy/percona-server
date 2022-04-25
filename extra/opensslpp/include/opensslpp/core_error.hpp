@@ -20,6 +20,8 @@
 #include <stdexcept>
 #include <string>
 
+#include <opensslpp/core_error_fwd.hpp>
+
 namespace opensslpp {
 
 class core_error : public std::runtime_error {
