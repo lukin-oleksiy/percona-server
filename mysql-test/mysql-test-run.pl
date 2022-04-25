@@ -315,13 +315,13 @@ our @DEFAULT_SUITES = qw(
 
   auth_openid_connect
   component_audit_log_filter
-  component_encryption_udf
   percona
   percona_binlog
   percona_innodb
   percona_rpl
   percona_rpl_gtid
   percona-pam-for-mysql
+  component_encryption_udf
   component_masking_functions
   procfs
   rocksdb

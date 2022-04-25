@@ -81,10 +81,15 @@ class udf_base {
       // in one place.
       throw;
     } catch (const udf_exception &e) {
-      if (e.has_error_code())
-        (*error_reporter)(e.get_error_code(), MYF(0),
-                          get_function_label(buffer, meta_name, item_result),
-                          e.what());
+      if (e.has_error_code()) {
+        auto error_code = e.get_error_code();
+        if (error_code == ER_QUERY_INTERRUPTED)
+          (*error_reporter)(error_code, MYF(0));
+        else
+          (*error_reporter)(error_code, MYF(0),
+                            get_function_label(buffer, meta_name, item_result),
+                            e.what());
+      }
     } catch (const std::exception &e) {
       (*error_reporter)(ER_UDF_ERROR, MYF(0),
                         get_function_label(buffer, meta_name, item_result),
