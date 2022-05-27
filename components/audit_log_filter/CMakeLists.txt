@@ -42,6 +42,21 @@ IF(WITH_COMPONENT_AUDIT_LOG_FILTER)
       log_writer/file.cc
       log_writer/syslog.cc
       log_writer/file_handle.cc
+      event_field_condition/field.cc
+      event_field_condition/and.cc
+      event_field_condition/or.cc
+      event_field_condition/not.cc
+      event_field_condition/variable.cc
+      event_field_condition/function.cc
+      event_field_condition/bool.cc
+      event_field_action/log.cc
+      event_field_action/block.cc
+      event_field_action/replace_field.cc
+      event_field_action/replace_filter.cc
+      event_filter_function.cc
+      event_filter_function/base.cc
+      event_filter_function/string_find.cc
+      event_filter_function/query_digest.cc
   )
 
   MYSQL_ADD_COMPONENT(audit_log_filter ${AUDIT_LOG_FILTER_SOURCES}
