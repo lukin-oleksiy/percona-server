@@ -28,6 +28,9 @@
 #include <mysql/components/services/event_tracking_stored_program_service.h>
 #include <mysql/components/services/event_tracking_table_access_service.h>
 
+#include <cstring>
+#include <unordered_map>
+
 namespace audit_log_filter {
 namespace {
 const std::string_view kClassNameGeneral{"general"};
@@ -302,6 +305,18 @@ std::string_view event_subclass_to_string(
   return kNameUnknown;
 }
 
+inline std::string mysql_cstring_to_string(
+    const mysql_cstring_with_length *str) {
+  return str != nullptr && str->str != nullptr && std::strlen(str->str) > 0
+             ? str->str
+             : "";
+}
+
+inline std::string mysql_cstring_len_to_string(
+    const mysql_cstring_with_length *str) {
+  return str != nullptr ? std::to_string(str->length) : "0";
+}
+
 }  // namespace
 
 AuditRecordVariant get_audit_record(audit_event_class_t event_class,
@@ -316,7 +331,8 @@ AuditRecordVariant get_audit_record(audit_event_class_t event_class,
                   static_cast<const mysql_event_tracking_general_data *>(
                       event)),
               event_class,
-              static_cast<const mysql_event_tracking_general_data *>(event)}};
+              static_cast<const mysql_event_tracking_general_data *>(event),
+              {}}};
     }
     case audit_event_class_t::AUDIT_CONNECTION_CLASS: {
       return AuditRecordVariant{
@@ -327,8 +343,8 @@ AuditRecordVariant get_audit_record(audit_event_class_t event_class,
                   static_cast<const mysql_event_tracking_connection_data *>(
                       event)),
               event_class,
-              static_cast<const mysql_event_tracking_connection_data *>(
-                  event)}};
+              static_cast<const mysql_event_tracking_connection_data *>(event),
+              {}}};
     }
     case audit_event_class_t::AUDIT_TABLE_ACCESS_CLASS: {
       return AuditRecordVariant{
@@ -340,7 +356,8 @@ AuditRecordVariant get_audit_record(audit_event_class_t event_class,
                       event)),
               event_class,
               static_cast<const mysql_event_tracking_table_access_data *>(
-                  event)}};
+                  event),
+              {}}};
     }
     case audit_event_class_t::AUDIT_GLOBAL_VARIABLE_CLASS: {
       return AuditRecordVariant{
@@ -352,7 +369,8 @@ AuditRecordVariant get_audit_record(audit_event_class_t event_class,
                                   *>(event)),
               event_class,
               static_cast<const mysql_event_tracking_global_variable_data *>(
-                  event)}};
+                  event),
+              {}}};
     }
     case audit_event_class_t::AUDIT_SERVER_STARTUP_CLASS: {
       return AuditRecordVariant{
@@ -363,7 +381,8 @@ AuditRecordVariant get_audit_record(audit_event_class_t event_class,
                   static_cast<const mysql_event_tracking_startup_data *>(
                       event)),
               event_class,
-              static_cast<const mysql_event_tracking_startup_data *>(event)}};
+              static_cast<const mysql_event_tracking_startup_data *>(event),
+              {}}};
     }
     case audit_event_class_t::AUDIT_SERVER_SHUTDOWN_CLASS: {
       return AuditRecordVariant{
@@ -374,7 +393,8 @@ AuditRecordVariant get_audit_record(audit_event_class_t event_class,
                   static_cast<const mysql_event_tracking_shutdown_data *>(
                       event)),
               event_class,
-              static_cast<const mysql_event_tracking_shutdown_data *>(event)}};
+              static_cast<const mysql_event_tracking_shutdown_data *>(event),
+              {}}};
     }
     case audit_event_class_t::AUDIT_COMMAND_CLASS: {
       return AuditRecordVariant{
@@ -385,7 +405,8 @@ AuditRecordVariant get_audit_record(audit_event_class_t event_class,
                   static_cast<const mysql_event_tracking_command_data *>(
                       event)),
               event_class,
-              static_cast<const mysql_event_tracking_command_data *>(event)}};
+              static_cast<const mysql_event_tracking_command_data *>(event),
+              {}}};
     }
     case audit_event_class_t::AUDIT_QUERY_CLASS: {
       return AuditRecordVariant{
@@ -395,7 +416,8 @@ AuditRecordVariant get_audit_record(audit_event_class_t event_class,
               event_subclass_to_string(
                   static_cast<const mysql_event_tracking_query_data *>(event)),
               event_class,
-              static_cast<const mysql_event_tracking_query_data *>(event)}};
+              static_cast<const mysql_event_tracking_query_data *>(event),
+              {}}};
     }
     case audit_event_class_t::AUDIT_STORED_PROGRAM_CLASS: {
       return AuditRecordVariant{
@@ -407,7 +429,8 @@ AuditRecordVariant get_audit_record(audit_event_class_t event_class,
                       event)),
               event_class,
               static_cast<const mysql_event_tracking_stored_program_data *>(
-                  event)}};
+                  event),
+              {}}};
     }
     case audit_event_class_t::AUDIT_AUTHENTICATION_CLASS: {
       return AuditRecordVariant{
@@ -419,7 +442,8 @@ AuditRecordVariant get_audit_record(audit_event_class_t event_class,
                       event)),
               event_class,
               static_cast<const mysql_event_tracking_authentication_data *>(
-                  event)}};
+                  event),
+              {}}};
     }
     case audit_event_class_t::AUDIT_MESSAGE_CLASS: {
       return AuditRecordVariant{
@@ -430,7 +454,8 @@ AuditRecordVariant get_audit_record(audit_event_class_t event_class,
                   static_cast<const mysql_event_tracking_message_data *>(
                       event)),
               event_class,
-              static_cast<const mysql_event_tracking_message_data *>(event)}};
+              static_cast<const mysql_event_tracking_message_data *>(event),
+              {}}};
     }
     case audit_event_class_t::AUDIT_PARSE_CLASS: {
       return AuditRecordVariant{
@@ -440,13 +465,188 @@ AuditRecordVariant get_audit_record(audit_event_class_t event_class,
               event_subclass_to_string(
                   static_cast<const mysql_event_tracking_parse_data *>(event)),
               event_class,
-              static_cast<const mysql_event_tracking_parse_data *>(event)}};
+              static_cast<const mysql_event_tracking_parse_data *>(event),
+              {}}};
     }
     default:
       break;
   }
 
   assert(false);
+}
+
+void update_connection_type_pseudo_to_numeric(std::string &type) {
+  static const std::unordered_map<std::string, std::string>
+      connection_type_pseudo{
+          {"::undefined", "0"},  {"::tcp/ip", "1"}, {"::socket", "2"},
+          {"::named_pipe", "3"}, {"::ssl", "4"},    {"::shared_memory", "5"},
+      };
+
+  const auto it = connection_type_pseudo.find(type);
+  if (it != connection_type_pseudo.cend()) {
+    type = it->second;
+  }
+}
+
+AuditRecordFieldsList get_audit_record_fields(
+    const AuditRecordGeneral &record) {
+  const auto *event = record.event;
+  return {
+      {"general_error_code", std::to_string(event->error_code)},
+      {"general_connection_id", std::to_string(event->connection_id)},
+      {"general_user.str", mysql_cstring_to_string(&event->user)},
+      {"general_user.length", mysql_cstring_len_to_string(&event->user)},
+      {"general_host.str", mysql_cstring_to_string(&event->host)},
+      {"general_host.length", mysql_cstring_len_to_string(&event->host)},
+      {"general_ip.str", mysql_cstring_to_string(&event->ip)},
+      {"general_ip.length", mysql_cstring_len_to_string(&event->ip)},
+  };
+}
+
+AuditRecordFieldsList get_audit_record_fields(
+    const AuditRecordConnection &record) {
+  const auto *event = record.event;
+  return {
+      {"status", std::to_string(event->status)},
+      {"connection_id", std::to_string(event->connection_id)},
+      {"user.str", mysql_cstring_to_string(&event->user)},
+      {"user.length", mysql_cstring_len_to_string(&event->user)},
+      {"priv_user.str", mysql_cstring_to_string(&event->priv_user)},
+      {"priv_user.length", mysql_cstring_len_to_string(&event->priv_user)},
+      {"external_user.str", mysql_cstring_to_string(&event->external_user)},
+      {"external_user.length",
+       mysql_cstring_len_to_string(&event->external_user)},
+      {"proxy_user.str", mysql_cstring_to_string(&event->proxy_user)},
+      {"proxy_user.length", mysql_cstring_len_to_string(&event->proxy_user)},
+      {"host.str", mysql_cstring_to_string(&event->host)},
+      {"host.length", mysql_cstring_len_to_string(&event->host)},
+      {"ip.str", mysql_cstring_to_string(&event->ip)},
+      {"ip.length", mysql_cstring_len_to_string(&event->ip)},
+      {"database.str", mysql_cstring_to_string(&event->database)},
+      {"database.length", mysql_cstring_len_to_string(&event->database)},
+      {"connection_type", std::to_string(event->connection_type)},
+  };
+}
+
+AuditRecordFieldsList get_audit_record_fields(
+    const AuditRecordTableAccess &record) {
+  const auto *event = record.event;
+  return {
+      {"connection_id", std::to_string(event->connection_id)},
+      {"table_database.str", mysql_cstring_to_string(&event->table_database)},
+      {"table_database.length",
+       mysql_cstring_len_to_string(&event->table_database)},
+      {"table_name.str", mysql_cstring_to_string(&event->table_name)},
+      {"table_name.length", mysql_cstring_len_to_string(&event->table_name)},
+  };
+}
+
+AuditRecordFieldsList get_audit_record_fields(
+    const AuditRecordGlobalVariable &record) {
+  const auto *event = record.event;
+  return {
+      {"connection_id", std::to_string(event->connection_id)},
+      {"variable_name.str", mysql_cstring_to_string(&event->variable_name)},
+      {"variable_name.length",
+       mysql_cstring_len_to_string(&event->variable_name)},
+      {"variable_value.str", mysql_cstring_to_string(&event->variable_value)},
+      {"variable_value.length",
+       mysql_cstring_len_to_string(&event->variable_value)},
+  };
+}
+
+AuditRecordFieldsList get_audit_record_fields(
+    const AuditRecordServerStartup &record [[maybe_unused]]) {
+  return {};
+}
+
+AuditRecordFieldsList get_audit_record_fields(
+    const AuditRecordServerShutdown &record) {
+  const auto *event = record.event;
+  return {
+      {"exit_code", std::to_string(event->exit_code)},
+      {"reason", std::to_string(event->reason)},
+  };
+}
+
+AuditRecordFieldsList get_audit_record_fields(
+    const AuditRecordCommand &record) {
+  const auto *event = record.event;
+  return {
+      {"status", std::to_string(event->status)},
+      {"connection_id", std::to_string(event->connection_id)},
+      {"command.str", mysql_cstring_to_string(&event->command)},
+      {"command.length", mysql_cstring_len_to_string(&event->command)},
+  };
+}
+
+AuditRecordFieldsList get_audit_record_fields(const AuditRecordQuery &record) {
+  const auto *event = record.event;
+  return {
+      {"status", std::to_string(event->status)},
+      {"connection_id", std::to_string(event->connection_id)},
+      {"sql_command_id", std::string(event->sql_command)},
+      {"query.str", mysql_cstring_to_string(&event->query)},
+      {"query.length", mysql_cstring_len_to_string(&event->query)},
+      {"query_charset", std::string(event->query_charset)},
+  };
+}
+
+AuditRecordFieldsList get_audit_record_fields(
+    const AuditRecordStoredProgram &record) {
+  const auto *event = record.event;
+  return {
+      {"connection_id", std::to_string(event->connection_id)},
+      {"database.str", mysql_cstring_to_string(&event->database)},
+      {"database.length", mysql_cstring_len_to_string(&event->database)},
+      {"name.str", mysql_cstring_to_string(&event->name)},
+      {"name.length", mysql_cstring_len_to_string(&event->name)},
+  };
+}
+
+AuditRecordFieldsList get_audit_record_fields(
+    const AuditRecordAuthentication &record) {
+  const auto *event = record.event;
+  return {
+      {"status", std::to_string(event->status)},
+      {"connection_id", std::to_string(event->connection_id)},
+      {"user.str", mysql_cstring_to_string(&event->user)},
+      {"user.length", mysql_cstring_len_to_string(&event->user)},
+      {"host.str", mysql_cstring_to_string(&event->host)},
+      {"host.length", mysql_cstring_len_to_string(&event->host)},
+  };
+}
+
+AuditRecordFieldsList get_audit_record_fields(
+    const AuditRecordMessage &record) {
+  const auto *event = record.event;
+  return {
+      {"connection_id", std::to_string(event->connection_id)},
+      {"component.str", mysql_cstring_to_string(&event->component)},
+      {"component.length", mysql_cstring_len_to_string(&event->component)},
+      {"producer.str", mysql_cstring_to_string(&event->producer)},
+      {"producer.length", mysql_cstring_len_to_string(&event->producer)},
+      {"message.str", mysql_cstring_to_string(&event->message)},
+      {"message.length", mysql_cstring_len_to_string(&event->message)},
+  };
+}
+
+AuditRecordFieldsList get_audit_record_fields(const AuditRecordParse &record) {
+  const auto *event = record.event;
+  return {
+      {"connection_id", std::to_string(event->connection_id)},
+      {"flags", std::to_string(event->flags != nullptr ? *event->flags : 0)},
+      {"query.str", mysql_cstring_to_string(&event->query)},
+      {"query.length", mysql_cstring_len_to_string(&event->query)},
+      {"rewritten_query.str", mysql_cstring_to_string(event->rewritten_query)},
+      {"rewritten_query.length",
+       mysql_cstring_len_to_string(event->rewritten_query)},
+  };
+}
+
+AuditRecordFieldsList get_audit_record_fields(const AuditRecordUnknown &record
+                                              [[maybe_unused]]) {
+  return {};
 }
 
 }  // namespace audit_log_filter

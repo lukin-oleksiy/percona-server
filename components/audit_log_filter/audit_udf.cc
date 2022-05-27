@@ -551,6 +551,8 @@ char *AuditUdf::audit_log_filter_remove_user_udf(
     return result;
   }
 
+  get_audit_log_filter_instance()->on_audit_rule_flush_requested();
+
   std::snprintf(result, MYSQL_ERRMSG_SIZE, "OK");
   *length = std::strlen(result);
 
