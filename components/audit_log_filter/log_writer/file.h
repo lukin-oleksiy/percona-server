@@ -30,8 +30,8 @@ class LogWriter<AuditLogHandlerType::File> : public LogWriterBase {
  public:
   LogWriter() = delete;
   LogWriter(
-      std::unique_ptr<log_record_formatter::LogRecordFormatterBase> formatter,
-      const LogWriterConfig &conf);
+      std::shared_ptr<SysVars> config,
+      std::unique_ptr<log_record_formatter::LogRecordFormatterBase> formatter);
   ~LogWriter() override;
 
   /**
@@ -62,6 +62,16 @@ class LogWriter<AuditLogHandlerType::File> : public LogWriterBase {
    */
   [[nodiscard]] uint64_t get_log_size() const noexcept override;
 
+  /**
+   * @brief Close and reopen current log file. Used for manual log rotation.
+   */
+  void flush() noexcept override;
+
+  /**
+   * @brief Prune outdated log files.
+   */
+  void prune() noexcept override;
+
  private:
   /**
    * @brief Implement actual file opening logic.
@@ -83,13 +93,7 @@ class LogWriter<AuditLogHandlerType::File> : public LogWriterBase {
   void rotate() noexcept override;
 
  private:
-  std::string m_file_name;
-  size_t m_file_size_limit;
-  size_t m_file_rotations;
-  size_t m_file_buffer_size;
-  AuditLogStrategyType m_file_strategy_type;
   bool m_is_rotating;
-
   FileHandle m_file_handle;
 };
 

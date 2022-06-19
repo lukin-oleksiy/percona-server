@@ -27,8 +27,8 @@ class LogWriter<AuditLogHandlerType::Syslog> : public LogWriterBase {
  public:
   LogWriter() = delete;
   LogWriter(
-      std::unique_ptr<log_record_formatter::LogRecordFormatterBase> formatter,
-      const LogWriterConfig &conf);
+      std::shared_ptr<SysVars> config,
+      std::unique_ptr<log_record_formatter::LogRecordFormatterBase> formatter);
 
   /**
    * @brief Open log writer.
@@ -52,16 +52,21 @@ class LogWriter<AuditLogHandlerType::Syslog> : public LogWriterBase {
   void write(const std::string &record [[maybe_unused]]) noexcept override {}
 
   /**
+   * @brief Close and reopen current log file. Used for manual log rotation.
+   */
+  void flush() noexcept override {}
+
+  /**
+   * @brief Prune outdated log files.
+   */
+  void prune() noexcept override {}
+
+  /**
    * @brief Get current log file size in bytes.
    *
    * @return Current log file size in bytes
    */
   [[nodiscard]] uint64_t get_log_size() const noexcept override { return 0; }
-
- private:
-  std::string m_syslog_ident;
-  int m_syslog_facility;
-  int m_syslog_priority;
 };
 
 using LogWriterSyslog = LogWriter<AuditLogHandlerType::Syslog>;

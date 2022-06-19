@@ -18,22 +18,19 @@
 
 #include "components/audit_log_filter/audit_error_log.h"
 #include "components/audit_log_filter/log_record_formatter/base.h"
+#include "components/audit_log_filter/sys_vars.h"
 
 #include "sql/mysqld.h"
 
 #include <filesystem>
+#include <queue>
 
 namespace audit_log_filter::log_writer {
 
 LogWriter<AuditLogHandlerType::File>::LogWriter(
-    std::unique_ptr<log_record_formatter::LogRecordFormatterBase> formatter,
-    const LogWriterConfig &conf)
-    : LogWriterBase{std::move(formatter)},
-      m_file_name{conf.file_name},
-      m_file_size_limit{conf.file_size_limit},
-      m_file_rotations{conf.file_rotations},
-      m_file_buffer_size{conf.file_buffer_size},
-      m_file_strategy_type{conf.file_strategy_type},
+    std::shared_ptr<SysVars> config,
+    std::unique_ptr<log_record_formatter::LogRecordFormatterBase> formatter)
+    : LogWriterBase{std::move(config), std::move(formatter)},
       m_is_rotating{false} {}
 
 LogWriter<AuditLogHandlerType::File>::~LogWriter() { do_close_file(); }
@@ -44,7 +41,7 @@ bool LogWriterFile::close() noexcept { return do_close_file(); }
 
 bool LogWriterFile::do_open_file() noexcept {
   auto file_path = std::filesystem::path{mysql_data_home} /
-                   std::filesystem::path{m_file_name};
+                   std::filesystem::path{get_config()->get_file_name()};
   bool is_new_file = !std::filesystem::exists(file_path);
 
   if (!is_new_file) {
@@ -73,9 +70,12 @@ bool LogWriterFile::do_close_file() noexcept {
 void LogWriterFile::write(const std::string &record) noexcept {
   m_file_handle.write_file(record);
 
-  if (m_file_size_limit > 0 && !m_is_rotating &&
-      m_file_size_limit < get_log_size()) {
+  const auto file_size_limit = get_config()->get_rotate_on_size();
+
+  if (file_size_limit > 0 && !m_is_rotating &&
+      file_size_limit < get_log_size()) {
     rotate();
+    prune();
   }
 }
 
@@ -87,7 +87,7 @@ void LogWriterFile::rotate() noexcept {
   m_is_rotating = true;
   do_close_file();
 
-  auto ec = FileHandle::rotate(mysql_data_home, m_file_name);
+  auto ec = FileHandle::rotate(mysql_data_home, get_config()->get_file_name());
 
   if (ec.value() != 0) {
     LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
@@ -97,6 +97,62 @@ void LogWriterFile::rotate() noexcept {
 
   do_open_file();
   m_is_rotating = false;
+}
+
+void LogWriterFile::flush() noexcept {
+  do_close_file();
+  do_open_file();
+}
+
+void LogWriterFile::prune() noexcept {
+  if (get_config()->get_rotate_on_size() == 0) {
+    return;
+  }
+
+  const auto log_max_size = get_config()->get_log_max_size();
+  const auto prune_seconds = get_config()->get_log_prune_seconds();
+
+  if (log_max_size > 0) {
+    auto log_file_list = FileHandle::get_prune_files(
+        mysql_data_home, get_config()->get_file_name());
+
+    ulonglong current_logs_size = std::accumulate(
+        log_file_list.begin(), log_file_list.end(), ulonglong{0},
+        [](const ulonglong &a, const PruneFileInfo &b) { return a + b.size; });
+    current_logs_size += get_log_size();
+
+    if (current_logs_size < log_max_size) {
+      return;
+    }
+
+    auto comparator = [](const PruneFileInfo &a, const PruneFileInfo &b) {
+      return a.age < b.age;
+    };
+
+    std::priority_queue<PruneFileInfo, PruneFilesList, decltype(comparator)>
+        file_queue{comparator, log_file_list};
+
+    while (current_logs_size > log_max_size && !file_queue.empty()) {
+      const auto &entry = file_queue.top();
+
+      if (!FileHandle::remove_file(entry.path)) {
+        return;
+      }
+
+      current_logs_size =
+          (entry.size < current_logs_size) ? current_logs_size - entry.size : 0;
+      file_queue.pop();
+    }
+  } else if (prune_seconds > 0) {
+    auto log_file_list = FileHandle::get_prune_files(
+        mysql_data_home, get_config()->get_file_name());
+
+    for (const auto &entry : log_file_list) {
+      if (entry.age > prune_seconds) {
+        FileHandle::remove_file(entry.path);
+      }
+    }
+  }
 }
 
 }  // namespace audit_log_filter::log_writer

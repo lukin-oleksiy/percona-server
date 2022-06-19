@@ -15,10 +15,12 @@
 
 #include "components/audit_log_filter/sys_vars.h"
 #include "components/audit_log_filter/audit_error_log.h"
+#include "components/audit_log_filter/audit_log_filter.h"
 
 #define ALLOW_COMPONENT_INCLUDE  // for my_io.h and plugin.h
 #include "mysql/plugin.h"
 #include "sql/sql_const.h"
+#include "sql/sql_error.h"
 #include "sql/sql_plugin_var.h"
 
 #include <mysql/components/services/component_sys_var_service.h>
@@ -39,16 +41,18 @@ const char *kVarNameFormat{"format"};
 const char *kVarNameStrategy{"strategy"};
 const char *kVarNameBufferSize{"buffer_size"};
 const char *kVarNameRotateOnSize{"rotate_on_size"};
-const char *kVarNameRotations{"rotations"};
+const char *kVarNameMaxSize{"max_size"};
+const char *kVarNamePruneSeconds{"prune_seconds"};
+const char *kVarNameFlush{"flush"};
 const char *kVarNameSyslogIdent{"syslog_ident"};
 const char *kVarNameSyslogFacility{"syslog_facility"};
 const char *kVarNameSyslogPriority{"syslog_priority"};
 
-const std::array<const char *, 10> var_names_list{
-    kVarNameFile,          kVarNameHandler,     kVarNameFormat,
-    kVarNameStrategy,      kVarNameBufferSize,  kVarNameRotateOnSize,
-    kVarNameRotations,     kVarNameSyslogIdent, kVarNameSyslogFacility,
-    kVarNameSyslogPriority};
+const std::array<const char *, 12> var_names_list{
+    kVarNameFile,           kVarNameHandler,     kVarNameFormat,
+    kVarNameStrategy,       kVarNameBufferSize,  kVarNameRotateOnSize,
+    kVarNameMaxSize,        kVarNameSyslogIdent, kVarNameSyslogFacility,
+    kVarNameSyslogPriority, kVarNameFlush,       kVarNamePruneSeconds};
 
 /*
  * TYPE_LIB definition for audit_log_filter.handler
@@ -120,10 +124,63 @@ TYPE_LIB audit_log_filter_syslog_priority_typelib = {
     "audit_log_filter_syslog_priority_typelib",
     audit_log_filter_syslog_priority_names, nullptr};
 
+void flush_update_func(MYSQL_THD, SYS_VAR *, void *val_ptr, const void *save) {
+  const auto *val = static_cast<const bool *>(save);
+  auto *sys_vars = static_cast<VarWrapper<bool> *>(val_ptr)->get_container();
+
+  if (*val && sys_vars->get_rotate_on_size() == 0) {
+    get_audit_log_filter_instance()->on_audit_log_flush_requested();
+  }
+}
+
+void max_size_update_func(MYSQL_THD thd, SYS_VAR *, void *val_ptr,
+                          const void *save) {
+  const auto *val = static_cast<const ulonglong *>(save);
+  *static_cast<VarWrapper<ulonglong> *>(val_ptr) = *val;
+
+  if (*val > 0) {
+    if (static_cast<VarWrapper<bool> *>(val_ptr)
+            ->get_container()
+            ->get_log_prune_seconds() > 0) {
+      push_warning(
+          thd, Sql_condition::SL_WARNING, 42000,
+          "Both audit_log_filter.max_size and audit_log_filter.prune_seconds "
+          "are set to non-zero, audit_log_filter_max_size takes precedence and "
+          "audit_log_filter_prune_seconds is ignored.");
+    }
+
+    get_audit_log_filter_instance()->on_audit_log_prune_requested();
+  }
+}
+
+void prune_seconds_update_func(MYSQL_THD thd, SYS_VAR *, void *val_ptr,
+                               const void *save) {
+  const auto *val = static_cast<const ulonglong *>(save);
+  *static_cast<VarWrapper<ulonglong> *>(val_ptr) = *val;
+
+  if (*val > 0) {
+    if (static_cast<VarWrapper<bool> *>(val_ptr)
+            ->get_container()
+            ->get_log_max_size() > 0) {
+      push_warning(
+          thd, Sql_condition::SL_WARNING, 42000,
+          "Both audit_log_filter.max_size and audit_log_filter.prune_seconds "
+          "are set to non-zero, audit_log_filter_max_size takes precedence and "
+          "audit_log_filter_prune_seconds is ignored.");
+    }
+
+    get_audit_log_filter_instance()->on_audit_log_prune_requested();
+  }
+}
+
 }  // namespace
 
 SysVars::SysVars(comp_registry_srv_t *comp_registry_srv)
-    : m_comp_registry_srv{comp_registry_srv} {}
+    : m_comp_registry_srv{comp_registry_srv} {
+  m_log_flush_requested.set_container(this);
+  m_log_max_size.set_container(this);
+  m_log_prune_seconds.set_container(this);
+}
 
 SysVars::~SysVars() {
   my_service<SERVICE_TYPE(component_sys_variable_unregister)> sys_var_unreg_srv(
@@ -146,6 +203,7 @@ bool SysVars::init() noexcept {
   using ulonglong_arg_check_t = INTEGRAL_CHECK_ARG(ulonglong);
   using str_arg_check_t = STR_CHECK_ARG(str);
   using enum_arg_check_t = ENUM_CHECK_ARG(enum);
+  using bool_arg_check_t = BOOL_CHECK_ARG(bool);
 
   my_service<SERVICE_TYPE(component_sys_variable_register)> sys_var_reg_srv(
       "component_sys_variable_register", m_comp_registry_srv);
@@ -239,7 +297,7 @@ bool SysVars::init() noexcept {
           "The logging method used by the audit log filter plugin, "
           "if FILE handler is used.",
           nullptr, nullptr, static_cast<void *>(&strategy_arg_check),
-          static_cast<void *>(&m_file_stategy))) {
+          static_cast<void *>(&m_file_stategy_type))) {
     LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
                     "Failed to init %s.%s variable", kComponentName,
                     kVarNameStrategy);
@@ -292,22 +350,59 @@ bool SysVars::init() noexcept {
   }
 
   /*
-   * The audit_log_filter.rotations variable is used to specify how many log
-   * files should be kept when audit_log_filter.rotate_on_size variable is set
-   * to non-zero value. This variable has effect only when audit_log_handler is
-   * set to FILE.
+   * A value greater than 0 enables size-based pruning. The value is the
+   * combined size above which audit log files become subject to pruning.
    */
-  ulonglong_arg_check_t rotations_arg_check{0UL, 0UL, 999UL, 1UL};
+  ulonglong_arg_check_t max_size_arg_check{0UL, 0UL, ULLONG_MAX, 4096UL};
 
   if (sys_var_reg_srv->register_variable(
-          kComponentName, kVarNameRotations,
-          PLUGIN_VAR_LONGLONG | PLUGIN_VAR_UNSIGNED | PLUGIN_VAR_RQCMDARG,
-          "Maximum number of rotations to keep, if FILE handler is used.",
-          nullptr, nullptr, static_cast<void *>(&rotations_arg_check),
-          static_cast<void *>(&m_rotations))) {
+          kComponentName, kVarNameMaxSize,
+          PLUGIN_VAR_LONGLONG | PLUGIN_VAR_UNSIGNED | PLUGIN_VAR_OPCMDARG,
+          "The maximum combined size of log files in bytes after which log "
+          "files become subject to pruning.",
+          nullptr, max_size_update_func,
+          static_cast<void *>(&max_size_arg_check),
+          static_cast<void *>(&m_log_max_size))) {
     LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
                     "Failed to init %s.%s variable", kComponentName,
-                    kVarNameRotations);
+                    kVarNameMaxSize);
+    return false;
+  }
+
+  /*
+   * A value greater than 0 enables age-based pruning. The value is the number
+   * of seconds after which log files become subject to pruning.
+   */
+  ulonglong_arg_check_t prune_seconds_arg_check{0UL, 0UL, ULLONG_MAX, 0UL};
+
+  if (sys_var_reg_srv->register_variable(
+          kComponentName, kVarNamePruneSeconds,
+          PLUGIN_VAR_LONGLONG | PLUGIN_VAR_UNSIGNED | PLUGIN_VAR_OPCMDARG,
+          "The maximum log file age in seconds after which log file "
+          "become subject to pruning.",
+          nullptr, prune_seconds_update_func,
+          static_cast<void *>(&prune_seconds_arg_check),
+          static_cast<void *>(&m_log_prune_seconds))) {
+    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
+                    "Failed to init %s.%s variable", kComponentName,
+                    kVarNamePruneSeconds);
+    return false;
+  }
+
+  /*
+   * When this variable is set to ON log file will be closed and reopened.
+   * This can be used for manual log rotation.
+   */
+  bool_arg_check_t flush_arg_check{false};
+
+  if (sys_var_reg_srv->register_variable(
+          kComponentName, kVarNameFlush, PLUGIN_VAR_BOOL | PLUGIN_VAR_NOCMDARG,
+          "Close and reopen log file when set to ON.", nullptr,
+          flush_update_func, static_cast<void *>(&flush_arg_check),
+          static_cast<void *>(&m_log_flush_requested))) {
+    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
+                    "Failed to init %s.%s variable", kComponentName,
+                    kVarNameFlush);
     return false;
   }
 
@@ -371,7 +466,19 @@ bool SysVars::init() noexcept {
     return false;
   }
 
+  validate();
+
   return true;
+}
+
+void SysVars::validate() const noexcept {
+  if (get_log_max_size() > 0 && get_log_prune_seconds() > 0) {
+    LogComponentErr(
+        WARNING_LEVEL, ER_LOG_PRINTF_MSG,
+        "Both audit_log_filter.max_size and audit_log_filter.prune_seconds are "
+        "set to non-zero. audit_log_filter_max_size takes precedence and "
+        "audit_log_filter_prune_seconds is ignored");
+  }
 }
 
 // TODO: support for
@@ -381,7 +488,6 @@ bool SysVars::init() noexcept {
 //  audit_log_current_session
 //  audit_log_disable
 //  audit_log_filter_id
-//  audit_log_flush
 //  audit_log_password_history_keep_days
 //  audit_log_read_buffer_size
 //
@@ -395,11 +501,11 @@ bool SysVars::init() noexcept {
 //  Audit_log_total_size
 //  Audit_log_write_waits
 
-int SysVars::get_syslog_facility() noexcept {
+int SysVars::get_syslog_facility() const noexcept {
   return audit_log_filter_syslog_facility_codes[m_syslog_facility];
 }
 
-int SysVars::get_syslog_priority() noexcept {
+int SysVars::get_syslog_priority() const noexcept {
   return audit_log_filter_syslog_priority_codes[m_syslog_priority];
 }
 

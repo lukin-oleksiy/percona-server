@@ -46,7 +46,7 @@ class AuditLogFilter {
   AuditLogFilter(comp_registry_srv_container_t comp_registry_srv,
                  std::unique_ptr<AuditRuleRegistry> audit_rules_registry,
                  std::unique_ptr<AuditUdf> audit_udf,
-                 std::unique_ptr<SysVars> sys_vars,
+                 std::shared_ptr<SysVars> sys_vars,
                  std::unique_ptr<log_writer::LogWriterBase> log_writer);
 
   /**
@@ -71,6 +71,16 @@ class AuditLogFilter {
    */
   void on_audit_rule_flush_requested() noexcept;
 
+  /**
+   * @brief Handle log file flush request.
+   */
+  void on_audit_log_flush_requested() noexcept;
+
+  /**
+   * @brief Handle log files prunning request.
+   */
+  void on_audit_log_prune_requested() noexcept;
+
  private:
   /**
    * @brief Get user and host name from connection THD instance
@@ -88,7 +98,7 @@ class AuditLogFilter {
   comp_registry_srv_container_t m_comp_registry_srv;
   std::unique_ptr<AuditRuleRegistry> m_audit_rules_registry;
   std::unique_ptr<AuditUdf> m_audit_udf;
-  std::unique_ptr<SysVars> m_sys_vars;
+  std::shared_ptr<SysVars> m_sys_vars;
   std::unique_ptr<log_writer::LogWriterBase> m_log_writer;
   std::unique_ptr<AuditEventFilter> m_filter;
 };
