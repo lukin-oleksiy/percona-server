@@ -16,6 +16,7 @@
 #include "components/audit_log_filter/log_writer/base.h"
 #include "components/audit_log_filter/audit_error_log.h"
 #include "components/audit_log_filter/log_record_formatter.h"
+#include "components/audit_log_filter/sys_vars.h"
 
 #include "my_dbug.h"
 
@@ -25,8 +26,9 @@
 namespace audit_log_filter::log_writer {
 
 LogWriterBase::LogWriterBase(
+    std::shared_ptr<SysVars> config,
     std::unique_ptr<log_record_formatter::LogRecordFormatterBase> formatter)
-    : m_formatter{std::move(formatter)} {}
+    : m_config{std::move(config)}, m_formatter{std::move(formatter)} {}
 
 LogWriterBase::~LogWriterBase() = default;
 
@@ -57,5 +59,7 @@ void LogWriterBase::write(AuditRecordVariant record) noexcept {
 
   write(record_str);
 }
+
+SysVars *LogWriterBase::get_config() const noexcept { return m_config.get(); }
 
 }  // namespace audit_log_filter::log_writer
