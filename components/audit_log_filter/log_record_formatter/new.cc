@@ -207,8 +207,8 @@ AuditRecordString LogRecordFormatterNew::apply(
          << "    <STATUS>" << audit_record.event->status << "</STATUS>\n"
          << "    <CONNECTION_ID>" << audit_record.event->connection_id << "</CONNECTION_ID>\n"
          << "    <COMMAND_CLASS>" << make_escaped_string(audit_record.event->sql_command) << "</COMMAND_CLASS>\n"
-         << "    <SQLTEXT>" << (audit_record.digest.empty() ? make_escaped_string(&audit_record.event->query)
-                                                                          : make_escaped_string(audit_record.digest)) << "</SQLTEXT>\n"
+         << "    <SQLTEXT>" << (audit_record.extended_info.digest.empty() ? make_escaped_string(&audit_record.event->query)
+                                                                          : make_escaped_string(audit_record.extended_info.digest)) << "</SQLTEXT>\n"
          << "  </AUDIT_RECORD>\n";
   /* clang-format on */
 
@@ -310,8 +310,8 @@ AuditRecordString LogRecordFormatterNew::apply(
          << "    <COMMAND_CLASS>" << event_class_to_string(audit_record.event_class) << "</COMMAND_CLASS>\n"
          << "    <CONNECTION_ID>" << audit_record.event->connection_id << "</CONNECTION_ID>\n"
          << "    <FLAGS>" << (audit_record.event->flags != nullptr ? *audit_record.event->flags : 0) << "</FLAGS>\n"
-         << "    <SQLTEXT>" << (audit_record.digest.empty() ? make_escaped_string(&audit_record.event->query)
-                                                                          : make_escaped_string(audit_record.digest)) << "</SQLTEXT>\n"
+         << "    <SQLTEXT>" << (audit_record.extended_info.digest.empty() ? make_escaped_string(&audit_record.event->query)
+                                                                          : make_escaped_string(audit_record.extended_info.digest)) << "</SQLTEXT>\n"
          << "    <REWRITTEN_QUERY>" << make_escaped_string(audit_record.event->rewritten_query) << "</REWRITTEN_QUERY>\n"
          << "  </AUDIT_RECORD>\n";
   /* clang-format on */

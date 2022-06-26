@@ -82,6 +82,8 @@ class AuditLogFilter {
   void on_audit_log_prune_requested() noexcept;
 
  private:
+  void get_connection_attrs(MYSQL_THD thd, AuditRecordVariant &audit_record);
+
   /**
    * @brief Get user and host name from connection THD instance
    *

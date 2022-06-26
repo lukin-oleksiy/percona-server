@@ -119,6 +119,10 @@ std::string LogRecordFormatterBase::make_record_id(
   return id.str();
 }
 
+uint64_t LogRecordFormatterBase::make_record_id() const noexcept {
+  return get_next_record_id();
+}
+
 std::string LogRecordFormatterBase::make_timestamp(
     const std::chrono::system_clock::time_point time_point) noexcept {
   const std::time_t t = std::chrono::system_clock::to_time_t(time_point);
@@ -438,6 +442,10 @@ std::string LogRecordFormatterBaseXml::get_file_header() const noexcept {
 
 std::string LogRecordFormatterBaseXml::get_file_footer() const noexcept {
   return "</AUDIT>\n";
+}
+
+std::string LogRecordFormatterBaseXml::get_record_separator() const noexcept {
+  return "";
 }
 
 const EscapeRulesContainer &LogRecordFormatterBaseXml::get_escape_rules()

@@ -204,6 +204,13 @@ class LogRecordFormatterBase {
   [[nodiscard]] virtual std::string get_file_footer() const noexcept = 0;
 
   /**
+   * @brief Get separator added between event records in a log file.
+   *
+   * @return Event records separator string
+   */
+  [[nodiscard]] virtual std::string get_record_separator() const noexcept = 0;
+
+  /**
    * @brief Init record sequence number.
    *
    * Set initial value to record sequence number. Initialized to current
@@ -246,6 +253,13 @@ class LogRecordFormatterBase {
    */
   [[nodiscard]] std::string make_record_id(
       std::chrono::system_clock::time_point time_point) const noexcept;
+
+  /**
+   * @brief Get numeric record ID.
+   *
+   * @return Record ID
+   */
+  [[nodiscard]] uint64_t make_record_id() const noexcept;
 
   /**
    * @brief Apply escaping rules to provided string.
@@ -437,6 +451,13 @@ class LogRecordFormatterBaseXml : public LogRecordFormatterBase {
    * @return Log file footer string
    */
   [[nodiscard]] std::string get_file_footer() const noexcept override;
+
+  /**
+   * @brief Get separator added between event records in a log file.
+   *
+   * @return Event resords separator string
+   */
+  [[nodiscard]] std::string get_record_separator() const noexcept override;
 
  private:
   /**
