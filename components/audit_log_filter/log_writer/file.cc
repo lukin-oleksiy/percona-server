@@ -31,7 +31,8 @@ LogWriter<AuditLogHandlerType::File>::LogWriter(
     std::shared_ptr<SysVars> config,
     std::unique_ptr<log_record_formatter::LogRecordFormatterBase> formatter)
     : LogWriterBase{std::move(config), std::move(formatter)},
-      m_is_rotating{false} {}
+      m_is_rotating{false},
+      m_is_log_empty{true} {}
 
 LogWriter<AuditLogHandlerType::File>::~LogWriter() { do_close_file(); }
 
@@ -56,19 +57,29 @@ bool LogWriterFile::do_open_file() noexcept {
   init_formatter();
 
   if (is_new_file) {
-    write(get_formatter()->get_file_header());
+    write(get_formatter()->get_file_header(), false);
+    m_is_log_empty = true;
   }
 
   return true;
 }
 
 bool LogWriterFile::do_close_file() noexcept {
-  write(get_formatter()->get_file_footer());
+  write(get_formatter()->get_file_footer(), false);
   return m_file_handle.close_file();
 }
 
-void LogWriterFile::write(const std::string &record) noexcept {
+void LogWriterFile::write(const std::string &record,
+                          const bool print_separator) noexcept {
+  if (print_separator && !m_is_log_empty) {
+    m_file_handle.write_file(get_formatter()->get_record_separator());
+  }
+
   m_file_handle.write_file(record);
+
+  if (m_is_log_empty) {
+    m_is_log_empty = false;
+  }
 
   const auto file_size_limit = get_config()->get_rotate_on_size();
 

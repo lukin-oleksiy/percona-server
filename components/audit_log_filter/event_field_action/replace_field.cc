@@ -69,12 +69,12 @@ bool EventFieldActionReplaceField::apply(
   if (std::holds_alternative<AuditRecordQuery>(audit_record)) {
     auto *rec = std::get_if<AuditRecordQuery>(&audit_record);
     if (rec != nullptr) {
-      rec->digest = std::move(new_value);
+      rec->extended_info.digest = std::move(new_value);
     }
   } else if (std::holds_alternative<AuditRecordParse>(audit_record)) {
     auto *rec = std::get_if<AuditRecordParse>(&audit_record);
     if (rec != nullptr) {
-      rec->digest = std::move(new_value);
+      rec->extended_info.digest = std::move(new_value);
     }
   } else {
     LogComponentErr(ERROR_LEVEL, ER_AUDIT_REPLACE_FIELD_UNEXPECTED_EVENT_TYPE);

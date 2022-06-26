@@ -27,6 +27,7 @@
 #include <mysql/components/component_implementation.h>
 #include <mysql/components/service_implementation.h>
 
+#include <mysql/components/services/mysql_connection_attributes_iterator.h>
 #include <mysql/components/services/security_context.h>
 
 #include <mysql/components/services/event_tracking_authentication_service.h>
@@ -441,6 +442,10 @@ int AuditLogFilter::notify_event(audit_event_class_t event_class,
     return 1;
   }
 
+  if (event_class == audit_event_class_t::AUDIT_CONNECTION_CLASS) {
+    get_connection_attrs(thd, audit_record);
+  }
+
   LogComponentErr(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
                   "Writing audit event '%s' with class %i to audit log",
                   ev_name.data(), event_class);
@@ -463,6 +468,38 @@ void AuditLogFilter::on_audit_log_flush_requested() noexcept {
 
 void AuditLogFilter::on_audit_log_prune_requested() noexcept {
   m_log_writer->prune();
+}
+
+void AuditLogFilter::get_connection_attrs(MYSQL_THD thd,
+                                          AuditRecordVariant &audit_record) {
+  my_service<SERVICE_TYPE(mysql_connection_attributes_iterator)> attrs_service(
+      "mysql_connection_attributes_iterator", m_comp_registry_srv.get());
+
+  if (!attrs_service.is_valid()) {
+    return;
+  }
+
+  my_h_connection_attributes_iterator iterator = nullptr;
+  MYSQL_LEX_CSTRING attr_name{nullptr, 0};
+  MYSQL_LEX_CSTRING attr_value{nullptr, 0};
+  const char *charset_string = nullptr;
+
+  if (attrs_service->init(thd, &iterator) == 1) {
+    return;
+  }
+
+  auto &info =
+      std::visit([](auto &rec) -> ExtendedInfo & { return rec.extended_info; },
+                 audit_record);
+
+  while (attrs_service->get(thd, &iterator, &attr_name.str, &attr_name.length,
+                            &attr_value.str, &attr_value.length,
+                            &charset_string) == 0) {
+    info.attrs.emplace(std::string{attr_name.str, attr_name.length},
+                       std::string{attr_value.str, attr_value.length});
+  }
+
+  attrs_service->deinit(iterator);
 }
 
 bool AuditLogFilter::get_connection_user(MYSQL_THD thd, std::string &user_name,
