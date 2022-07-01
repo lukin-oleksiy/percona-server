@@ -68,8 +68,10 @@ class AuditLogFilter {
  public:
   /**
    * @brief Handle filters flush request.
+   *
+   * @return true in case filters reloaded successfully, false otherwise
    */
-  void on_audit_rule_flush_requested() noexcept;
+  bool on_audit_rule_flush_requested() noexcept;
 
   /**
    * @brief Handle log file flush request.
