@@ -7,7 +7,7 @@ call mtr.add_suppression("Both audit_log_filter.max_size and audit_log_filter.pr
 --enable_query_log
 
 # Restart with both max_size and prune_seconds being set, there must be a warning in error log
---let $restart_parameters="restart: --audit-log-filter.max_size=4096 --audit-log-filter.prune_seconds=1000"
+--let $restart_parameters="restart: --audit-log-filter.max-size=4096 --audit-log-filter.prune-seconds=1000"
 --source include/restart_mysqld.inc
 
 #--let $log_file= $MYSQLTEST_VARDIR/log/mysqld.1.err
@@ -34,5 +34,4 @@ SELECT @@global.audit_log_filter.max_size;
 SELECT @@global.audit_log_filter.prune_seconds;
 
 --source ../inc/audit_comp_uninstall.inc
-
 --source ../inc/audit_tables_cleanup.inc

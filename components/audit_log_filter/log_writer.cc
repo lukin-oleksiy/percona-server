@@ -25,26 +25,22 @@ namespace audit_log_filter {
 
 template <AuditLogHandlerType HandlerType>
 std::unique_ptr<LogWriterBase> create_helper(
-    std::shared_ptr<SysVars> config,
     std::unique_ptr<log_record_formatter::LogRecordFormatterBase> formatter) {
-  return std::make_unique<LogWriter<HandlerType>>(config, std::move(formatter));
+  return std::make_unique<LogWriter<HandlerType>>(std::move(formatter));
 }
 
 std::unique_ptr<LogWriterBase> get_log_writer(
-    std::shared_ptr<SysVars> config,
     std::unique_ptr<log_record_formatter::LogRecordFormatterBase> formatter) {
   using CreateFunc = std::unique_ptr<LogWriterBase> (*)(
-      std::shared_ptr<SysVars>,
       std::unique_ptr<log_record_formatter::LogRecordFormatterBase>);
 
-  const auto handler_type = config->get_handler_type();
+  const auto handler_type = SysVars::get_handler_type();
   static const CreateFunc
       funcs[static_cast<int>(AuditLogHandlerType::TypesCount)] = {
           create_helper<AuditLogHandlerType::File>,
           create_helper<AuditLogHandlerType::Syslog>};
 
-  return (*funcs[static_cast<int>(handler_type)])(std::move(config),
-                                                  std::move(formatter));
+  return (*funcs[static_cast<int>(handler_type)])(std::move(formatter));
 }
 
 }  // namespace audit_log_filter

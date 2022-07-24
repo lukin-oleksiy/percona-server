@@ -15,7 +15,3 @@ OLD
 SELECT @@global.audit_log_filter.format;
 @@global.audit_log_filter.format
 JSON
-# restart: --audit-log-filter.format=CSV
-SELECT @@global.audit_log_filter.format;
-@@global.audit_log_filter.format
-CSV

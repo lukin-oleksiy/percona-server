@@ -27,5 +27,4 @@ SET GLOBAL audit_log_filter.rotate_on_size='';
 SELECT @@global.audit_log_filter.rotate_on_size;
 
 --source ../inc/audit_comp_uninstall.inc
-
 --source ../inc/audit_tables_cleanup.inc

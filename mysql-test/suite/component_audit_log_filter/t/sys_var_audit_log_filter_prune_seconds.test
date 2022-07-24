@@ -26,5 +26,4 @@ SET GLOBAL audit_log_filter.prune_seconds='';
 SELECT @@global.audit_log_filter.prune_seconds;
 
 --source ../inc/audit_comp_uninstall.inc
-
 --source ../inc/audit_tables_cleanup.inc

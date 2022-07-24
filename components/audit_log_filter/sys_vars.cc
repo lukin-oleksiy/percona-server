@@ -18,62 +18,157 @@
 #include "components/audit_log_filter/audit_log_filter.h"
 
 #define ALLOW_COMPONENT_INCLUDE  // for my_io.h and plugin.h
-#include "mysql/plugin.h"
+#include "sql/mysqld.h"
 #include "sql/sql_const.h"
 #include "sql/sql_error.h"
 #include "sql/sql_plugin_var.h"
 
+#include <mysql/components/services/component_status_var_service.h>
 #include <mysql/components/services/component_sys_var_service.h>
+#include <mysql/components/services/dynamic_privilege.h>
+#include <mysql/components/services/mysql_system_variable.h>
+#include <mysql/components/services/security_context.h>
 
 #include <syslog.h>
-#include <array>
+#include <atomic>
+#include <string>
+#include <string_view>
 
 namespace audit_log_filter {
 namespace {
 
-/*
- * Variable names used during sys vars definition
- */
-const char *kComponentName{"audit_log_filter"};
-const char *kVarNameFile{"file"};
-const char *kVarNameHandler{"handler"};
-const char *kVarNameFormat{"format"};
-const char *kVarNameStrategy{"strategy"};
-const char *kVarNameBufferSize{"buffer_size"};
-const char *kVarNameRotateOnSize{"rotate_on_size"};
-const char *kVarNameMaxSize{"max_size"};
-const char *kVarNamePruneSeconds{"prune_seconds"};
-const char *kVarNameFlush{"flush"};
-const char *kVarNameSyslogIdent{"syslog_ident"};
-const char *kVarNameSyslogFacility{"syslog_facility"};
-const char *kVarNameSyslogPriority{"syslog_priority"};
-
-const std::array<const char *, 12> var_names_list{
-    kVarNameFile,           kVarNameHandler,     kVarNameFormat,
-    kVarNameStrategy,       kVarNameBufferSize,  kVarNameRotateOnSize,
-    kVarNameMaxSize,        kVarNameSyslogIdent, kVarNameSyslogFacility,
-    kVarNameSyslogPriority, kVarNameFlush,       kVarNamePruneSeconds};
+constexpr std::string_view kCompName{"audit_log_filter"};
 
 /*
- * TYPE_LIB definition for audit_log_filter.handler
+ * Status variables
  */
+std::atomic<uint64_t> events_total{0};
+std::atomic<uint64_t> events_lost{0};
+std::atomic<uint64_t> events_filtered{0};
+std::atomic<uint64_t> events_written{0};
+std::atomic<uint64_t> write_waits{0};
+std::atomic<uint64_t> event_max_drop_size{0};
+std::atomic<uint64_t> current_log_size{0};
+std::atomic<uint64_t> total_log_size{0};
+
+int show_events_total(THD *, SHOW_VAR *var, char *buff) {
+  var->type = SHOW_LONG;
+  var->value = buff;
+  auto *value = reinterpret_cast<uint64_t *>(buff);
+  *value = events_total.load(std::memory_order_relaxed);
+  return 0;
+}
+
+int show_events_lost(THD *, SHOW_VAR *var, char *buff) {
+  var->type = SHOW_LONG;
+  var->value = buff;
+  auto *value = reinterpret_cast<uint64_t *>(buff);
+  *value = events_lost.load(std::memory_order_relaxed);
+  return 0;
+}
+
+int show_events_filtered(THD *, SHOW_VAR *var, char *buff) {
+  var->type = SHOW_LONG;
+  var->value = buff;
+  auto *value = reinterpret_cast<uint64_t *>(buff);
+  *value = events_filtered.load(std::memory_order_relaxed);
+  return 0;
+}
+
+int show_events_written(THD *, SHOW_VAR *var, char *buff) {
+  var->type = SHOW_LONG;
+  var->value = buff;
+  auto *value = reinterpret_cast<uint64_t *>(buff);
+  *value = events_written.load(std::memory_order_relaxed);
+  return 0;
+}
+
+int show_write_waits(THD *, SHOW_VAR *var, char *buff) {
+  var->type = SHOW_LONG;
+  var->value = buff;
+  auto *value = reinterpret_cast<uint64_t *>(buff);
+  *value = write_waits.load(std::memory_order_relaxed);
+  return 0;
+}
+
+int show_event_max_drop_size(THD *, SHOW_VAR *var, char *buff) {
+  var->type = SHOW_LONG;
+  var->value = buff;
+  auto *value = reinterpret_cast<uint64_t *>(buff);
+  *value = event_max_drop_size.load(std::memory_order_relaxed);
+  return 0;
+}
+
+int show_current_log_size(THD *, SHOW_VAR *var, char *buff) {
+  var->type = SHOW_LONG;
+  var->value = buff;
+  auto *value = reinterpret_cast<uint64_t *>(buff);
+  *value = current_log_size.load(std::memory_order_relaxed);
+  return 0;
+}
+
+int show_total_log_size(THD *, SHOW_VAR *var, char *buff) {
+  var->type = SHOW_LONG;
+  var->value = buff;
+  auto *value = reinterpret_cast<uint64_t *>(buff);
+  *value = total_log_size.load(std::memory_order_relaxed);
+  return 0;
+}
+
+SHOW_VAR status_vars[] = {
+    {"Audit_log_filter_events", reinterpret_cast<char *>(&show_events_total),
+     SHOW_FUNC, SHOW_SCOPE_GLOBAL},
+    {"Audit_log_filter_events_lost",
+     reinterpret_cast<char *>(&show_events_lost), SHOW_FUNC, SHOW_SCOPE_GLOBAL},
+    {"Audit_log_filter_events_filtered",
+     reinterpret_cast<char *>(&show_events_filtered), SHOW_FUNC,
+     SHOW_SCOPE_GLOBAL},
+    {"Audit_log_filter_events_written",
+     reinterpret_cast<char *>(&show_events_written), SHOW_FUNC,
+     SHOW_SCOPE_GLOBAL},
+    {"Audit_log_filter_write_waits",
+     reinterpret_cast<char *>(&show_write_waits), SHOW_FUNC, SHOW_SCOPE_GLOBAL},
+    {"Audit_log_filter_event_max_drop_size",
+     reinterpret_cast<char *>(&show_event_max_drop_size), SHOW_FUNC,
+     SHOW_SCOPE_GLOBAL},
+    {"Audit_log_filter_current_size",
+     reinterpret_cast<char *>(&show_current_log_size), SHOW_FUNC,
+     SHOW_SCOPE_GLOBAL},
+    {"Audit_log_filter_total_size",
+     reinterpret_cast<char *>(&show_total_log_size), SHOW_FUNC,
+     SHOW_SCOPE_GLOBAL},
+    {nullptr, nullptr, SHOW_UNDEF, SHOW_SCOPE_UNDEF}};
+
+/*
+ * System variables
+ */
+char *log_file_name;
+std::string default_log_file_name{"audit_filter.log"};
+ulong log_handler_type = static_cast<ulong>(AuditLogHandlerType::File);
+ulong log_format_type = static_cast<ulong>(AuditLogFormatType::New);
+ulong log_strategy_type =
+    static_cast<ulong>(AuditLogStrategyType::Asynchronous);
+ulonglong log_write_buffer_size = 1048576UL;
+ulonglong log_rotate_on_size = 0;
+ulonglong log_max_size = 0;
+ulonglong log_prune_seconds = 0;
+bool log_flush_requested = false;
+char *log_syslog_tag = nullptr;
+std::string default_log_syslog_tag{"audit-filter"};
+ulong log_syslog_facility = 0;
+ulong log_syslog_priority = 0;
+
 const char *audit_log_filter_handler_names[] = {"FILE", "SYSLOG", nullptr};
 TYPE_LIB audit_log_filter_handler_typelib = {
     array_elements(audit_log_filter_handler_names) - 1,
     "audit_log_filter_handler_typelib", audit_log_filter_handler_names,
     nullptr};
 
-/*
- * TYPE_LIB definition for audit_log_filter.format
- */
 const char *audit_log_filter_format_names[] = {"NEW", "OLD", "JSON", nullptr};
 TYPE_LIB audit_log_filter_format_typelib = {
     array_elements(audit_log_filter_format_names) - 1,
     "audit_log_filter_format_typelib", audit_log_filter_format_names, nullptr};
 
-/*
- * TYPE_LIB definition for audit_log_filter.strategy
- */
 const char *audit_log_filter_strategy_names[] = {
     "ASYNCHRONOUS", "PERFORMANCE", "SEMISYNCHRONOUS", "SYNCHRONOUS", nullptr};
 TYPE_LIB audit_log_filter_strategy_typelib = {
@@ -81,9 +176,54 @@ TYPE_LIB audit_log_filter_strategy_typelib = {
     "audit_log_filter_strategy_typelib", audit_log_filter_strategy_names,
     nullptr};
 
+void max_size_update_func(MYSQL_THD thd, SYS_VAR *, void *val_ptr,
+                          const void *save) {
+  const auto *val = static_cast<const ulonglong *>(save);
+  *static_cast<ulonglong *>(val_ptr) = *val;
+
+  if (*val > 0) {
+    if (SysVars::get_log_prune_seconds() > 0) {
+      push_warning(
+          thd, Sql_condition::SL_WARNING, 42000,
+          "Both audit_log_filter.max_size and audit_log_filter.prune_seconds "
+          "are set to non-zero, audit_log_filter_max_size takes precedence and "
+          "audit_log_filter_prune_seconds is ignored.");
+    }
+
+    get_audit_log_filter_instance()->on_audit_log_prune_requested();
+  }
+}
+
+void prune_seconds_update_func(MYSQL_THD thd, SYS_VAR *, void *val_ptr,
+                               const void *save) {
+  const auto *val = static_cast<const ulonglong *>(save);
+  *static_cast<ulonglong *>(val_ptr) = *val;
+
+  if (*val > 0) {
+    if (SysVars::get_log_max_size() > 0) {
+      push_warning(
+          thd, Sql_condition::SL_WARNING, 42000,
+          "Both audit_log_filter.max_size and audit_log_filter.prune_seconds "
+          "are set to non-zero, audit_log_filter_max_size takes precedence and "
+          "audit_log_filter_prune_seconds is ignored.");
+    }
+
+    get_audit_log_filter_instance()->on_audit_log_prune_requested();
+  }
+}
+
 /*
- * TYPE_LIB definition for audit_log_filter.syslog_facility
+ * When this variable is set to ON log file will be closed and reopened.
+ * This can be used for manual log rotation.
  */
+void flush_update_func(MYSQL_THD, SYS_VAR *, void *, const void *save) {
+  const auto *val = static_cast<const bool *>(save);
+
+  if (*val && SysVars::get_rotate_on_size() == 0) {
+    get_audit_log_filter_instance()->on_audit_log_flush_requested();
+  }
+}
+
 const int audit_log_filter_syslog_facility_codes[] = {
     LOG_USER,     LOG_AUTHPRIV, LOG_CRON,   LOG_DAEMON, LOG_FTP,    LOG_KERN,
     LOG_LPR,      LOG_MAIL,     LOG_NEWS,
@@ -108,9 +248,6 @@ TYPE_LIB audit_log_filter_syslog_facility_typelib = {
     "audit_log_filter_syslog_facility_typelib",
     audit_log_filter_syslog_facility_names, nullptr};
 
-/*
- * TYPE_LIB definition for audit_log_filter.syslog_priority
- */
 const int audit_log_filter_syslog_priority_codes[] = {
     LOG_INFO,   LOG_ALERT, LOG_CRIT,  LOG_ERR, LOG_WARNING,
     LOG_NOTICE, LOG_EMERG, LOG_DEBUG, 0};
@@ -124,360 +261,252 @@ TYPE_LIB audit_log_filter_syslog_priority_typelib = {
     "audit_log_filter_syslog_priority_typelib",
     audit_log_filter_syslog_priority_names, nullptr};
 
-void flush_update_func(MYSQL_THD, SYS_VAR *, void *val_ptr, const void *save) {
-  const auto *val = static_cast<const bool *>(save);
-  auto *sys_vars = static_cast<VarWrapper<bool> *>(val_ptr)->get_container();
+using bool_arg_check_type = BOOL_CHECK_ARG(bool);
+using str_arg_check_type = STR_CHECK_ARG(str);
+using enum_arg_check_type = ENUM_CHECK_ARG(type_lib);
+using ulonglong_arg_check_type = INTEGRAL_CHECK_ARG(ulonglong);
+using ulong_arg_check_type = INTEGRAL_CHECK_ARG(ulong);
 
-  if (*val && sys_vars->get_rotate_on_size() == 0) {
-    get_audit_log_filter_instance()->on_audit_log_flush_requested();
-  }
-}
+str_arg_check_type check_file{default_log_file_name.data()};
+enum_arg_check_type check_handler{static_cast<ulong>(AuditLogHandlerType::File),
+                                  &audit_log_filter_handler_typelib};
+enum_arg_check_type check_format{static_cast<ulong>(AuditLogFormatType::New),
+                                 &audit_log_filter_format_typelib};
+enum_arg_check_type check_strategy{
+    static_cast<ulong>(AuditLogStrategyType::Asynchronous),
+    &audit_log_filter_strategy_typelib};
+ulonglong_arg_check_type check_buffer_size{1048576UL, 4096UL, ULLONG_MAX,
+                                           4096UL};
+ulonglong_arg_check_type check_rotate_on_size{0UL, 0UL, ULLONG_MAX, 4096UL};
+ulonglong_arg_check_type check_max_size{0UL, 0UL, ULLONG_MAX, 4096UL};
+ulonglong_arg_check_type check_prune_seconds{0UL, 0UL, ULLONG_MAX, 0UL};
+bool_arg_check_type check_flush{false};
+str_arg_check_type check_syslog_tag{default_log_syslog_tag.data()};
+enum_arg_check_type check_syslog_facility{
+    0, &audit_log_filter_syslog_facility_typelib};
+enum_arg_check_type check_syslog_priority{
+    0, &audit_log_filter_syslog_priority_typelib};
 
-void max_size_update_func(MYSQL_THD thd, SYS_VAR *, void *val_ptr,
-                          const void *save) {
-  const auto *val = static_cast<const ulonglong *>(save);
-  *static_cast<VarWrapper<ulonglong> *>(val_ptr) = *val;
+struct SysVarInfo {
+  const char *name;
+  int flags;
+  const char *comment;
+  mysql_sys_var_check_func check;
+  mysql_sys_var_update_func update;
+  void *check_arg;
+  void *variable_value;
+};
+using SysVarListType = std::vector<std::pair<SysVarInfo, bool>>;
 
-  if (*val > 0) {
-    if (static_cast<VarWrapper<bool> *>(val_ptr)
-            ->get_container()
-            ->get_log_prune_seconds() > 0) {
-      push_warning(
-          thd, Sql_condition::SL_WARNING, 42000,
-          "Both audit_log_filter.max_size and audit_log_filter.prune_seconds "
-          "are set to non-zero, audit_log_filter_max_size takes precedence and "
-          "audit_log_filter_prune_seconds is ignored.");
-    }
-
-    get_audit_log_filter_instance()->on_audit_log_prune_requested();
-  }
-}
-
-void prune_seconds_update_func(MYSQL_THD thd, SYS_VAR *, void *val_ptr,
-                               const void *save) {
-  const auto *val = static_cast<const ulonglong *>(save);
-  *static_cast<VarWrapper<ulonglong> *>(val_ptr) = *val;
-
-  if (*val > 0) {
-    if (static_cast<VarWrapper<bool> *>(val_ptr)
-            ->get_container()
-            ->get_log_max_size() > 0) {
-      push_warning(
-          thd, Sql_condition::SL_WARNING, 42000,
-          "Both audit_log_filter.max_size and audit_log_filter.prune_seconds "
-          "are set to non-zero, audit_log_filter_max_size takes precedence and "
-          "audit_log_filter_prune_seconds is ignored.");
-    }
-
-    get_audit_log_filter_instance()->on_audit_log_prune_requested();
-  }
-}
+SysVarListType sys_vars = {
+    /*
+     * The audit_log_filter.file variable is used to specify the filename that’s
+     * going to store the audit log. It can contain the path relative to the
+     * datadir or absolute path.
+     */
+    {{"file",
+      PLUGIN_VAR_STR | PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY |
+          PLUGIN_VAR_MEMALLOC,
+      "The name of the log file.", nullptr, nullptr,
+      static_cast<void *>(&check_file), static_cast<void *>(&log_file_name)},
+     false},
+    /*
+     * The audit_log_filter.handler variable is used to configure where the
+     * audit log will be written. If it is set to FILE, the log will be written
+     * into a file specified by audit_log_filter.file variable. If it is set to
+     * SYSLOG, the audit log will be written to syslog.
+     */
+    {{"handler", PLUGIN_VAR_ENUM | PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
+      "The audit log handler.", nullptr, nullptr,
+      static_cast<void *>(&check_handler),
+      static_cast<void *>(&log_handler_type)},
+     false},
+    /*
+     * The audit_log_filter.format variable is used to specify the audit filter
+     * log format. The audit log filter plugin supports three log formats:
+     * OLD, NEW and JSON. OLD and NEW formats are based on XML, where
+     * the former outputs log record properties as XML attributes and the latter
+     * as XML tags.
+     */
+    {{"format", PLUGIN_VAR_ENUM | PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
+      "The audit log file format.", nullptr, nullptr,
+      static_cast<void *>(&check_format),
+      static_cast<void *>(&log_format_type)},
+     false},
+    /*
+     * The audit_log_filter.strategy variable is used to specify the audit log
+     * filter strategy, possible values are:
+     * ASYNCHRONOUS - (default) log using memory buffer, do not drop messages
+     *                if buffer is full
+     * PERFORMANCE - log using memory buffer, drop messages if buffer is full
+     * SEMISYNCHRONOUS - log directly to file, do not flush and sync every event
+     * SYNCHRONOUS - log directly to file, flush and sync every event.
+     *
+     * This variable has effect only when audit_log_handler is set to FILE.
+     */
+    {{"strategy", PLUGIN_VAR_ENUM | PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
+      "The logging method used by the audit log plugin, if FILE handler is "
+      "used.",
+      nullptr, nullptr, static_cast<void *>(&check_strategy),
+      static_cast<void *>(&log_strategy_type)},
+     false},
+    /*
+     * The audit_log_filter.buffer_size variable can be used to specify the size
+     * of memory buffer used for logging, used when audit_log_filter.strategy
+     * variable is set to ASYNCHRONOUS or PERFORMANCE values. This variable has
+     * effect only when audit_log_filter.handler is set to FILE.
+     */
+    {{"buffer_size",
+      PLUGIN_VAR_LONGLONG | PLUGIN_VAR_UNSIGNED | PLUGIN_VAR_RQCMDARG |
+          PLUGIN_VAR_READONLY,
+      "The size of the buffer for asynchronous logging, if FILE handler is "
+      "used.",
+      nullptr, nullptr, static_cast<void *>(&check_buffer_size),
+      static_cast<void *>(&log_write_buffer_size)},
+     false},
+    /*
+     * The audit_log_filter.rotate_on_size variable specifies the maximum size
+     * of the audit log file. Upon reaching this size, the audit log will be
+     * rotated. For this variable to take effect, set the
+     * audit_log_filter.handler variable to FILE and the
+     * audit_log_filter.rotations variable to a value greater than zero.
+     */
+    {{"rotate_on_size",
+      PLUGIN_VAR_LONGLONG | PLUGIN_VAR_UNSIGNED | PLUGIN_VAR_RQCMDARG,
+      "Maximum size of the log to start the rotation, if FILE handler is used.",
+      nullptr, nullptr, static_cast<void *>(&check_rotate_on_size),
+      static_cast<void *>(&log_rotate_on_size)},
+     false},
+    /*
+     * The audit_log_filter.max_size enables size-based pruning when set to a
+     * value greater than 0. The value is the combined size above which
+     * audit log files become subject to pruning.
+     */
+    {{"max_size",
+      PLUGIN_VAR_LONGLONG | PLUGIN_VAR_UNSIGNED | PLUGIN_VAR_OPCMDARG,
+      "The maximum combined size of log files in bytes after which log files "
+      "become subject to pruning.",
+      nullptr, max_size_update_func, static_cast<void *>(&check_max_size),
+      static_cast<void *>(&log_max_size)},
+     false},
+    /*
+     * The audit_log_filter.prune_seconds enables age-based pruning when set to
+     * a value greater than 0. The value is the number of seconds after which
+     * log files become subject to pruning.
+     */
+    {{"prune_seconds",
+      PLUGIN_VAR_LONGLONG | PLUGIN_VAR_UNSIGNED | PLUGIN_VAR_OPCMDARG,
+      "The maximum log file age in seconds after which log file become subject "
+      "to pruning.",
+      nullptr, prune_seconds_update_func,
+      static_cast<void *>(&check_prune_seconds),
+      static_cast<void *>(&log_prune_seconds)},
+     false},
+    /*
+     * When this variable is set to ON log file will be closed and reopened.
+     * This can be used for manual log rotation.
+     */
+    {{"flush", PLUGIN_VAR_BOOL | PLUGIN_VAR_NOCMDARG,
+      "Close and reopen log file when set to ON.", nullptr, flush_update_func,
+      static_cast<void *>(&check_flush),
+      static_cast<void *>(&log_flush_requested)},
+     false},
+    /*
+     * The audit_log_filter.syslog_tag variable is used to specify the prefix
+     * used for syslog messages.
+     */
+    {{"syslog_tag",
+      PLUGIN_VAR_STR | PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY |
+          PLUGIN_VAR_MEMALLOC,
+      "The string that will be prepended to each log message, if SYSLOG "
+      "handler is used.",
+      nullptr, nullptr, static_cast<void *>(&check_syslog_tag),
+      static_cast<void *>(&log_syslog_tag)},
+     false},
+    /*
+     * The audit_log_filter.syslog_facility variable is used to specify the
+     * facility value for syslog.
+     */
+    {{"syslog_facility",
+      PLUGIN_VAR_ENUM | PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
+      "The syslog facility to assign to messages, if SYSLOG handler is used.",
+      nullptr, nullptr, static_cast<void *>(&check_syslog_facility),
+      static_cast<void *>(&log_syslog_facility)},
+     false},
+    /*
+     * The audit_log_filter.syslog_priority variable is used to specify the
+     * priority value for syslog. This variable has the same meaning as the
+     * appropriate parameter described in the syslog(3) manual.
+     */
+    {{"syslog_priority",
+      PLUGIN_VAR_ENUM | PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
+      "Priority to be assigned to all messages written to syslog.", nullptr,
+      nullptr, static_cast<void *>(&check_syslog_priority),
+      static_cast<void *>(&log_syslog_priority)},
+     false}};
 
 }  // namespace
 
-SysVars::SysVars(comp_registry_srv_t *comp_registry_srv)
-    : m_comp_registry_srv{comp_registry_srv} {
-  m_log_flush_requested.set_container(this);
-  m_log_max_size.set_container(this);
-  m_log_prune_seconds.set_container(this);
-}
-
-SysVars::~SysVars() {
-  my_service<SERVICE_TYPE(component_sys_variable_unregister)> sys_var_unreg_srv(
-      "component_sys_variable_unregister", m_comp_registry_srv);
-
-  if (!sys_var_unreg_srv.is_valid()) {
-    return;
-  }
-
-  for (const auto &var_name : var_names_list) {
-    if (sys_var_unreg_srv->unregister_variable(kComponentName, var_name)) {
-      LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
-                      "Failed to unregister %s.%s variable", kComponentName,
-                      var_name);
-    }
-  }
-}
-
 bool SysVars::init() noexcept {
-  using ulonglong_arg_check_t = INTEGRAL_CHECK_ARG(ulonglong);
-  using str_arg_check_t = STR_CHECK_ARG(str);
-  using enum_arg_check_t = ENUM_CHECK_ARG(enum);
-  using bool_arg_check_t = BOOL_CHECK_ARG(bool);
+  my_service<SERVICE_TYPE(status_variable_registration)>
+      status_var_registration_srv("status_variable_registration",
+                                  SysVars::get_comp_registry_srv());
+  my_service<SERVICE_TYPE(component_sys_variable_register)>
+      sys_var_registration_srv("component_sys_variable_register",
+                               SysVars::get_comp_registry_srv());
 
-  my_service<SERVICE_TYPE(component_sys_variable_register)> sys_var_reg_srv(
-      "component_sys_variable_register", m_comp_registry_srv);
-
-  if (!sys_var_reg_srv.is_valid()) {
+  if (status_var_registration_srv->register_variable(status_vars) == 1) {
+    LogComponentErr(ERROR_LEVEL, ER_AUDIT_STATUS_VAR_REGISTER_FAILURE);
+    SysVars::deinit();
     return false;
   }
 
-  /*
-   * The audit_log_filter.file variable is used to specify the filename that’s
-   * going to store the audit log. It can contain the path relative to the
-   * datadir or absolute path.
-   */
-  str_arg_check_t file_arg_check{strdup("audit_filter.log")};
+  for (auto &var : sys_vars) {
+    if (sys_var_registration_srv->register_variable(
+            kCompName.data(), var.first.name, var.first.flags,
+            var.first.comment, var.first.check, var.first.update,
+            var.first.check_arg, var.first.variable_value) == 1) {
+      LogComponentErr(ERROR_LEVEL, ER_AUDIT_SYS_VAR_REGISTER_FAILURE,
+                      kCompName.data(), var.first.name);
+      SysVars::deinit();
+      return false;
+    }
 
-  if (sys_var_reg_srv->register_variable(
-          kComponentName, kVarNameFile,
-          PLUGIN_VAR_STR | PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY |
-              PLUGIN_VAR_MEMALLOC,
-          "The name of the log file.", nullptr, nullptr,
-          static_cast<void *>(&file_arg_check),
-          static_cast<void *>(&m_file_name))) {
-    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
-                    "Failed to init %s.%s variable", kComponentName,
-                    kVarNameFile);
-    return false;
+    var.second = true;
   }
-
-  /*
-   * The audit_log_filter.handler variable is used to configure where the
-   * audit log will be written. If it is set to FILE, the log will be written
-   * into a file specified by audit_log_filter.file variable. If it is set to
-   * SYSLOG, the audit log will be written to syslog.
-   */
-  enum_arg_check_t handler_arg_check{
-      static_cast<ulong>(AuditLogHandlerType::File),
-      &audit_log_filter_handler_typelib};
-
-  if (sys_var_reg_srv->register_variable(
-          kComponentName, kVarNameHandler,
-          PLUGIN_VAR_ENUM | PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
-          "The audit log filter handler.", nullptr, nullptr,
-          static_cast<void *>(&handler_arg_check),
-          static_cast<void *>(&m_handler_type))) {
-    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
-                    "Failed to init %s.%s variable", kComponentName,
-                    kVarNameHandler);
-    return false;
-  }
-
-  /*
-   * The audit_log_filter.format variable is used to specify the audit filter
-   * log format. The audit log filter plugin supports three log formats:
-   * OLD, NEW and JSON. OLD and NEW formats are based on XML, where
-   * the former outputs log record properties as XML attributes and the latter
-   * as XML tags.
-   */
-  enum_arg_check_t format_arg_check{static_cast<ulong>(AuditLogFormatType::New),
-                                    &audit_log_filter_format_typelib};
-
-  if (sys_var_reg_srv->register_variable(
-          kComponentName, kVarNameFormat,
-          PLUGIN_VAR_ENUM | PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
-          "The audit log filter file format.", nullptr, nullptr,
-          static_cast<void *>(&format_arg_check),
-          static_cast<void *>(&m_format_type))) {
-    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
-                    "Failed to init %s.%s variable", kComponentName,
-                    kVarNameFormat);
-    return false;
-  }
-
-  /*
-   * The audit_log_filter.strategy variable is used to specify the audit log
-   * filter strategy, possible values are:
-   * ASYNCHRONOUS - (default) log using memory buffer, do not drop messages
-   *                if buffer is full
-   * PERFORMANCE - log using memory buffer, drop messages if buffer is full
-   * SEMISYNCHRONOUS - log directly to file, do not flush and sync every event
-   * SYNCHRONOUS - log directly to file, flush and sync every event.
-   *
-   * This variable has effect only when audit_log_handler is set to FILE.
-   */
-  enum_arg_check_t strategy_arg_check{
-      static_cast<ulong>(AuditLogStrategyType::Asynchronous),
-      &audit_log_filter_strategy_typelib};
-
-  if (sys_var_reg_srv->register_variable(
-          kComponentName, kVarNameStrategy,
-          PLUGIN_VAR_ENUM | PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
-          "The logging method used by the audit log filter plugin, "
-          "if FILE handler is used.",
-          nullptr, nullptr, static_cast<void *>(&strategy_arg_check),
-          static_cast<void *>(&m_file_stategy_type))) {
-    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
-                    "Failed to init %s.%s variable", kComponentName,
-                    kVarNameStrategy);
-    return false;
-  }
-
-  /*
-   * The audit_log_filter.buffer_size variable can be used to specify the size
-   * of memory buffer used for logging, used when audit_log_filter.strategy
-   * variable is set to ASYNCHRONOUS or PERFORMANCE values. This variable has
-   * effect only when audit_log_filter.handler is set to FILE.
-   */
-  ulonglong_arg_check_t buffer_size_arg_check{1048576UL, 4096UL, ULLONG_MAX,
-                                              4096UL};
-
-  if (sys_var_reg_srv->register_variable(
-          kComponentName, kVarNameBufferSize,
-          PLUGIN_VAR_LONGLONG | PLUGIN_VAR_UNSIGNED | PLUGIN_VAR_RQCMDARG |
-              PLUGIN_VAR_READONLY,
-          "The size of the buffer for asynchronous logging, "
-          "if FILE handler is used.",
-          nullptr, nullptr, static_cast<void *>(&buffer_size_arg_check),
-          static_cast<void *>(&m_buffer_size))) {
-    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
-                    "Failed to init %s.%s variable", kComponentName,
-                    kVarNameStrategy);
-    return false;
-  }
-
-  /*
-   * The audit_log_filter.rotate_on_size variable specifies the maximum size
-   * of the audit log file. Upon reaching this size, the audit log will be
-   * rotated. For this variable to take effect, set the audit_log_filter.handler
-   * variable to FILE and the audit_log_filter.rotations variable to a value
-   * greater than zero.
-   */
-  ulonglong_arg_check_t rotate_on_size_arg_check{0UL, 0UL, ULLONG_MAX, 4096UL};
-
-  if (sys_var_reg_srv->register_variable(
-          kComponentName, kVarNameRotateOnSize,
-          PLUGIN_VAR_LONGLONG | PLUGIN_VAR_UNSIGNED | PLUGIN_VAR_RQCMDARG,
-          "Maximum size of the log to start the rotation, "
-          "if FILE handler is used.",
-          nullptr, nullptr, static_cast<void *>(&rotate_on_size_arg_check),
-          static_cast<void *>(&m_rotate_on_size))) {
-    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
-                    "Failed to init %s.%s variable", kComponentName,
-                    kVarNameRotateOnSize);
-    return false;
-  }
-
-  /*
-   * A value greater than 0 enables size-based pruning. The value is the
-   * combined size above which audit log files become subject to pruning.
-   */
-  ulonglong_arg_check_t max_size_arg_check{0UL, 0UL, ULLONG_MAX, 4096UL};
-
-  if (sys_var_reg_srv->register_variable(
-          kComponentName, kVarNameMaxSize,
-          PLUGIN_VAR_LONGLONG | PLUGIN_VAR_UNSIGNED | PLUGIN_VAR_OPCMDARG,
-          "The maximum combined size of log files in bytes after which log "
-          "files become subject to pruning.",
-          nullptr, max_size_update_func,
-          static_cast<void *>(&max_size_arg_check),
-          static_cast<void *>(&m_log_max_size))) {
-    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
-                    "Failed to init %s.%s variable", kComponentName,
-                    kVarNameMaxSize);
-    return false;
-  }
-
-  /*
-   * A value greater than 0 enables age-based pruning. The value is the number
-   * of seconds after which log files become subject to pruning.
-   */
-  ulonglong_arg_check_t prune_seconds_arg_check{0UL, 0UL, ULLONG_MAX, 0UL};
-
-  if (sys_var_reg_srv->register_variable(
-          kComponentName, kVarNamePruneSeconds,
-          PLUGIN_VAR_LONGLONG | PLUGIN_VAR_UNSIGNED | PLUGIN_VAR_OPCMDARG,
-          "The maximum log file age in seconds after which log file "
-          "become subject to pruning.",
-          nullptr, prune_seconds_update_func,
-          static_cast<void *>(&prune_seconds_arg_check),
-          static_cast<void *>(&m_log_prune_seconds))) {
-    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
-                    "Failed to init %s.%s variable", kComponentName,
-                    kVarNamePruneSeconds);
-    return false;
-  }
-
-  /*
-   * When this variable is set to ON log file will be closed and reopened.
-   * This can be used for manual log rotation.
-   */
-  bool_arg_check_t flush_arg_check{false};
-
-  if (sys_var_reg_srv->register_variable(
-          kComponentName, kVarNameFlush, PLUGIN_VAR_BOOL | PLUGIN_VAR_NOCMDARG,
-          "Close and reopen log file when set to ON.", nullptr,
-          flush_update_func, static_cast<void *>(&flush_arg_check),
-          static_cast<void *>(&m_log_flush_requested))) {
-    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
-                    "Failed to init %s.%s variable", kComponentName,
-                    kVarNameFlush);
-    return false;
-  }
-
-  /*
-   * The audit_log_filter.syslog_ident variable is used to specify the ident
-   * value for syslog.
-   */
-  str_arg_check_t syslog_ident_arg_check{strdup("percona-audit-event-filter")};
-
-  if (sys_var_reg_srv->register_variable(
-          kComponentName, kVarNameSyslogIdent,
-          PLUGIN_VAR_STR | PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY |
-              PLUGIN_VAR_MEMALLOC,
-          "The string that will be prepended to each log message, "
-          "if SYSLOG handler is used.",
-          nullptr, nullptr, static_cast<void *>(&syslog_ident_arg_check),
-          static_cast<void *>(&m_syslog_ident))) {
-    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
-                    "Failed to init %s.%s variable", kComponentName,
-                    kVarNameSyslogIdent);
-    return false;
-  }
-
-  /*
-   * The audit_log_filter.syslog_facility variable is used to specify the
-   * facility value for syslog.
-   */
-  enum_arg_check_t syslog_facility_arg_check{
-      0, &audit_log_filter_syslog_facility_typelib};
-
-  if (sys_var_reg_srv->register_variable(
-          kComponentName, kVarNameSyslogFacility,
-          PLUGIN_VAR_ENUM | PLUGIN_VAR_RQCMDARG,
-          "The syslog facility to assign to messages, if SYSLOG handler is "
-          "used.",
-          nullptr, nullptr, static_cast<void *>(&syslog_facility_arg_check),
-          static_cast<void *>(&m_syslog_facility))) {
-    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
-                    "Failed to init %s.%s variable", kComponentName,
-                    kVarNameSyslogFacility);
-    return false;
-  }
-
-  /*
-   * The audit_log_filter.syslog_priority variable is used to specify the
-   * priority value for syslog. This variable has the same meaning as the
-   * appropriate parameter described in the syslog(3) manual.
-   */
-  enum_arg_check_t syslog_priority_arg_check{
-      0, &audit_log_filter_syslog_priority_typelib};
-
-  if (sys_var_reg_srv->register_variable(
-          kComponentName, kVarNameSyslogPriority,
-          PLUGIN_VAR_ENUM | PLUGIN_VAR_RQCMDARG,
-          "Priority to be assigned to all messages written to syslog.", nullptr,
-          nullptr, static_cast<void *>(&syslog_priority_arg_check),
-          static_cast<void *>(&m_syslog_priority))) {
-    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
-                    "Failed to init %s.%s variable", kComponentName,
-                    kVarNameSyslogPriority);
-    return false;
-  }
-
-  validate();
 
   return true;
 }
 
-void SysVars::validate() const noexcept {
-  if (get_log_max_size() > 0 && get_log_prune_seconds() > 0) {
+void SysVars::deinit() noexcept {
+  my_service<SERVICE_TYPE(status_variable_registration)>
+      status_var_registration_srv("status_variable_registration",
+                                  SysVars::get_comp_registry_srv());
+  my_service<SERVICE_TYPE(component_sys_variable_unregister)>
+      sys_var_registration_srv("component_sys_variable_unregister",
+                               SysVars::get_comp_registry_srv());
+
+  if (status_var_registration_srv->unregister_variable(status_vars) == 1) {
+    LogComponentErr(ERROR_LEVEL, ER_AUDIT_STATUS_VAR_UNREGISTER_FAILURE);
+  }
+
+  for (auto &var : sys_vars) {
+    if (var.second && sys_var_registration_srv->unregister_variable(
+                          kCompName.data(), var.first.name) == 1) {
+      LogComponentErr(ERROR_LEVEL, ER_AUDIT_SYS_VAR_UNREGISTER_FAILURE,
+                      kCompName.data(), var.first.name);
+    }
+    var.second = false;
+  }
+}
+
+void SysVars::validate() noexcept {
+  if (SysVars::get_log_max_size() > 0 && SysVars::get_log_prune_seconds() > 0) {
     LogComponentErr(
         WARNING_LEVEL, ER_LOG_PRINTF_MSG,
         "Both audit_log_filter.max_size and audit_log_filter.prune_seconds are "
-        "set to non-zero. audit_log_filter_max_size takes precedence and "
-        "audit_log_filter_prune_seconds is ignored");
+        "set to non-zero. audit_log_filter.max_size takes precedence and "
+        "audit_log_filter.prune_seconds is ignored");
   }
 }
 
@@ -490,23 +519,86 @@ void SysVars::validate() const noexcept {
 //  audit_log_filter_id
 //  audit_log_password_history_keep_days
 //  audit_log_read_buffer_size
-//
-// status vars
-//  Audit_log_current_size
-//  Audit_log_event_max_drop_size
-//  Audit_log_events
-//  Audit_log_events_filtered
-//  Audit_log_events_lost
-//  Audit_log_events_written
-//  Audit_log_total_size
-//  Audit_log_write_waits
 
-int SysVars::get_syslog_facility() const noexcept {
-  return audit_log_filter_syslog_facility_codes[m_syslog_facility];
+const char *SysVars::get_file_name() noexcept { return log_file_name; }
+
+AuditLogHandlerType SysVars::get_handler_type() noexcept {
+  return static_cast<AuditLogHandlerType>(log_handler_type);
 }
 
-int SysVars::get_syslog_priority() const noexcept {
-  return audit_log_filter_syslog_priority_codes[m_syslog_priority];
+AuditLogFormatType SysVars::get_format_type() noexcept {
+  return static_cast<AuditLogFormatType>(log_format_type);
+}
+
+AuditLogStrategyType SysVars::get_file_strategy_type() noexcept {
+  return static_cast<AuditLogStrategyType>(log_strategy_type);
+}
+
+ulonglong SysVars::get_buffer_size() noexcept { return log_write_buffer_size; }
+
+ulonglong SysVars::get_rotate_on_size() noexcept { return log_rotate_on_size; }
+
+ulonglong SysVars::get_log_max_size() noexcept { return log_max_size; }
+
+ulonglong SysVars::get_log_prune_seconds() noexcept {
+  return log_prune_seconds;
+}
+
+const char *SysVars::get_syslog_tag() noexcept { return log_syslog_tag; }
+
+int SysVars::get_syslog_facility() noexcept {
+  return audit_log_filter_syslog_facility_codes[log_syslog_facility];
+}
+
+int SysVars::get_syslog_priority() noexcept {
+  return audit_log_filter_syslog_priority_codes[log_syslog_priority];
+}
+
+void SysVars::inc_events_total() noexcept {
+  events_total.fetch_add(1, std::memory_order_relaxed);
+}
+
+void SysVars::inc_events_lost() noexcept {
+  events_lost.fetch_add(1, std::memory_order_relaxed);
+}
+
+void SysVars::inc_events_filtered() noexcept {
+  events_filtered.fetch_add(1, std::memory_order_relaxed);
+}
+
+void SysVars::inc_events_written() noexcept {
+  events_written.fetch_add(1, std::memory_order_relaxed);
+}
+
+void SysVars::inc_write_waits() noexcept {
+  write_waits.fetch_add(1, std::memory_order_relaxed);
+}
+
+void SysVars::update_event_max_drop_size(uint64_t size) noexcept {
+  uint64_t prev_max_size = event_max_drop_size.load();
+  while (prev_max_size < size &&
+         !event_max_drop_size.compare_exchange_weak(prev_max_size, size)) {
+  }
+}
+
+void SysVars::set_current_log_size(uint64_t size) noexcept {
+  uint64_t current_size = current_log_size.load();
+  while (!current_log_size.compare_exchange_weak(current_size, size)) {
+  }
+}
+
+void SysVars::update_current_log_size(uint64_t size) noexcept {
+  current_log_size.fetch_add(size, std::memory_order_relaxed);
+}
+
+void SysVars::set_total_log_size(uint64_t size) noexcept {
+  uint64_t current_size = total_log_size.load();
+  while (!total_log_size.compare_exchange_weak(current_size, size)) {
+  }
+}
+
+void SysVars::update_total_log_size(uint64_t size) noexcept {
+  total_log_size.fetch_add(size, std::memory_order_relaxed);
 }
 
 decltype(get_component_registry_service().get())
