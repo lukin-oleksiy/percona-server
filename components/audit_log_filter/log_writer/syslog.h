@@ -26,8 +26,7 @@ template <>
 class LogWriter<AuditLogHandlerType::Syslog> : public LogWriterBase {
  public:
   LogWriter() = delete;
-  LogWriter(
-      std::shared_ptr<SysVars> config,
+  explicit LogWriter(
       std::unique_ptr<log_record_formatter::LogRecordFormatterBase> formatter);
 
   /**
@@ -35,14 +34,14 @@ class LogWriter<AuditLogHandlerType::Syslog> : public LogWriterBase {
    *
    * @return true in case of success, false otherwise
    */
-  bool open() noexcept override { return true; }
+  bool open() noexcept override;
 
   /**
    * @brief Close log writer.
    *
    * @return true in case of success, false otherwise
    */
-  bool close() noexcept override { return true; }
+  bool close() noexcept override;
 
   /**
    * @brief Write audit record to log.
@@ -51,8 +50,7 @@ class LogWriter<AuditLogHandlerType::Syslog> : public LogWriterBase {
    * @param print_separator Add lor record separator before a record
    *                        if set to true
    */
-  void write(const std::string &record [[maybe_unused]],
-             bool print_separator [[maybe_unused]]) noexcept override {}
+  void write(const std::string &record, bool print_separator) noexcept override;
 
   /**
    * @brief Close and reopen current log file. Used for manual log rotation.
@@ -70,6 +68,10 @@ class LogWriter<AuditLogHandlerType::Syslog> : public LogWriterBase {
    * @return Current log file size in bytes
    */
   [[nodiscard]] uint64_t get_log_size() const noexcept override { return 0; }
+
+ private:
+  const std::string m_tag;
+  const int m_priority;
 };
 
 using LogWriterSyslog = LogWriter<AuditLogHandlerType::Syslog>;

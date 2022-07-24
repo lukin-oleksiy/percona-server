@@ -44,6 +44,7 @@
 
 #include <mysql/psi/mysql_memory.h>
 
+#include <scope_guard.h>
 #include "sql/sql_class.h"
 
 #include <array>
@@ -244,28 +245,21 @@ mysql_service_status_t audit_log_filter_init() {
   log_bi = mysql_service_log_builtins;
   log_bs = mysql_service_log_builtins_string;
 
-  LogComponentErr(INFORMATION_LEVEL, ER_AUDIT_INIT_STARTED);
-
   auto comp_registry_srv = get_component_registry_service();
 
-  if (comp_registry_srv == nullptr) {
-    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
-                    "Failed to acquire components registry service");
+  auto comp_scope_guard = create_scope_guard([&] {
+    if (comp_registry_srv != nullptr) {
+      SysVars::deinit();
+    }
+  });
+
+  LogComponentErr(INFORMATION_LEVEL, ER_AUDIT_INIT_STARTED);
+
+  if (!SysVars::init()) {
     return 1;
   }
 
-  auto sys_vars = std::make_shared<SysVars>(comp_registry_srv.get());
-
-  if (sys_vars == nullptr) {
-    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
-                    "Failed to create sys vars handler instance");
-    return 1;
-  }
-
-  if (!sys_vars->init()) {
-    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG, "Failed to init sys vars");
-    return 1;
-  }
+  SysVars::validate();
 
   auto audit_udf = std::make_unique<AuditUdf>(comp_registry_srv.get());
 
@@ -293,14 +287,14 @@ mysql_service_status_t audit_log_filter_init() {
     return 1;
   }
 
-  auto formatter = get_log_record_formatter(sys_vars->get_format_type());
+  auto formatter = get_log_record_formatter(SysVars::get_format_type());
 
   if (formatter == nullptr) {
     LogComponentErr(ERROR_LEVEL, ER_AUDIT_INIT_FORMATTER_INIT_FAILURE);
     return 1;
   }
 
-  auto log_writer = get_log_writer(sys_vars, std::move(formatter));
+  auto log_writer = get_log_writer(std::move(formatter));
 
   if (log_writer == nullptr) {
     LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
@@ -316,7 +310,7 @@ mysql_service_status_t audit_log_filter_init() {
 
   audit_log_filter = new AuditLogFilter(
       std::move(comp_registry_srv), std::move(audit_rule_registry),
-      std::move(audit_udf), std::move(sys_vars), std::move(log_writer));
+      std::move(audit_udf), std::move(log_writer));
 
   return 0;
 }
@@ -335,6 +329,7 @@ mysql_service_status_t audit_log_filter_deinit() {
     return 0;
   }
 
+  SysVars::deinit();
   delete audit_log_filter;
   audit_log_filter = nullptr;
 
@@ -344,12 +339,11 @@ mysql_service_status_t audit_log_filter_deinit() {
 AuditLogFilter::AuditLogFilter(
     comp_registry_srv_container_t comp_registry_srv,
     std::unique_ptr<AuditRuleRegistry> audit_rules_registry,
-    std::unique_ptr<AuditUdf> audit_udf, std::shared_ptr<SysVars> sys_vars,
+    std::unique_ptr<AuditUdf> audit_udf,
     std::unique_ptr<log_writer::LogWriterBase> log_writer)
     : m_comp_registry_srv{std::move(comp_registry_srv)},
       m_audit_rules_registry{std::move(audit_rules_registry)},
       m_audit_udf{std::move(audit_udf)},
-      m_sys_vars{std::move(sys_vars)},
       m_log_writer{std::move(log_writer)},
       m_filter{std::make_unique<AuditEventFilter>()} {}
 
@@ -364,6 +358,8 @@ int AuditLogFilter::notify_event(audit_event_class_t event_class,
       thd == nullptr) {
     return 0;
   }
+
+  SysVars::inc_events_total();
 
   std::string user_name;
   std::string user_host;
@@ -427,6 +423,7 @@ int AuditLogFilter::notify_event(audit_event_class_t event_class,
     LogComponentErr(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
                     "Skip logging audit event '%s' with class %i",
                     ev_name.data(), event_class);
+    SysVars::inc_events_filtered();
     return 0;
   }
 
@@ -451,6 +448,7 @@ int AuditLogFilter::notify_event(audit_event_class_t event_class,
                   ev_name.data(), event_class);
 
   m_log_writer->write(audit_record);
+  SysVars::inc_events_written();
 
   return 0;
 }

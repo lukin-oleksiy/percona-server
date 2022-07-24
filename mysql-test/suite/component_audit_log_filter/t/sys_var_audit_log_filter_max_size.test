@@ -29,5 +29,4 @@ SET GLOBAL audit_log_filter.max_size='';
 SELECT @@global.audit_log_filter.max_size;
 
 --source ../inc/audit_comp_uninstall.inc
-
 --source ../inc/audit_tables_cleanup.inc

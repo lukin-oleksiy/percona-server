@@ -15,5 +15,4 @@ SELECT @@global.audit_log_filter.handler;
 SELECT @@global.audit_log_filter.handler;
 
 --source ../inc/audit_comp_uninstall.inc
-
 --source ../inc/audit_tables_cleanup.inc

@@ -14,14 +14,28 @@
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA */
 
 #include "components/audit_log_filter/log_writer/syslog.h"
+
 #include "components/audit_log_filter/log_record_formatter/base.h"
 #include "components/audit_log_filter/sys_vars.h"
+
+#include <syslog.h>
 
 namespace audit_log_filter::log_writer {
 
 LogWriterSyslog::LogWriter(
-    std::shared_ptr<SysVars> config,
     std::unique_ptr<log_record_formatter::LogRecordFormatterBase> formatter)
-    : LogWriterBase{std::move(config), std::move(formatter)} {}
+    : LogWriterBase{std::move(formatter)},
+      m_tag{SysVars::get_syslog_tag()},
+      m_priority{SysVars::get_syslog_priority() |
+                 SysVars::get_syslog_facility()} {}
+
+bool LogWriterSyslog::open() noexcept { return true; }
+
+bool LogWriterSyslog::close() noexcept { return true; }
+
+void LogWriterSyslog::write(const std::string &record,
+                            bool print_separator [[maybe_unused]]) noexcept {
+  syslog(m_priority, "%s: %s", m_tag.c_str(), record.c_str());
+}
 
 }  // namespace audit_log_filter::log_writer
