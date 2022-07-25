@@ -210,6 +210,7 @@ DECLARE_AUDIT_STR_UDF(audit_log_filter_remove_user)
 DECLARE_AUDIT_STR_UDF(audit_log_filter_flush)
 DECLARE_AUDIT_STR_UDF(audit_log_read)
 DECLARE_AUDIT_STR_UDF(audit_log_read_bookmark)
+DECLARE_AUDIT_INT_UDF(audit_log_session_filter_id)
 
 #define DECLARE_AUDIT_STR_UDF_INFO(NAME)                          \
   UdfFuncInfo {                                                   \
@@ -229,7 +230,8 @@ static std::array udfs_list{
     DECLARE_AUDIT_STR_UDF_INFO(audit_log_filter_remove_user),
     DECLARE_AUDIT_STR_UDF_INFO(audit_log_filter_flush),
     DECLARE_AUDIT_STR_UDF_INFO(audit_log_read),
-    DECLARE_AUDIT_STR_UDF_INFO(audit_log_read_bookmark)};
+    DECLARE_AUDIT_STR_UDF_INFO(audit_log_read_bookmark),
+    DECLARE_AUDIT_INT_UDF_INFO(audit_log_session_filter_id)};
 
 /**
  * @brief Initialize the component at server start or component installation.
@@ -312,6 +314,10 @@ mysql_service_status_t audit_log_filter_init() {
       std::move(comp_registry_srv), std::move(audit_rule_registry),
       std::move(audit_udf), std::move(log_writer));
 
+  if (SysVars::get_log_disabled()) {
+    LogComponentErr(WARNING_LEVEL, ER_AUDIT_INIT_DISABLED_WARN);
+  }
+
   return 0;
 }
 
@@ -349,6 +355,10 @@ AuditLogFilter::AuditLogFilter(
 
 int AuditLogFilter::notify_event(audit_event_class_t event_class,
                                  const void *event_data) {
+  if (SysVars::get_log_disabled()) {
+    return 0;
+  }
+
   LogComponentErr(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
                   "Audit event %i received ===================", event_class);
 
@@ -394,6 +404,8 @@ int AuditLogFilter::notify_event(audit_event_class_t event_class,
                     "Failed to find '%s' filtering rule", rule_name.c_str());
     return 0;
   }
+
+  SysVars::set_session_filter_id(thd, filter_rule->get_filter_id());
 
   LogComponentErr(INFORMATION_LEVEL, ER_LOG_PRINTF_MSG,
                   "Found filtering rule '%s' with the definition '%s'",
@@ -548,6 +560,10 @@ bool AuditLogFilter::get_connection_user(MYSQL_THD thd, std::string &user_name,
   user_host = host.str;
 
   return true;
+}
+
+comp_registry_srv_t *AuditLogFilter::get_comp_registry_srv() noexcept {
+  return m_comp_registry_srv.get();
 }
 
 }  // namespace audit_log_filter
