@@ -663,6 +663,44 @@ char *AuditUdf::audit_log_read_bookmark_udf(AuditUdf *udf [[maybe_unused]],
 
 void AuditUdf::audit_log_read_bookmark_udf_deinit(UDF_INIT *) {}
 
+bool AuditUdf::audit_log_session_filter_id_udf_init(AuditUdf *udf
+                                                    [[maybe_unused]],
+                                                    UDF_INIT *initid,
+                                                    UDF_ARGS *udf_args,
+                                                    char *message) noexcept {
+  if (udf_args->arg_count != 0) {
+    std::snprintf(message, MYSQL_ERRMSG_SIZE,
+                  "Wrong argument list: audit_log_session_filter_id()");
+    return true;
+  }
+
+  initid->maybe_null = false;
+  initid->const_item = false;
+
+  return false;
+}
+
+long long AuditUdf::audit_log_session_filter_id_udf(
+    AuditUdf *udf [[maybe_unused]], UDF_INIT *initid [[maybe_unused]],
+    UDF_ARGS *udf_args [[maybe_unused]],
+    unsigned char *is_null [[maybe_unused]], unsigned char *error) noexcept {
+  my_service<SERVICE_TYPE(mysql_current_thread_reader)> thd_reader_srv(
+      "mysql_current_thread_reader", SysVars::get_comp_registry_srv());
+
+  MYSQL_THD thd = nullptr;
+
+  if (thd_reader_srv->get(&thd) == 1 || thd == nullptr) {
+    my_error(ER_UDF_ERROR, MYF(0), "audit_log_session_filter_id",
+             "Internal error");
+    *error = 1;
+    return 0;
+  }
+
+  return static_cast<long long>(SysVars::get_session_filter_id(thd));
+}
+
+void AuditUdf::audit_log_session_filter_id_udf_deinit(UDF_INIT *) {}
+
 bool AuditUdf::set_return_value_charset(
     UDF_INIT *initid, const std::string &charset_name) noexcept {
   my_service<SERVICE_TYPE(mysql_udf_metadata)> udf_metadata_srv(

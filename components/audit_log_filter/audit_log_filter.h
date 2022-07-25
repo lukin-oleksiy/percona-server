@@ -63,6 +63,13 @@ class AuditLogFilter {
    */
   AuditUdf *get_udf() noexcept { return m_audit_udf.get(); }
 
+  /**
+   * @brief Get components registry handler.
+   *
+   * @return Components registry handler
+   */
+  comp_registry_srv_t *get_comp_registry_srv() noexcept;
+
  public:
   /**
    * @brief Handle filters flush request.

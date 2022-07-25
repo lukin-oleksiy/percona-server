@@ -19,6 +19,7 @@
 
 #define ALLOW_COMPONENT_INCLUDE  // for my_io.h and plugin.h
 #include "sql/mysqld.h"
+#include "sql/sql_class.h"
 #include "sql/sql_const.h"
 #include "sql/sql_error.h"
 #include "sql/sql_plugin_var.h"
@@ -27,6 +28,7 @@
 #include <mysql/components/services/component_sys_var_service.h>
 #include <mysql/components/services/dynamic_privilege.h>
 #include <mysql/components/services/mysql_system_variable.h>
+#include <mysql/components/services/mysql_thd_store_service.h>
 #include <mysql/components/services/security_context.h>
 
 #include <syslog.h>
@@ -38,6 +40,10 @@ namespace audit_log_filter {
 namespace {
 
 constexpr std::string_view kCompName{"audit_log_filter"};
+
+constexpr std::string_view kSessionFilterIdSlotName{
+    "component_audit_reader_session_filter_id"};
+mysql_thd_store_slot session_filter_id_slot{nullptr};
 
 /*
  * Status variables
@@ -153,6 +159,7 @@ ulonglong log_rotate_on_size = 0;
 ulonglong log_max_size = 0;
 ulonglong log_prune_seconds = 0;
 bool log_flush_requested = false;
+bool log_disabled = false;
 char *log_syslog_tag = nullptr;
 std::string default_log_syslog_tag{"audit-filter"};
 ulong log_syslog_facility = 0;
@@ -261,6 +268,38 @@ TYPE_LIB audit_log_filter_syslog_priority_typelib = {
     "audit_log_filter_syslog_priority_typelib",
     audit_log_filter_syslog_priority_names, nullptr};
 
+int log_disabled_check_func(MYSQL_THD thd, SYS_VAR *var, void *save,
+                            st_mysql_value *value) {
+  my_service<SERVICE_TYPE(mysql_thd_security_context)> security_context_service(
+      "mysql_thd_security_context",
+      get_audit_log_filter_instance()->get_comp_registry_srv());
+  my_service<SERVICE_TYPE(global_grants_check)> grants_check_service(
+      "global_grants_check",
+      get_audit_log_filter_instance()->get_comp_registry_srv());
+
+  bool has_audit_admin_grant = false;
+  bool has_system_variables_admin_grant = false;
+
+  if (security_context_service.is_valid() && grants_check_service.is_valid()) {
+    Security_context_handle ctx;
+
+    if (!security_context_service->get(thd, &ctx)) {
+      has_audit_admin_grant = grants_check_service->has_global_grant(
+          ctx, STRING_WITH_LEN("AUDIT_ADMIN"));
+      has_system_variables_admin_grant = grants_check_service->has_global_grant(
+          ctx, STRING_WITH_LEN("SYSTEM_VARIABLES_ADMIN"));
+    }
+  }
+
+  if (!has_audit_admin_grant || !has_system_variables_admin_grant) {
+    my_error(ER_SPECIFIC_ACCESS_DENIED_ERROR, MYF(0),
+             "SYSTEM_VARIABLES_ADMIN and AUDIT_ADMIN");
+    return 1;
+  }
+
+  return check_func_bool(thd, var, save, value);
+}
+
 using bool_arg_check_type = BOOL_CHECK_ARG(bool);
 using str_arg_check_type = STR_CHECK_ARG(str);
 using enum_arg_check_type = ENUM_CHECK_ARG(type_lib);
@@ -286,6 +325,7 @@ enum_arg_check_type check_syslog_facility{
     0, &audit_log_filter_syslog_facility_typelib};
 enum_arg_check_type check_syslog_priority{
     0, &audit_log_filter_syslog_priority_typelib};
+bool_arg_check_type check_disable{false};
 
 struct SysVarInfo {
   const char *name;
@@ -443,6 +483,15 @@ SysVarListType sys_vars = {
       "Priority to be assigned to all messages written to syslog.", nullptr,
       nullptr, static_cast<void *>(&check_syslog_priority),
       static_cast<void *>(&log_syslog_priority)},
+     false},
+    /*
+     * The audit_log_filter.disable variable permits disabling audit logging
+     * for all connecting and connected sessions.
+     */
+    {{"disable", PLUGIN_VAR_BOOL | PLUGIN_VAR_RQCMDARG,
+      "Disable audit logging for all connecting and connected sessions.",
+      log_disabled_check_func, nullptr, static_cast<void *>(&check_disable),
+      static_cast<void *>(&log_disabled)},
      false}};
 
 }  // namespace
@@ -454,6 +503,20 @@ bool SysVars::init() noexcept {
   my_service<SERVICE_TYPE(component_sys_variable_register)>
       sys_var_registration_srv("component_sys_variable_register",
                                SysVars::get_comp_registry_srv());
+  my_service<SERVICE_TYPE(mysql_thd_store)> thd_store_service(
+      "mysql_thd_store", SysVars::get_comp_registry_srv());
+
+  if (thd_store_service->register_slot(
+          kSessionFilterIdSlotName.data(),
+          [](void *id) -> int {
+            if (id != nullptr) {
+              delete reinterpret_cast<ulong *>(id);
+            }
+            return 0;
+          },
+          &session_filter_id_slot) == 1) {
+    return false;
+  }
 
   if (status_var_registration_srv->register_variable(status_vars) == 1) {
     LogComponentErr(ERROR_LEVEL, ER_AUDIT_STATUS_VAR_REGISTER_FAILURE);
@@ -485,6 +548,17 @@ void SysVars::deinit() noexcept {
   my_service<SERVICE_TYPE(component_sys_variable_unregister)>
       sys_var_registration_srv("component_sys_variable_unregister",
                                SysVars::get_comp_registry_srv());
+  my_service<SERVICE_TYPE(mysql_thd_store)> thd_store_service(
+      "mysql_thd_store", SysVars::get_comp_registry_srv());
+
+  // Current THD instance may still hold allocated resources which will not
+  // be released properly after unregistering slots below. Cleaning them up
+  // manually before slots removal.
+  delete reinterpret_cast<ulong *>(
+      thd_store_service->get(nullptr, session_filter_id_slot));
+  thd_store_service->set(nullptr, session_filter_id_slot, nullptr);
+
+  thd_store_service->unregister_slot(session_filter_id_slot);
 
   if (status_var_registration_srv->unregister_variable(status_vars) == 1) {
     LogComponentErr(ERROR_LEVEL, ER_AUDIT_STATUS_VAR_UNREGISTER_FAILURE);
@@ -514,10 +588,6 @@ void SysVars::validate() noexcept {
 // sys vars
 //  MYSQL_SYSVAR(record_buffer),
 //  MYSQL_SYSVAR(query_stack),
-//  audit_log_current_session
-//  audit_log_disable
-//  audit_log_filter_id
-//  audit_log_password_history_keep_days
 //  audit_log_read_buffer_size
 
 const char *SysVars::get_file_name() noexcept { return log_file_name; }
@@ -553,6 +623,43 @@ int SysVars::get_syslog_facility() noexcept {
 int SysVars::get_syslog_priority() noexcept {
   return audit_log_filter_syslog_priority_codes[log_syslog_priority];
 }
+
+void SysVars::set_session_filter_id(MYSQL_THD thd, ulong id) noexcept {
+  my_service<SERVICE_TYPE(mysql_thd_store)> thd_store_service(
+      "mysql_thd_store", SysVars::get_comp_registry_srv());
+
+  auto *id_ptr = reinterpret_cast<ulong *>(
+      thd_store_service->get(thd, session_filter_id_slot));
+
+  if (id_ptr == nullptr) {
+    auto *local_ptr = new (std::nothrow) ulong{id};
+
+    if (local_ptr != nullptr) {
+      if (thd_store_service->set(thd, session_filter_id_slot,
+                                 reinterpret_cast<void *>(local_ptr)) == 1) {
+        LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
+                        "Failed to set session_filter_id");
+        delete local_ptr;
+      }
+    } else {
+      LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
+                      "Failed to allocate session_filter_id");
+    }
+  } else {
+    *id_ptr = id;
+  }
+}
+
+ulong SysVars::get_session_filter_id(THD *thd) noexcept {
+  my_service<SERVICE_TYPE(mysql_thd_store)> thd_store_service(
+      "mysql_thd_store", SysVars::get_comp_registry_srv());
+
+  auto *id = reinterpret_cast<ulong *>(
+      thd_store_service->get(thd, session_filter_id_slot));
+  return id == nullptr ? 0 : *id;
+}
+
+bool SysVars::get_log_disabled() noexcept { return log_disabled; }
 
 void SysVars::inc_events_total() noexcept {
   events_total.fetch_add(1, std::memory_order_relaxed);

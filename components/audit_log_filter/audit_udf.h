@@ -340,6 +340,42 @@ class AuditUdf {
     return m_comp_registry_srv;
   }
 
+  /**
+   * @brief Init function for audit_log_session_filter_id UDF.
+   *
+   * @param udf Pointer to UDFs handler instance
+   * @param initid Pointer to UDF_INIT argument
+   * @param udf_args Pointer to the UDF arguments struct
+   * @param message Error message in case of error
+   * @retval false Success
+   * @retval true  Failure. Error in the message argument
+   */
+  static bool audit_log_session_filter_id_udf_init(AuditUdf *udf,
+                                                   UDF_INIT *initid,
+                                                   UDF_ARGS *udf_args,
+                                                   char *message) noexcept;
+
+  /**
+   * @brief Main function for audit_log_session_filter_id UDF.
+   *
+   * @param udf Pointer to UDFs handler instance
+   * @param initid Pointer to UDF_INIT argument
+   * @param udf_args Pointer to the UDF arguments struct
+   * @param is_null Indicates a return value of NULL in the UDF
+   * @param error Indicates if there was an error
+   * @return ID of a filtering rule assigned to a session
+   */
+  static long long audit_log_session_filter_id_udf(
+      AuditUdf *udf, UDF_INIT *initid, UDF_ARGS *udf_args,
+      unsigned char *is_null, unsigned char *error) noexcept;
+
+  /**
+   * @brief De-init function for audit_log_session_filter_id UDF.
+   *
+   * @param initid Pointer to UDF_INIT argument
+   */
+  static void audit_log_session_filter_id_udf_deinit(UDF_INIT *initid);
+
  private:
   /**
    * @brief Set a character set name of a UDF return value.
