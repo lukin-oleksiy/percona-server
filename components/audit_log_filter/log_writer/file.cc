@@ -17,6 +17,7 @@
 #include "components/audit_log_filter/log_writer/file.h"
 
 #include "components/audit_log_filter/audit_error_log.h"
+#include "components/audit_log_filter/audit_log_filter.h"
 #include "components/audit_log_filter/log_record_formatter/base.h"
 #include "components/audit_log_filter/sys_vars.h"
 
@@ -115,6 +116,8 @@ void LogWriterFile::rotate() noexcept {
 
   do_open_file();
   m_is_rotating = false;
+
+  get_audit_log_filter_instance()->on_audit_log_rotated();
 }
 
 void LogWriterFile::flush() noexcept {

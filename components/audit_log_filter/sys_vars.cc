@@ -16,6 +16,7 @@
 #include "components/audit_log_filter/sys_vars.h"
 #include "components/audit_log_filter/audit_error_log.h"
 #include "components/audit_log_filter/audit_log_filter.h"
+#include "components/audit_log_filter/audit_log_reader.h"
 
 #define ALLOW_COMPONENT_INCLUDE  // for my_io.h and plugin.h
 #include "sql/mysqld.h"
@@ -33,6 +34,7 @@
 
 #include <syslog.h>
 #include <atomic>
+#include <iomanip>
 #include <string>
 #include <string_view>
 
@@ -41,9 +43,15 @@ namespace {
 
 constexpr std::string_view kCompName{"audit_log_filter"};
 
+constexpr std::string_view kReaderContextSlotName{
+    "component_audit_reader_context"};
 constexpr std::string_view kSessionFilterIdSlotName{
     "component_audit_reader_session_filter_id"};
+mysql_thd_store_slot reader_context_thread_slot{nullptr};
 mysql_thd_store_slot session_filter_id_slot{nullptr};
+
+std::atomic<uint64_t> record_id{0};
+LogBookmark log_bookmark;
 
 /*
  * Status variables
@@ -56,6 +64,7 @@ std::atomic<uint64_t> write_waits{0};
 std::atomic<uint64_t> event_max_drop_size{0};
 std::atomic<uint64_t> current_log_size{0};
 std::atomic<uint64_t> total_log_size{0};
+std::atomic<uint64_t> buffer_bypassing_writes{0};
 
 int show_events_total(THD *, SHOW_VAR *var, char *buff) {
   var->type = SHOW_LONG;
@@ -121,6 +130,14 @@ int show_total_log_size(THD *, SHOW_VAR *var, char *buff) {
   return 0;
 }
 
+int show_buffer_bypassing_writes(THD *, SHOW_VAR *var, char *buff) {
+  var->type = SHOW_LONG;
+  var->value = buff;
+  auto *value = reinterpret_cast<uint64_t *>(buff);
+  *value = buffer_bypassing_writes.load(std::memory_order_relaxed);
+  return 0;
+}
+
 SHOW_VAR status_vars[] = {
     {"Audit_log_filter_events", reinterpret_cast<char *>(&show_events_total),
      SHOW_FUNC, SHOW_SCOPE_GLOBAL},
@@ -143,6 +160,9 @@ SHOW_VAR status_vars[] = {
     {"Audit_log_filter_total_size",
      reinterpret_cast<char *>(&show_total_log_size), SHOW_FUNC,
      SHOW_SCOPE_GLOBAL},
+    {"Audit_log_filter_buffer_bypassing_writes",
+     reinterpret_cast<char *>(&show_buffer_bypassing_writes), SHOW_FUNC,
+     SHOW_SCOPE_GLOBAL},
     {nullptr, nullptr, SHOW_UNDEF, SHOW_SCOPE_UNDEF}};
 
 /*
@@ -164,6 +184,7 @@ char *log_syslog_tag = nullptr;
 std::string default_log_syslog_tag{"audit-filter"};
 ulong log_syslog_facility = 0;
 ulong log_syslog_priority = 0;
+ulong read_buffer_size = 0;
 
 const char *audit_log_filter_handler_names[] = {"FILE", "SYSLOG", nullptr};
 TYPE_LIB audit_log_filter_handler_typelib = {
@@ -326,6 +347,7 @@ enum_arg_check_type check_syslog_facility{
 enum_arg_check_type check_syslog_priority{
     0, &audit_log_filter_syslog_priority_typelib};
 bool_arg_check_type check_disable{false};
+ulong_arg_check_type check_read_buffer_size{32768UL, 32768UL, ULONG_MAX, 0UL};
 
 struct SysVarInfo {
   const char *name;
@@ -492,7 +514,28 @@ SysVarListType sys_vars = {
       "Disable audit logging for all connecting and connected sessions.",
       log_disabled_check_func, nullptr, static_cast<void *>(&check_disable),
       static_cast<void *>(&log_disabled)},
+     false},
+    /*
+     * The audit_log_filter.read_buffer_size variable defines buffer size for
+     * reading from the audit log file, in bytes. The audit_log_read() function
+     * reads no more than this many bytes. Log file reading is supported only
+     * for JSON log format.
+     */
+    {{"read_buffer_size",
+      PLUGIN_VAR_LONG | PLUGIN_VAR_UNSIGNED | PLUGIN_VAR_RQCMDARG,
+      "The buffer size for reading from the audit log file, in bytes.", nullptr,
+      nullptr, static_cast<void *>(&check_read_buffer_size),
+      static_cast<void *>(&read_buffer_size)},
      false}};
+
+#ifndef NDEBUG
+auto get_initial_debug_time_point() {
+  std::tm tm = {};
+  std::stringstream{"2022-08-09 10:00:00"} >>
+      std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
+  return std::chrono::system_clock::from_time_t(std::mktime(&tm));
+}
+#endif
 
 }  // namespace
 
@@ -505,6 +548,18 @@ bool SysVars::init() noexcept {
                                SysVars::get_comp_registry_srv());
   my_service<SERVICE_TYPE(mysql_thd_store)> thd_store_service(
       "mysql_thd_store", SysVars::get_comp_registry_srv());
+
+  if (thd_store_service->register_slot(
+          kReaderContextSlotName.data(),
+          [](void *ctx) -> int {
+            if (ctx != nullptr) {
+              delete reinterpret_cast<AuditLogReaderContext *>(ctx);
+            }
+            return 0;
+          },
+          &reader_context_thread_slot) == 1) {
+    return false;
+  }
 
   if (thd_store_service->register_slot(
           kSessionFilterIdSlotName.data(),
@@ -554,10 +609,14 @@ void SysVars::deinit() noexcept {
   // Current THD instance may still hold allocated resources which will not
   // be released properly after unregistering slots below. Cleaning them up
   // manually before slots removal.
+  delete reinterpret_cast<AuditLogReaderContext *>(
+      thd_store_service->get(nullptr, reader_context_thread_slot));
   delete reinterpret_cast<ulong *>(
       thd_store_service->get(nullptr, session_filter_id_slot));
+  thd_store_service->set(nullptr, reader_context_thread_slot, nullptr);
   thd_store_service->set(nullptr, session_filter_id_slot, nullptr);
 
+  thd_store_service->unregister_slot(reader_context_thread_slot);
   thd_store_service->unregister_slot(session_filter_id_slot);
 
   if (status_var_registration_srv->unregister_variable(status_vars) == 1) {
@@ -583,12 +642,6 @@ void SysVars::validate() noexcept {
         "audit_log_filter.prune_seconds is ignored");
   }
 }
-
-// TODO: support for
-// sys vars
-//  MYSQL_SYSVAR(record_buffer),
-//  MYSQL_SYSVAR(query_stack),
-//  audit_log_read_buffer_size
 
 const char *SysVars::get_file_name() noexcept { return log_file_name; }
 
@@ -661,6 +714,35 @@ ulong SysVars::get_session_filter_id(THD *thd) noexcept {
 
 bool SysVars::get_log_disabled() noexcept { return log_disabled; }
 
+ulong SysVars::get_read_buffer_size(MYSQL_THD thd [[maybe_unused]]) noexcept {
+  return read_buffer_size;
+}
+
+void SysVars::update_log_bookmark(uint64_t id,
+                                  const std::string &timestamp) noexcept {
+  log_bookmark.id = id;
+  log_bookmark.timestamp = timestamp;
+}
+
+LogBookmark SysVars::get_log_bookmark() noexcept { return log_bookmark; }
+
+AuditLogReaderContext *SysVars::get_log_reader_context(MYSQL_THD thd) noexcept {
+  my_service<SERVICE_TYPE(mysql_thd_store)> thd_store_service(
+      "mysql_thd_store", SysVars::get_comp_registry_srv());
+
+  return reinterpret_cast<AuditLogReaderContext *>(
+      thd_store_service->get(thd, reader_context_thread_slot));
+}
+
+void SysVars::set_log_reader_context(MYSQL_THD thd,
+                                     AuditLogReaderContext *context) noexcept {
+  my_service<SERVICE_TYPE(mysql_thd_store)> thd_store_service(
+      "mysql_thd_store", SysVars::get_comp_registry_srv());
+
+  thd_store_service->set(thd, reader_context_thread_slot,
+                         reinterpret_cast<void *>(context));
+}
+
 void SysVars::inc_events_total() noexcept {
   events_total.fetch_add(1, std::memory_order_relaxed);
 }
@@ -706,6 +788,32 @@ void SysVars::set_total_log_size(uint64_t size) noexcept {
 
 void SysVars::update_total_log_size(uint64_t size) noexcept {
   total_log_size.fetch_add(size, std::memory_order_relaxed);
+}
+
+void SysVars::inc_buffer_bypassing_writes() noexcept {
+  buffer_bypassing_writes.fetch_add(1, std::memory_order_relaxed);
+}
+
+std::chrono::system_clock::time_point SysVars::get_debug_time_point() noexcept {
+  static auto debug_time_point = get_initial_debug_time_point();
+
+  DBUG_EXECUTE_IF("audit_log_filter_reset_log_bookmark", {
+    DBUG_SET("-d,audit_log_filter_reset_log_bookmark");
+    debug_time_point = get_initial_debug_time_point();
+    SysVars::update_log_bookmark(0, "");
+    SysVars::init_record_id(0);
+  });
+
+  debug_time_point += std::chrono::minutes{1};
+  return debug_time_point;
+}
+
+uint64_t SysVars::get_next_record_id() noexcept {
+  return record_id.fetch_add(1, std::memory_order_relaxed);
+}
+
+void SysVars::init_record_id(uint64_t initial_record_id) noexcept {
+  record_id.store(initial_record_id);
 }
 
 decltype(get_component_registry_service().get())
