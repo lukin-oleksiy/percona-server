@@ -16,6 +16,7 @@
 #define ALLOW_COMPONENT_INCLUDE  // for my_io.h and plugin.h
 #include "components/audit_log_filter/audit_log_filter.h"
 #include "components/audit_log_filter/audit_filter.h"
+#include "components/audit_log_filter/audit_log_reader.h"
 #include "components/audit_log_filter/audit_psi_info.h"
 #include "components/audit_log_filter/audit_rule.h"
 #include "components/audit_log_filter/audit_rule_registry.h"
@@ -310,9 +311,22 @@ mysql_service_status_t audit_log_filter_init() {
     return 1;
   }
 
+  auto log_reader = std::make_unique<AuditLogReader>(comp_registry_srv.get());
+
+  if (log_reader == nullptr) {
+    LogComponentErr(ERROR_LEVEL, ER_AUDIT_INIT_READER_INIT_FAILURE);
+    return 1;
+  }
+
+  if (!log_reader->init()) {
+    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG, "Cannot open log reader");
+    my_plugin_perror();
+    return 1;
+  }
+
   audit_log_filter = new AuditLogFilter(
       std::move(comp_registry_srv), std::move(audit_rule_registry),
-      std::move(audit_udf), std::move(log_writer));
+      std::move(audit_udf), std::move(log_writer), std::move(log_reader));
 
   if (SysVars::get_log_disabled()) {
     LogComponentErr(WARNING_LEVEL, ER_AUDIT_INIT_DISABLED_WARN);
@@ -346,12 +360,14 @@ AuditLogFilter::AuditLogFilter(
     comp_registry_srv_container_t comp_registry_srv,
     std::unique_ptr<AuditRuleRegistry> audit_rules_registry,
     std::unique_ptr<AuditUdf> audit_udf,
-    std::unique_ptr<log_writer::LogWriterBase> log_writer)
+    std::unique_ptr<log_writer::LogWriterBase> log_writer,
+    std::unique_ptr<AuditLogReader> log_reader)
     : m_comp_registry_srv{std::move(comp_registry_srv)},
       m_audit_rules_registry{std::move(audit_rules_registry)},
       m_audit_udf{std::move(audit_udf)},
       m_log_writer{std::move(log_writer)},
-      m_filter{std::make_unique<AuditEventFilter>()} {}
+      m_filter{std::make_unique<AuditEventFilter>()},
+      m_log_reader{std::move(log_reader)} {}
 
 int AuditLogFilter::notify_event(audit_event_class_t event_class,
                                  const void *event_data) {
@@ -482,6 +498,8 @@ void AuditLogFilter::on_audit_log_prune_requested() noexcept {
   m_log_writer->prune();
 }
 
+void AuditLogFilter::on_audit_log_rotated() noexcept { m_log_reader->init(); }
+
 void AuditLogFilter::get_connection_attrs(MYSQL_THD thd,
                                           AuditRecordVariant &audit_record) {
   my_service<SERVICE_TYPE(mysql_connection_attributes_iterator)> attrs_service(
@@ -564,6 +582,10 @@ bool AuditLogFilter::get_connection_user(MYSQL_THD thd, std::string &user_name,
 
 comp_registry_srv_t *AuditLogFilter::get_comp_registry_srv() noexcept {
   return m_comp_registry_srv.get();
+}
+
+AuditLogReader *AuditLogFilter::get_log_reader() noexcept {
+  return m_log_reader.get();
 }
 
 }  // namespace audit_log_filter

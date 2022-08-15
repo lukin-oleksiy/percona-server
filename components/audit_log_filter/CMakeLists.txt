@@ -22,6 +22,7 @@ IF(WITH_COMPONENT_AUDIT_LOG_FILTER)
 
   SET(AUDIT_LOG_FILTER_SOURCES
       audit_log_filter.cc
+      audit_log_reader.cc
       audit_record.cc
       audit_filter.cc
       audit_rule.cc
