@@ -32,5 +32,3 @@ Variable_name	Value
 Audit_log_filter_event_max_drop_size	4349
 #
 # Cleanup
-DELETE FROM mysql.audit_log_user;
-DELETE FROM mysql.audit_log_filter;

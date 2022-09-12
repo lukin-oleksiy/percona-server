@@ -29,7 +29,6 @@
 #include <mysql/components/services/defs/event_tracking_table_access_defs.h>
 
 #include <cassert>
-#include <cstring>
 #include <iomanip>
 #include <iostream>
 
@@ -146,11 +145,10 @@ std::string LogRecordFormatterBase::make_escaped_string(
     const mysql_cstring_with_length *in) const noexcept {
   std::string out;
 
-  if (in != nullptr && in->str != nullptr) {
+  if (in != nullptr && in->str != nullptr && in->length != 0) {
     const auto &escape_rules = get_escape_rules();
-    size_t len = strlen(in->str);
 
-    for (size_t i = 0; i < len; ++i) {
+    for (size_t i = 0; i < in->length; ++i) {
       const auto it = escape_rules.find(in->str[i]);
       if (it == escape_rules.end()) {
         out.append(&in->str[i], 1);
