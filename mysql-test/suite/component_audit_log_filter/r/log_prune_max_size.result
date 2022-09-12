@@ -21,6 +21,5 @@ OK
 Logs size doesn't exceed expected 8192 bytes
 #
 # Cleanup
-DELETE FROM mysql.audit_log_user;
-DELETE FROM mysql.audit_log_filter;
+SET GLOBAL DEBUG='-d,audit_log_filter_debug_timestamp';
 SET GLOBAL audit_log_filter.max_size = @old_max_size;

@@ -1,3 +1,4 @@
+SET GLOBAL audit_log_filter.flush = ON;
 #
 # Create filter used for testing
 SELECT audit_log_filter_set_filter('log_all', '{"filter": {"log": true}}');
@@ -26,5 +27,3 @@ OK
 include/assert_grep.inc [unexpected audit events in log]
 #
 # Cleanup
-DELETE FROM mysql.audit_log_user;
-DELETE FROM mysql.audit_log_filter;

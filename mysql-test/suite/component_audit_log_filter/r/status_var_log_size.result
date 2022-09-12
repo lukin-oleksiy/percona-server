@@ -21,5 +21,3 @@ Audit_log_filter_current_size Ok
 Audit_log_filter_total_size Ok
 #
 # Cleanup
-DELETE FROM mysql.audit_log_user;
-DELETE FROM mysql.audit_log_filter;

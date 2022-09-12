@@ -105,12 +105,8 @@ UNINSTALL COMPONENT "file://component_audit_api_message_emit";
 
 --echo #
 --echo # Cleanup
-DELETE FROM mysql.audit_log_user;
-DELETE FROM mysql.audit_log_filter;
+--source ../inc/audit_comp_uninstall.inc
+--source ../inc/audit_tables_cleanup.inc
 
 DROP TABLE t1;
 DROP TABLE t2;
-
---source ../inc/audit_comp_uninstall.inc
-
---source ../inc/audit_tables_cleanup.inc

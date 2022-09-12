@@ -80,8 +80,5 @@ SET SESSION debug="-d,udf_audit_log_filter_insertion_failure";
 
 --echo #
 --echo # Cleanup
-DELETE FROM mysql.audit_log_user;
-DELETE FROM mysql.audit_log_filter;
-
 --source ../inc/audit_comp_uninstall.inc
 --source ../inc/audit_tables_cleanup.inc

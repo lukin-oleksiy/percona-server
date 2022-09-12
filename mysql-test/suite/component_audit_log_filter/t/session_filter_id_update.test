@@ -44,9 +44,5 @@ SELECT audit_log_session_filter_id();
 --echo # Cleanup
 DROP USER user1, user2;
 
-DELETE FROM mysql.audit_log_user;
-DELETE FROM mysql.audit_log_filter;
-
 --source ../inc/audit_comp_uninstall.inc
-
 --source ../inc/audit_tables_cleanup.inc

@@ -9,5 +9,3 @@ Audit_log_filter_events_filtered counter updated
 Audit_log_filter_events_written counter updated
 #
 # Cleanup
-DELETE FROM mysql.audit_log_user;
-DELETE FROM mysql.audit_log_filter;

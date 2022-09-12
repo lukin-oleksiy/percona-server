@@ -131,7 +131,5 @@ ERROR HY000: Aborted by Audit API ('MYSQL_AUDIT_MESSAGE_USER';1).
 UNINSTALL COMPONENT "file://component_audit_api_message_emit";
 #
 # Cleanup
-DELETE FROM mysql.audit_log_user;
-DELETE FROM mysql.audit_log_filter;
 DROP TABLE t1;
 DROP TABLE t2;

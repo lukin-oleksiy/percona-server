@@ -34,9 +34,6 @@ if ($events_written != 0) {
 
 --echo #
 --echo # Cleanup
-DELETE FROM mysql.audit_log_user;
-DELETE FROM mysql.audit_log_filter;
-
 --source ../inc/audit_comp_uninstall.inc
-
 --source ../inc/audit_tables_cleanup.inc
+

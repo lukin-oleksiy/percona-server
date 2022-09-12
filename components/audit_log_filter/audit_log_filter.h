@@ -35,7 +35,6 @@ namespace log_writer {
 class LogWriterBase;
 }  // namespace log_writer
 
-class AuditEventFilter;
 class AuditRuleRegistry;
 class AuditUdf;
 class AuditLogReader;
@@ -63,7 +62,7 @@ class AuditLogFilter {
    * @brief Get UDFs handler instance.
    * @return UDF handler instance
    */
-  AuditUdf *get_udf() noexcept { return m_audit_udf.get(); }
+  AuditUdf *get_udf() noexcept;
 
   /**
    * @brief Get components registry handler.
@@ -122,7 +121,6 @@ class AuditLogFilter {
   std::unique_ptr<AuditRuleRegistry> m_audit_rules_registry;
   std::unique_ptr<AuditUdf> m_audit_udf;
   std::unique_ptr<log_writer::LogWriterBase> m_log_writer;
-  std::unique_ptr<AuditEventFilter> m_filter;
   std::unique_ptr<AuditLogReader> m_log_reader;
 };
 
