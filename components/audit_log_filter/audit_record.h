@@ -45,7 +45,7 @@ constexpr std::string_view CONNECTION_TYPE_FIELD_NAME = "connection_type";
 
 struct ExtendedInfo {
   std::string digest;
-  std::map<std::string, std::string> attrs;
+  std::map<std::string, std::vector<std::pair<std::string, std::string>>> attrs;
 };
 
 struct AuditRecordGeneral {
@@ -144,6 +144,14 @@ struct AuditRecordParse {
   ExtendedInfo extended_info;
 };
 
+struct AuditRecordAudit {
+  std::string_view event_class_name;
+  std::string_view event_subclass_name;
+  audit_event_class_t event_class;
+  const internal_event_tracking_audit_data *event;
+  ExtendedInfo extended_info;
+};
+
 struct AuditRecordUnknown {
   std::string_view event_class_name;
   std::string_view event_subclass_name;
@@ -158,7 +166,7 @@ using AuditRecordVariant =
                  AuditRecordServerStartup, AuditRecordServerShutdown,
                  AuditRecordCommand, AuditRecordQuery, AuditRecordStoredProgram,
                  AuditRecordAuthentication, AuditRecordMessage,
-                 AuditRecordParse, AuditRecordUnknown>;
+                 AuditRecordParse, AuditRecordAudit, AuditRecordUnknown>;
 
 /**
  * @brief Get AuditRecordVariant instance representing received audit event.
@@ -279,6 +287,14 @@ AuditRecordFieldsList get_audit_record_fields(const AuditRecordMessage &record);
  * @return Fields list, @ref AuditRecordFieldsList
  */
 AuditRecordFieldsList get_audit_record_fields(const AuditRecordParse &record);
+
+/**
+ * @brief Get fields list from AuditRecordAudit event record.
+ *
+ * @param record Audit event record
+ * @return Fields list, @ref AuditRecordFieldsList
+ */
+AuditRecordFieldsList get_audit_record_fields(const AuditRecordAudit &record);
 
 /**
  * @brief Get fields list from AuditRecordUnknown event record.

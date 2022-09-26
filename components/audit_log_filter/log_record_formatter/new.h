@@ -133,6 +133,15 @@ class LogRecordFormatter<AuditLogFormatType::New>
       const AuditRecordParse &audit_record) const noexcept override;
 
   /**
+   * @brief Apply formatting to AuditRecordAudit audit record.
+   *
+   * @param [in] audit_record Audit record
+   * @return String representing formatted audit record
+   */
+  [[nodiscard]] AuditRecordString apply(
+      const AuditRecordAudit &audit_record) const noexcept override;
+
+  /**
    * @brief Insert audit event class and subclass names into record printed to
    *        log. Needed for testing.
    *

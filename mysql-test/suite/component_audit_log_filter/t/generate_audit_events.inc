@@ -10,7 +10,6 @@
 --disable_query_log
 
 # AuditRecordGeneral,
-# AuditRecordParse,
 # AuditRecordTableAccess,
 # AuditRecordCommand,
 # AuditRecordQuery,
@@ -44,6 +43,7 @@ INSTALL COMPONENT "file://component_audit_api_message_emit";
 SELECT audit_api_message_emit_udf('component_text', 'producer_text', 'message_text', 'key', 'value') AS 'Message';
 UNINSTALL COMPONENT "file://component_audit_api_message_emit";
 
+--source include/count_sessions.inc
 # AuditRecordConnection
 # AuditRecordAuthentication
 CREATE USER 'user1'@'%' IDENTIFIED BY '111';
@@ -52,6 +52,7 @@ connect (conn1,localhost,user1,111,test);
 disconnect conn1;
 connection default;
 DROP USER user1;
+--source include/wait_until_count_sessions.inc
 
 # AuditRecordServerShutdown
 #--source include/restart_mysqld.inc

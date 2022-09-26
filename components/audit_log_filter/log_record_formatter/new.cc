@@ -40,7 +40,6 @@ AuditRecordString LogRecordFormatterNew::apply(
 
   /* clang-format off */
   result << "  <AUDIT_RECORD>\n"
-         << "    <CLASS>AuditRecordGeneral</CLASS>\n"
          << "    <NAME>" << event_subclass_to_string(audit_record.event) << "</NAME>\n"
          << "    <RECORD_ID>" << make_record_id(tp) << "</RECORD_ID>\n"
          << "    <TIMESTAMP>" << make_timestamp(tp) << "</TIMESTAMP>\n"
@@ -63,7 +62,6 @@ AuditRecordString LogRecordFormatterNew::apply(
 
   /* clang-format off */
   result << "  <AUDIT_RECORD>\n"
-         << "    <CLASS>AuditRecordConnection</CLASS>\n"
          << "    <NAME>" << event_subclass_to_string(audit_record.event) << "</NAME>\n"
          << "    <RECORD_ID>" << make_record_id(tp) << "</RECORD_ID>\n"
          << "    <TIMESTAMP>" << make_timestamp(tp) << "</TIMESTAMP>\n"
@@ -91,7 +89,6 @@ AuditRecordString LogRecordFormatterNew::apply(
 
   /* clang-format off */
   result << "  <AUDIT_RECORD>\n"
-         << "    <CLASS>AuditRecordTableAccess</CLASS>\n"
          << "    <NAME>" << event_subclass_to_string(audit_record.event) << "</NAME>\n"
          << "    <RECORD_ID>" << make_record_id(tp) << "</RECORD_ID>\n"
          << "    <TIMESTAMP>" << make_timestamp(tp) << "</TIMESTAMP>\n"
@@ -112,7 +109,6 @@ AuditRecordString LogRecordFormatterNew::apply(
 
   /* clang-format off */
   result << "  <AUDIT_RECORD>\n"
-         << "    <CLASS>AuditRecordGlobalVariable</CLASS>\n"
          << "    <NAME>" << event_subclass_to_string(audit_record.event) << "</NAME>\n"
          << "    <RECORD_ID>" << make_record_id(tp) << "</RECORD_ID>\n"
          << "    <TIMESTAMP>" << make_timestamp(tp) << "</TIMESTAMP>\n"
@@ -133,7 +129,9 @@ AuditRecordString LogRecordFormatterNew::apply(
   std::stringstream startup_options;
 
   for (unsigned int i = 0; i < audit_record.event->argc; ++i) {
-    startup_options << audit_record.event->argv[i] << " ";
+    if (audit_record.event->argv[i] != nullptr) {
+      startup_options << audit_record.event->argv[i] << " ";
+    }
   }
 
   std::string startup_options_str = startup_options.str();
@@ -141,7 +139,6 @@ AuditRecordString LogRecordFormatterNew::apply(
 
   /* clang-format off */
   result << "  <AUDIT_RECORD>\n"
-         << "    <CLASS>AuditRecordServerStartup</CLASS>\n"
          << "    <NAME>" << event_subclass_to_string(audit_record.event) << "</NAME>\n"
          << "    <RECORD_ID>" << make_record_id(tp) << "</RECORD_ID>\n"
          << "    <TIMESTAMP>" << make_timestamp(tp) << "</TIMESTAMP>\n"
@@ -160,7 +157,6 @@ AuditRecordString LogRecordFormatterNew::apply(
 
   /* clang-format off */
   result << "  <AUDIT_RECORD>\n"
-         << "    <CLASS>AuditRecordServerShutdown</CLASS>\n"
          << "    <NAME>" << event_subclass_to_string(audit_record.event) << "</NAME>\n"
          << "    <RECORD_ID>" << make_record_id(tp) << "</RECORD_ID>\n"
          << "    <TIMESTAMP>" << make_timestamp(tp) << "</TIMESTAMP>\n"
@@ -180,7 +176,6 @@ AuditRecordString LogRecordFormatterNew::apply(
 
   /* clang-format off */
   result << "  <AUDIT_RECORD>\n"
-         << "    <CLASS>AuditRecordCommand</CLASS>\n"
          << "    <NAME>" << event_subclass_to_string(audit_record.event) << "</NAME>\n"
          << "    <RECORD_ID>" << make_record_id(tp) << "</RECORD_ID>\n"
          << "    <TIMESTAMP>" << make_timestamp(tp) << "</TIMESTAMP>\n"
@@ -200,7 +195,6 @@ AuditRecordString LogRecordFormatterNew::apply(
 
   /* clang-format off */
   result << "  <AUDIT_RECORD>\n"
-         << "    <CLASS>AuditRecordQuery</CLASS>\n"
          << "    <NAME>" << event_subclass_to_string(audit_record.event) << "</NAME>\n"
          << "    <RECORD_ID>" << make_record_id(tp) << "</RECORD_ID>\n"
          << "    <TIMESTAMP>" << make_timestamp(tp) << "</TIMESTAMP>\n"
@@ -222,7 +216,6 @@ AuditRecordString LogRecordFormatterNew::apply(
 
   /* clang-format off */
   result << "  <AUDIT_RECORD>\n"
-         << "    <CLASS>AuditRecordStoredProgram</CLASS>\n"
          << "    <NAME>" << event_subclass_to_string(audit_record.event) << "</NAME>\n"
          << "    <RECORD_ID>" << make_record_id(tp) << "</RECORD_ID>\n"
          << "    <TIMESTAMP>" << make_timestamp(tp) << "</TIMESTAMP>\n"
@@ -243,7 +236,6 @@ AuditRecordString LogRecordFormatterNew::apply(
 
   /* clang-format off */
   result << "  <AUDIT_RECORD>\n"
-         << "    <CLASS>AuditRecordAuthentication</CLASS>\n"
          << "    <NAME>" << event_subclass_to_string(audit_record.event) << "</NAME>\n"
          << "    <RECORD_ID>" << make_record_id(tp) << "</RECORD_ID>\n"
          << "    <TIMESTAMP>" << make_timestamp(tp) << "</TIMESTAMP>\n"
@@ -265,7 +257,6 @@ AuditRecordString LogRecordFormatterNew::apply(
 
   /* clang-format off */
   result << "  <AUDIT_RECORD>\n"
-         << "    <CLASS>AuditRecordMessage</CLASS>\n"
          << "    <NAME>" << event_subclass_to_string(audit_record.event) << "</NAME>\n"
          << "    <RECORD_ID>" << make_record_id(tp) << "</RECORD_ID>\n"
          << "    <TIMESTAMP>" << make_timestamp(tp) << "</TIMESTAMP>\n"
@@ -303,7 +294,6 @@ AuditRecordString LogRecordFormatterNew::apply(
 
   /* clang-format off */
   result << "  <AUDIT_RECORD>\n"
-         << "    <CLASS>AuditRecordParse</CLASS>\n"
          << "    <NAME>" << event_subclass_to_string(audit_record.event) << "</NAME>\n"
          << "    <RECORD_ID>" << make_record_id(tp) << "</RECORD_ID>\n"
          << "    <TIMESTAMP>" << make_timestamp(tp) << "</TIMESTAMP>\n"
@@ -313,6 +303,24 @@ AuditRecordString LogRecordFormatterNew::apply(
          << "    <SQLTEXT>" << (audit_record.extended_info.digest.empty() ? make_escaped_string(&audit_record.event->query)
                                                                           : make_escaped_string(audit_record.extended_info.digest)) << "</SQLTEXT>\n"
          << "    <REWRITTEN_QUERY>" << make_escaped_string(audit_record.event->rewritten_query) << "</REWRITTEN_QUERY>\n"
+         << "  </AUDIT_RECORD>\n";
+  /* clang-format on */
+
+  return result.str();
+}
+
+AuditRecordString LogRecordFormatterNew::apply(
+    const AuditRecordAudit &audit_record) const noexcept {
+  std::stringstream result;
+  std::chrono::system_clock::time_point tp = std::chrono::system_clock::now();
+
+  /* clang-format off */
+  result << "  <AUDIT_RECORD>\n"
+         << "    <NAME>" << event_subclass_to_string(audit_record.event) << "</NAME>\n"
+         << "    <RECORD_ID>" << make_record_id(tp) << "</RECORD_ID>\n"
+         << "    <TIMESTAMP>" << make_timestamp(tp) << "</TIMESTAMP>\n"
+         << "    <COMMAND_CLASS>" << event_class_to_string(audit_record.event_class) << "</COMMAND_CLASS>\n"
+         << "    <SERVER_ID>" << audit_record.event->server_id << "</SERVER_ID>\n"
          << "  </AUDIT_RECORD>\n";
   /* clang-format on */
 
