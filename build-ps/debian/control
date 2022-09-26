@@ -174,6 +174,7 @@ Depends: percona-server-common (= ${binary:Version}),
          percona-server-client (= ${binary:Version}),
          ${shlibs:Depends}, ${misc:Depends},
          psmisc,
+         curl,
          openssl
 Provides: mysql-server,
           virtual-mysql-server, virtual-mysql-server-core,
@@ -220,7 +221,8 @@ Replaces: mysql-server-5.0,
           mariadb-server-5.5,
           virtual-mysql-server,
           virtual-mysql-server-core
-Conflicts: percona-server-server (< 8.0.12), percona-server-tokudb
+Conflicts: percona-server-server (< 8.0.12),
+           percona-server-tokudb
 Description: Percona Server database server binaries
  Percona Server is a fast, stable and true multi-user, multi-threaded SQL
  database server. SQL (Structured Query Language) is the most popular database
@@ -234,7 +236,7 @@ Architecture: any
 Depends: percona-server-client (= ${binary:Version}),
          percona-server-server (= ${binary:Version}),
          libperconaserverclient21-dev (= ${binary:Version}),
-         perl, python, ${misc:Depends}, ${shlibs:Depends}
+         perl, ${misc:Depends}, ${shlibs:Depends}
 Replaces: percona-server-server, percona-server-client
 Description: Percona Server database test suite
  Percona Server is a fast, stable and true multi-user, multi-threaded SQL

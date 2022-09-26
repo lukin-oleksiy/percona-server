@@ -18,6 +18,7 @@ TOKUDB_BACKUP_VERSION = "@@TOKUDB_BACKUP_VERSION@@"
 TMP=$(CURDIR)/debian/tmp/
 TMPD=$(CURDIR)/debian/tmp-debug/
 prefix=/usr
+rpath='$$ORIGIN/../private'
 
 ARCH = $(shell dpkg-architecture -qDEB_BUILD_ARCH)
 ARCH_OS = $(shell dpkg-architecture -qDEB_BUILD_ARCH_OS)
@@ -165,6 +166,9 @@ endif
 	cd $(builddir) && $(MAKE) -j$(NCPU) VERBOSE=1
 
 	touch $@
+
+override_dh_builddeb:
+	dh_builddeb -- -Zgzip
 
 override_dh_auto_install:
 	@echo "RULES.$@"
