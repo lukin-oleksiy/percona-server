@@ -48,6 +48,7 @@ const std::string_view kAuditEventNameStoredProgram{"Stored Program"};
 const std::string_view kAuditEventNameAuthentication{"Authentication"};
 const std::string_view kAuditEventNameMessage{"Message"};
 const std::string_view kAuditEventNameParse{"Parse"};
+const std::string_view kAuditEventNameAudit{"Audit"};
 
 const std::string_view kAuditEventNameGeneralLog{"Log"};
 const std::string_view kAuditEventNameGeneralError{"Error"};
@@ -107,6 +108,9 @@ const std::string_view kAuditEventNameParseRewriteQueryRewritten{
     "Query Rewritten"};
 const std::string_view kAuditEventNameParseRewritePreparedStatement{
     "Prepared Statement"};
+
+const std::string_view kAuditEventNameAuditStart{"Audit"};
+const std::string_view kAuditEventNameAuditStop{"NoAudit"};
 
 const std::string_view kAuditNameUnknown{"unknown"};
 
@@ -190,6 +194,22 @@ std::string_view LogRecordFormatterBase::event_class_to_string(
       return kAuditEventNameMessage;
     case audit_event_class_t::AUDIT_PARSE_CLASS:
       return kAuditEventNameParse;
+    case audit_event_class_t::AUDIT_INTERNAL_AUDIT_CLASS:
+      return kAuditEventNameAudit;
+    default:
+      assert(false);
+  }
+
+  return kAuditNameUnknown;
+}
+
+std::string_view LogRecordFormatterBase::event_subclass_to_string(
+    const internal_event_tracking_audit_data *event) const noexcept {
+  switch (event->event_subclass) {
+    case INTERNAL_EVENT_TRACKING_AUDIT_AUDIT:
+      return kAuditEventNameAuditStart;
+    case INTERNAL_EVENT_TRACKING_AUDIT_NOAUDIT:
+      return kAuditEventNameAuditStop;
     default:
       assert(false);
   }

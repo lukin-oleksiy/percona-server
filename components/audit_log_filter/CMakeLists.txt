@@ -56,6 +56,8 @@ IF(WITH_COMPONENT_AUDIT_LOG_FILTER)
       event_field_action/block.cc
       event_field_action/replace_field.cc
       event_field_action/replace_filter.cc
+      event_field_action/print_query_attrs.cc
+      event_field_action/print_service_comp.cc
       event_filter_function.cc
       event_filter_function/base.cc
       event_filter_function/string_find.cc

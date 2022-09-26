@@ -46,6 +46,7 @@ const std::string_view kClassNameStoredProgram{"stored_program"};
 const std::string_view kClassNameAuthentication{"authentication"};
 const std::string_view kClassNameMessage{"message"};
 const std::string_view kClassNameParse{"parse"};
+const std::string_view kClassNameInternalAudit{"audit"};
 
 const std::string_view kSubclassNameGeneralLog{"log"};
 const std::string_view kSubclassNameGeneralError{"error"};
@@ -75,7 +76,9 @@ const std::string_view kSubclassNameConnect{"connect"};
 const std::string_view kSubclassNameDisconnect{"disconnect"};
 const std::string_view kSubclassNameChangeUser{"change_user"};
 const std::string_view kSubclassNamePreAuthenticate{"pre_authenticate"};
-const std::string_view kSubclassNameInternal{"internal"};
+const std::string_view kSubclassNameMessageInternal{"internal"};
+const std::string_view kSubclassNameInternalAudit{"audit"};
+const std::string_view kSubclassNameInternalNoAudit{"noaudit"};
 const std::string_view kSubclassNameParseRewriteNone{"rewrite_none"};
 const std::string_view kSubclassNameParseRewriteQueryRewritten{
     "rewrite_query_rewritten"};
@@ -279,7 +282,7 @@ std::string_view event_subclass_to_string(
     const mysql_event_tracking_message_data *event) {
   switch (event->event_subclass) {
     case EVENT_TRACKING_MESSAGE_INTERNAL:
-      return kSubclassNameInternal;
+      return kSubclassNameMessageInternal;
     case EVENT_TRACKING_MESSAGE_USER:
       return kSubclassNameUser;
     default:
@@ -298,6 +301,20 @@ std::string_view event_subclass_to_string(
       return kSubclassNameParseRewriteQueryRewritten;
     case EVENT_TRACKING_PARSE_REWRITE_IS_PREPARED_STATEMENT:
       return kSubclassNameParseRewritePreparedStatement;
+    default:
+      assert(false);
+  }
+
+  return kNameUnknown;
+}
+
+std::string_view event_subclass_to_string(
+    const internal_event_tracking_audit_data *event) {
+  switch (event->event_subclass) {
+    case INTERNAL_EVENT_TRACKING_AUDIT_AUDIT:
+      return kSubclassNameInternalAudit;
+    case INTERNAL_EVENT_TRACKING_AUDIT_NOAUDIT:
+      return kSubclassNameInternalNoAudit;
     default:
       assert(false);
   }
@@ -466,6 +483,18 @@ AuditRecordVariant get_audit_record(audit_event_class_t event_class,
                   static_cast<const mysql_event_tracking_parse_data *>(event)),
               event_class,
               static_cast<const mysql_event_tracking_parse_data *>(event),
+              {}}};
+    }
+    case audit_event_class_t::AUDIT_INTERNAL_AUDIT_CLASS: {
+      return AuditRecordVariant{
+          std::in_place_index<12>,
+          AuditRecordAudit{
+              kClassNameInternalAudit,
+              event_subclass_to_string(
+                  static_cast<const internal_event_tracking_audit_data *>(
+                      event)),
+              audit_event_class_t::AUDIT_INTERNAL_AUDIT_CLASS,
+              static_cast<const internal_event_tracking_audit_data *>(event),
               {}}};
     }
     default:
@@ -642,6 +671,12 @@ AuditRecordFieldsList get_audit_record_fields(const AuditRecordParse &record) {
       {"rewritten_query.length",
        mysql_cstring_len_to_string(event->rewritten_query)},
   };
+}
+
+AuditRecordFieldsList get_audit_record_fields(const AuditRecordAudit &record
+                                              [[maybe_unused]]) {
+  const auto *event = record.event;
+  return {{"server_id", std::to_string(event->server_id)}};
 }
 
 AuditRecordFieldsList get_audit_record_fields(const AuditRecordUnknown &record

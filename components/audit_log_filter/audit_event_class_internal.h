@@ -34,7 +34,22 @@ enum class audit_event_class_t {
   AUDIT_STORED_PROGRAM_CLASS,
   AUDIT_AUTHENTICATION_CLASS,
   AUDIT_MESSAGE_CLASS,
+  AUDIT_INTERNAL_AUDIT_CLASS,
   AUDIT_INTERNAL_UNKNOWN_CLASS
+};
+
+#define INTERNAL_EVENT_TRACKING_AUDIT_AUDIT (1 << 0)
+#define INTERNAL_EVENT_TRACKING_AUDIT_NOAUDIT (1 << 1)
+
+typedef unsigned long internal_event_tracking_audit_subclass_t;
+
+/**
+ * @struct audit_event_audit
+ * Structure for AUDIT_INTERNAL_AUDIT event.
+ */
+struct internal_event_tracking_audit_data {
+  internal_event_tracking_audit_subclass_t event_subclass;
+  uint32 server_id;
 };
 
 }  // namespace audit_log_filter

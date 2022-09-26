@@ -139,6 +139,15 @@ class LogRecordFormatter<AuditLogFormatType::Json>
       const AuditRecordParse &audit_record) const noexcept override;
 
   /**
+   * @brief Apply formatting to AuditRecordAudit audit record.
+   *
+   * @param [in] audit_record Audit record
+   * @return String representing formatted audit record
+   */
+  [[nodiscard]] AuditRecordString apply(
+      const AuditRecordAudit &audit_record) const noexcept override;
+
+  /**
    * @brief Get log file header string.
    *
    * @return Log file header string
@@ -296,6 +305,15 @@ class LogRecordFormatter<AuditLogFormatType::Json>
       const mysql_event_tracking_parse_data *event) const noexcept override;
 
   /**
+   * @brief Get string representation of audit event subclass name.
+   *
+   * @param event Audit event
+   * @return String representation of audit event subclass name
+   */
+  [[nodiscard]] std::string_view event_subclass_to_string(
+      const internal_event_tracking_audit_data *event) const noexcept override;
+
+  /**
    * @brief Get string representation of connection type name.
    *
    * @param connection_type Connection type
@@ -320,6 +338,15 @@ class LogRecordFormatter<AuditLogFormatType::Json>
    */
   [[nodiscard]] const EscapeRulesContainer &get_escape_rules()
       const noexcept override;
+
+  /**
+   * @brief Get JSON string representation of extra attributes
+   *        for audit log record.
+   * @param info Extended record info
+   * @return JSON formatted string
+   */
+  [[nodiscard]] std::string extra_attrs_to_string(
+      const ExtendedInfo &info) const noexcept;
 };
 
 using LogRecordFormatterJson = LogRecordFormatter<AuditLogFormatType::Json>;

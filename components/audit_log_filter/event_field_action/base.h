@@ -36,6 +36,8 @@ enum class EventActionType {
   Block,
   ReplaceField,
   ReplaceFilter,
+  PrintQueryAttrs,
+  PrintServiceComp,
   // This item must be last in the list
   Unknown
 };

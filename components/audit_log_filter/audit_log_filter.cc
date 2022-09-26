@@ -29,6 +29,7 @@
 #include <mysql/components/service_implementation.h>
 
 #include <mysql/components/services/mysql_connection_attributes_iterator.h>
+#include <mysql/components/services/mysql_current_thread_reader.h>
 #include <mysql/components/services/security_context.h>
 
 #include <mysql/components/services/event_tracking_authentication_service.h>
@@ -328,6 +329,8 @@ mysql_service_status_t audit_log_filter_init() {
 
   if (SysVars::get_log_disabled()) {
     LogComponentErr(WARNING_LEVEL, ER_AUDIT_INIT_DISABLED_WARN);
+  } else {
+    audit_log_filter->send_audit_start_event();
   }
 
   return 0;
@@ -341,11 +344,13 @@ mysql_service_status_t audit_log_filter_init() {
  *         code otherwise
  */
 mysql_service_status_t audit_log_filter_deinit() {
-  LogComponentErr(INFORMATION_LEVEL, ER_AUDIT_DEINIT_DONE);
-
   if (audit_log_filter == nullptr) {
     return 0;
   }
+
+  audit_log_filter->send_audit_stop_event();
+
+  LogComponentErr(INFORMATION_LEVEL, ER_AUDIT_DEINIT_DONE);
 
   SysVars::deinit();
   delete audit_log_filter;
@@ -447,6 +452,40 @@ int AuditLogFilter::notify_event(audit_event_class_t event_class,
   return 0;
 }
 
+void AuditLogFilter::send_audit_start_event() noexcept {
+  MYSQL_THD thd = nullptr;
+
+  if (mysql_service_mysql_current_thread_reader->get(&thd) == 1) {
+    return;
+  }
+
+  if (thd == nullptr) {
+    return;
+  }
+
+  auto event = internal_event_tracking_audit_data{
+      INTERNAL_EVENT_TRACKING_AUDIT_AUDIT, thd->server_id};
+  m_log_writer->write(get_audit_record(
+      audit_event_class_t::AUDIT_INTERNAL_AUDIT_CLASS, &event));
+}
+
+void AuditLogFilter::send_audit_stop_event() noexcept {
+  MYSQL_THD thd = nullptr;
+
+  if (mysql_service_mysql_current_thread_reader->get(&thd) == 1) {
+    return;
+  }
+
+  if (thd == nullptr) {
+    return;
+  }
+
+  auto event = internal_event_tracking_audit_data{
+      INTERNAL_EVENT_TRACKING_AUDIT_NOAUDIT, thd->server_id};
+  m_log_writer->write(get_audit_record(
+      audit_event_class_t::AUDIT_INTERNAL_AUDIT_CLASS, &event));
+}
+
 bool AuditLogFilter::on_audit_rule_flush_requested() noexcept {
   const bool is_flushed = m_audit_rules_registry->load();
 
@@ -488,11 +527,14 @@ void AuditLogFilter::get_connection_attrs(MYSQL_THD thd,
       std::visit([](auto &rec) -> ExtendedInfo & { return rec.extended_info; },
                  audit_record);
 
+  info.attrs["connection_attributes"] = {};
+
   while (attrs_service->get(thd, &iterator, &attr_name.str, &attr_name.length,
                             &attr_value.str, &attr_value.length,
                             &charset_string) == 0) {
-    info.attrs.emplace(std::string{attr_name.str, attr_name.length},
-                       std::string{attr_value.str, attr_value.length});
+    info.attrs["connection_attributes"].emplace_back(
+        std::string{attr_name.str, attr_name.length},
+        std::string{attr_value.str, attr_value.length});
   }
 
   attrs_service->deinit(iterator);

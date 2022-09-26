@@ -55,6 +55,7 @@ struct AuditRecordStoredProgram;
 struct AuditRecordAuthentication;
 struct AuditRecordMessage;
 struct AuditRecordParse;
+struct AuditRecordAudit;
 struct AuditRecordUnknown;
 
 namespace log_record_formatter {
@@ -182,6 +183,15 @@ class LogRecordFormatterBase {
       const AuditRecordParse &audit_record) const noexcept = 0;
 
   /**
+   * @brief Apply formatting to AuditRecordAudit audit record.
+   *
+   * @param [in] audit_record Audit record
+   * @return String representing formatted audit record
+   */
+  [[nodiscard]] virtual AuditRecordString apply(
+      const AuditRecordAudit &audit_record) const noexcept = 0;
+
+  /**
    * @brief Apply formatting to AuditRecordUnknown audit record.
    *
    * @param [in] audit_record Audit record
@@ -275,6 +285,15 @@ class LogRecordFormatterBase {
    */
   [[nodiscard]] static std::string_view event_class_to_string(
       audit_event_class_t event_class) noexcept;
+
+  /**
+   * @brief Get string representation of audit event subclass name.
+   *
+   * @param event Audit event
+   * @return String representation of audit event subclass name
+   */
+  [[nodiscard]] virtual std::string_view event_subclass_to_string(
+      const internal_event_tracking_audit_data *event) const noexcept;
 
   /**
    * @brief Get string representation of audit event subclass name.
