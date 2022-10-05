@@ -26,6 +26,7 @@ IF(WITH_COMPONENT_AUDIT_LOG_FILTER)
       audit_record.cc
       audit_filter.cc
       audit_rule.cc
+      audit_rule_parser.cc
       audit_rule_registry.cc
       audit_psi_info.cc
       audit_udf.cc
@@ -50,6 +51,7 @@ IF(WITH_COMPONENT_AUDIT_LOG_FILTER)
       event_field_condition/variable.cc
       event_field_condition/function.cc
       event_field_condition/bool.cc
+      event_field_action/base.cc
       event_field_action/log.cc
       event_field_action/block.cc
       event_field_action/replace_field.cc

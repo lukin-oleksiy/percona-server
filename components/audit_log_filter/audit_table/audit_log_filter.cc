@@ -15,6 +15,7 @@
 
 #include "components/audit_log_filter/audit_table/audit_log_filter.h"
 #include "components/audit_log_filter/audit_error_log.h"
+#include "components/audit_log_filter/audit_rule_parser.h"
 
 #include "my_dbug.h"
 
@@ -234,10 +235,9 @@ TableResult AuditLogFilter::load_filters(
         filter_filter_value.get(), buff_filter_filter_value,
         sizeof(buff_filter_filter_value), utf8);
 
-    AuditRule rule{static_cast<uint64_t>(filter_id), buff_filter_name_value,
-                   buff_filter_filter_value};
+    AuditRule rule{static_cast<uint64_t>(filter_id), buff_filter_name_value};
 
-    if (rule.check_valid()) {
+    if (AuditRuleParser::parse(buff_filter_filter_value, rule)) {
       container.insert({buff_filter_name_value, std::move(rule)});
     } else {
       LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
