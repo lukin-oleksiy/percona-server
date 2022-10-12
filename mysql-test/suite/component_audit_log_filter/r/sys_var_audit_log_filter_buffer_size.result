@@ -7,3 +7,5 @@ SELECT @@global.audit_log_filter.buffer_size;
 SELECT @@global.audit_log_filter.buffer_size;
 @@global.audit_log_filter.buffer_size
 4096
+call mtr.add_suppression("Component audit_log_filter reported: 'Cannot open log writer, error: Cannot allocate memory'");
+# restart: --audit-log-filter.buffer-size=99999999999

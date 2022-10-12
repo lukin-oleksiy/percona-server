@@ -10,5 +10,11 @@ SELECT @@global.audit_log_filter.buffer_size;
 --source include/restart_mysqld.inc
 SELECT @@global.audit_log_filter.buffer_size;
 
+call mtr.add_suppression("Component audit_log_filter reported: 'Cannot open log writer, error: Cannot allocate memory'");
+
+# Too big buffer, should not crash
+--let $restart_parameters="restart: --audit-log-filter.buffer-size=99999999999"
+--source include/restart_mysqld.inc
+
 --source ../inc/audit_comp_uninstall.inc
 --source ../inc/audit_tables_cleanup.inc

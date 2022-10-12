@@ -53,11 +53,6 @@ class LogWriter<AuditLogHandlerType::Syslog> : public LogWriterBase {
   void write(const std::string &record, bool print_separator) noexcept override;
 
   /**
-   * @brief Close and reopen current log file. Used for manual log rotation.
-   */
-  void flush() noexcept override {}
-
-  /**
    * @brief Prune outdated log files.
    */
   void prune() noexcept override {}

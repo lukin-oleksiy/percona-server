@@ -22,5 +22,9 @@ SELECT @@global.audit_log_filter.strategy;
 --source include/restart_mysqld.inc
 SELECT @@global.audit_log_filter.strategy;
 
+# Restart with original value
+--let $restart_parameters="restart:"
+--source include/restart_mysqld.inc
+
 --source ../inc/audit_comp_uninstall.inc
 --source ../inc/audit_tables_cleanup.inc

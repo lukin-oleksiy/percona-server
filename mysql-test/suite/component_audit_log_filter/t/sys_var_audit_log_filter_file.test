@@ -9,5 +9,11 @@ SELECT @@global.audit_log_filter.file;
 --source include/restart_mysqld.inc
 SELECT @@global.audit_log_filter.file;
 
---source ../inc/audit_comp_uninstall.inc
+call mtr.add_suppression("Component audit_log_filter reported: 'Cannot open log writer, error: Permission denied'");
+call mtr.add_suppression("Initialization method provided by component 'component_audit_log_filter' failed");
+--let $restart_parameters="restart: --audit-log-filter.file='/audit_log'"
+--source include/restart_mysqld.inc
+
 --source ../inc/audit_tables_cleanup.inc
+
+--source ../inc/audit_comp_uninstall.inc

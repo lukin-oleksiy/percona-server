@@ -49,6 +49,11 @@ class AuditLogFilter {
                  std::unique_ptr<AuditLogReader> log_reader);
 
   /**
+   * @brief De-init plugin components.
+   */
+  void deinit() noexcept;
+
+  /**
    * @brief Process audit event.
    *
    * @param event_class Event class
@@ -97,17 +102,17 @@ class AuditLogFilter {
   bool on_audit_rule_flush_requested() noexcept;
 
   /**
-   * @brief Handle log file flush request.
-   */
-  void on_audit_log_flush_requested() noexcept;
-
-  /**
    * @brief Handle log files prunning request.
    */
   void on_audit_log_prune_requested() noexcept;
 
   /**
-   * @brief Handle log rotation event.
+   * @brief Handle log files rotation request.
+   */
+  void on_audit_log_rotate_requested() noexcept;
+
+  /**
+   * @brief Handle successful log rotation event.
    */
   void on_audit_log_rotated() noexcept;
 
@@ -132,6 +137,7 @@ class AuditLogFilter {
   std::unique_ptr<AuditUdf> m_audit_udf;
   std::unique_ptr<log_writer::LogWriterBase> m_log_writer;
   std::unique_ptr<AuditLogReader> m_log_reader;
+  std::atomic_bool m_is_active;
 };
 
 /**
