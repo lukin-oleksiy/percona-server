@@ -1,8 +1,6 @@
 --source include/have_component_audit_log.inc
 --source ../inc/audit_tables_init.inc
 --source ../inc/audit_comp_install.inc
---let $audit_filter_log_path = `SELECT @@global.datadir`
---let $audit_filter_log_name = `SELECT @@global.audit_log_filter.file`
 
 SELECT audit_log_filter_set_filter('log_all', '{"filter": {"log": true}}');
 SELECT audit_log_filter_set_user('%', 'log_all');
@@ -33,17 +31,12 @@ inc $i;
 --enable_query_log
 --enable_result_log
 
---move_file $audit_filter_log_path$audit_filter_log_name $audit_filter_log_path$audit_filter_log_name.1
-SET GLOBAL audit_log_filter.flush = ON;
+SELECT audit_log_rotate();
 
---let $xml_file_path = $audit_filter_log_path
---let $xml_file_name = $audit_filter_log_name.1
-
---source validate_xml_file.inc
+--let $audit_filter_log_path = `SELECT @@global.datadir`
+--source validate_xml_logs.inc
 
 --echo #
 --echo # Cleanup
 --source ../inc/audit_comp_uninstall.inc
 --source ../inc/audit_tables_cleanup.inc
-
---remove_file $xml_file_path$xml_file_name

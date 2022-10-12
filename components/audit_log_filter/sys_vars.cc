@@ -176,9 +176,10 @@ ulong log_strategy_type =
     static_cast<ulong>(AuditLogStrategyType::Asynchronous);
 ulonglong log_write_buffer_size = 1048576UL;
 ulonglong log_rotate_on_size = 0;
+constexpr ulonglong default_log_rotate_on_size = 1024 * 1024 * 1024;
 ulonglong log_max_size = 0;
+constexpr ulonglong default_log_max_size = 1024 * 1024 * 1024;
 ulonglong log_prune_seconds = 0;
-bool log_flush_requested = false;
 bool log_disabled = false;
 char *log_syslog_tag = nullptr;
 std::string default_log_syslog_tag{"audit-filter"};
@@ -237,18 +238,6 @@ void prune_seconds_update_func(MYSQL_THD thd, SYS_VAR *, void *val_ptr,
     }
 
     get_audit_log_filter_instance()->on_audit_log_prune_requested();
-  }
-}
-
-/*
- * When this variable is set to ON log file will be closed and reopened.
- * This can be used for manual log rotation.
- */
-void flush_update_func(MYSQL_THD, SYS_VAR *, void *, const void *save) {
-  const auto *val = static_cast<const bool *>(save);
-
-  if (*val && SysVars::get_rotate_on_size() == 0) {
-    get_audit_log_filter_instance()->on_audit_log_flush_requested();
   }
 }
 
@@ -337,10 +326,11 @@ enum_arg_check_type check_strategy{
     &audit_log_filter_strategy_typelib};
 ulonglong_arg_check_type check_buffer_size{1048576UL, 4096UL, ULLONG_MAX,
                                            4096UL};
-ulonglong_arg_check_type check_rotate_on_size{0UL, 0UL, ULLONG_MAX, 4096UL};
-ulonglong_arg_check_type check_max_size{0UL, 0UL, ULLONG_MAX, 4096UL};
+ulonglong_arg_check_type check_rotate_on_size{default_log_rotate_on_size, 0UL,
+                                              ULLONG_MAX, 4096UL};
+ulonglong_arg_check_type check_max_size{default_log_max_size, 0UL, ULLONG_MAX,
+                                        4096UL};
 ulonglong_arg_check_type check_prune_seconds{0UL, 0UL, ULLONG_MAX, 0UL};
-bool_arg_check_type check_flush{false};
 str_arg_check_type check_syslog_tag{default_log_syslog_tag.data()};
 enum_arg_check_type check_syslog_facility{
     0, &audit_log_filter_syslog_facility_typelib};
@@ -428,20 +418,21 @@ SysVarListType sys_vars = {
      false},
     /*
      * The audit_log_filter.rotate_on_size variable specifies the maximum size
-     * of the audit log file. Upon reaching this size, the audit log will be
-     * rotated. For this variable to take effect, set the
+     * of the audit log file in bytes. Upon reaching this size, the audit log
+     * will be rotated. For this variable to take effect, set the
      * audit_log_filter.handler variable to FILE.
      */
     {{"rotate_on_size",
       PLUGIN_VAR_LONGLONG | PLUGIN_VAR_UNSIGNED | PLUGIN_VAR_RQCMDARG,
-      "Maximum size of the log to start the rotation, if FILE handler is used.",
+      "Maximum size of the log to start the rotation in bytes, if FILE handler "
+      "is used.",
       nullptr, nullptr, static_cast<void *>(&check_rotate_on_size),
       static_cast<void *>(&log_rotate_on_size)},
      false},
     /*
      * The audit_log_filter.max_size enables size-based pruning when set to a
-     * value greater than 0. The value is the combined size above which
-     * audit log files become subject to pruning.
+     * value greater than 0. The value is the combined size in bytes above
+     * which audit log files become subject to pruning.
      */
     {{"max_size",
       PLUGIN_VAR_LONGLONG | PLUGIN_VAR_UNSIGNED | PLUGIN_VAR_OPCMDARG,
@@ -462,15 +453,6 @@ SysVarListType sys_vars = {
       nullptr, prune_seconds_update_func,
       static_cast<void *>(&check_prune_seconds),
       static_cast<void *>(&log_prune_seconds)},
-     false},
-    /*
-     * When this variable is set to ON log file will be closed and reopened.
-     * This can be used for manual log rotation.
-     */
-    {{"flush", PLUGIN_VAR_BOOL | PLUGIN_VAR_NOCMDARG,
-      "Close and reopen log file when set to ON.", nullptr, flush_update_func,
-      static_cast<void *>(&check_flush),
-      static_cast<void *>(&log_flush_requested)},
      false},
     /*
      * The audit_log_filter.syslog_tag variable is used to specify the prefix

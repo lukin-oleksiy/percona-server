@@ -1,2 +1,3 @@
 --loose-audit_log_filter.format=NEW
 --loose-audit_log_filter.rotate_on_size=4096
+--loose-audit_log_filter.strategy=SYNCHRONOUS

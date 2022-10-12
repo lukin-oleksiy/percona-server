@@ -32,11 +32,23 @@ LogWriter<AuditLogHandlerType::File>::LogWriter(
     std::unique_ptr<log_record_formatter::LogRecordFormatterBase> formatter)
     : LogWriterBase{std::move(formatter)},
       m_is_rotating{false},
-      m_is_log_empty{true} {}
+      m_is_log_empty{true},
+      m_is_opened{false} {}
 
 LogWriter<AuditLogHandlerType::File>::~LogWriter() { do_close_file(); }
 
-bool LogWriterFile::open() noexcept { return do_open_file(); }
+bool LogWriterFile::open() noexcept {
+  auto ec = FileHandle::rotate(mysql_data_home, SysVars::get_file_name());
+
+  if (ec.value() != 0) {
+    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
+                    "Failed to rotate audit filter log: %i, %s", ec.value(),
+                    ec.message().c_str());
+    return false;
+  }
+
+  return do_open_file();
+}
 
 bool LogWriterFile::close() noexcept { return do_close_file(); }
 
@@ -65,11 +77,18 @@ bool LogWriterFile::do_open_file() noexcept {
     m_is_log_empty = true;
   }
 
+  m_is_opened = true;
+
   return true;
 }
 
 bool LogWriterFile::do_close_file() noexcept {
-  write(get_formatter()->get_file_footer(), false);
+  if (m_is_opened) {
+    write(get_formatter()->get_file_footer(), false);
+  }
+
+  m_is_opened = false;
+
   return m_file_handle.close_file();
 }
 
@@ -118,11 +137,6 @@ void LogWriterFile::rotate() noexcept {
   m_is_rotating = false;
 
   get_audit_log_filter_instance()->on_audit_log_rotated();
-}
-
-void LogWriterFile::flush() noexcept {
-  do_close_file();
-  do_open_file();
 }
 
 void LogWriterFile::prune() noexcept {

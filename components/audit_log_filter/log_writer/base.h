@@ -19,6 +19,7 @@
 #include "components/audit_log_filter/audit_record.h"
 
 #include <memory>
+#include <mutex>
 
 namespace audit_log_filter {
 namespace log_record_formatter {
@@ -87,11 +88,6 @@ class LogWriterBase {
   virtual void rotate() noexcept {}
 
   /**
-   * @brief Close and reopen current log file. Used for manual log rotation.
-   */
-  virtual void flush() noexcept = 0;
-
-  /**
    * @brief Prune outdated log files.
    */
   virtual void prune() noexcept = 0;
@@ -121,6 +117,7 @@ class LogWriterBase {
 
  private:
   std::unique_ptr<log_record_formatter::LogRecordFormatterBase> m_formatter;
+  std::mutex m_write_mutex;
 };
 
 template <AuditLogHandlerType HandlerType>

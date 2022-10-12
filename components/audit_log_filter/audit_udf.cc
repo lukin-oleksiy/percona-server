@@ -28,7 +28,10 @@
 
 #include "rapidjson/document.h"
 
+#include <mysql/components/services/bits/my_err_bits.h>  // MYSQL_ERRMSG_SIZE
+#include <mysql/components/services/dynamic_privilege.h>
 #include <mysql/components/services/mysql_current_thread_reader.h>
+#include <mysql/components/services/security_context.h>
 #include <mysql/components/services/udf_metadata.h>
 #include <mysql/components/services/udf_registration.h>
 
@@ -117,17 +120,7 @@ std::unique_ptr<UserNameInfo> check_parse_user_name_host(
 AuditUdf::AuditUdf(comp_registry_srv_t *comp_registry_srv)
     : m_comp_registry_srv{comp_registry_srv} {}
 
-AuditUdf::~AuditUdf() {
-  int was_present = 0;
-  my_service<SERVICE_TYPE(udf_registration)> udf_registration_srv(
-      "udf_registration", m_comp_registry_srv);
-
-  for (const auto &name : m_active_udf_names) {
-    udf_registration_srv->udf_unregister(name.c_str(), &was_present);
-  }
-
-  m_active_udf_names.clear();
-}
+AuditUdf::~AuditUdf() { deinit(); }
 
 bool AuditUdf::init(UdfFuncInfo *begin, UdfFuncInfo *end) {
   my_service<SERVICE_TYPE(udf_registration)> udf_registration_srv(
@@ -151,6 +144,20 @@ bool AuditUdf::init(UdfFuncInfo *begin, UdfFuncInfo *end) {
   }
 
   return true;
+}
+
+void AuditUdf::deinit() noexcept {
+  if (!m_active_udf_names.empty()) {
+    int was_present = 0;
+    my_service<SERVICE_TYPE(udf_registration)> udf_registration_srv(
+        "udf_registration", m_comp_registry_srv);
+
+    for (const auto &name : m_active_udf_names) {
+      udf_registration_srv->udf_unregister(name.c_str(), &was_present);
+    }
+
+    m_active_udf_names.clear();
+  }
 }
 
 bool AuditUdf::audit_log_filter_set_filter_udf_init(AuditUdf *udf,
@@ -358,6 +365,8 @@ char *AuditUdf::audit_log_filter_remove_filter_udf(
     *length = std::strlen(result);
     return result;
   }
+
+  get_audit_log_filter_instance()->on_audit_rule_flush_requested();
 
   std::snprintf(result, MYSQL_ERRMSG_SIZE, "OK");
   *length = std::strlen(result);
@@ -585,6 +594,14 @@ bool AuditUdf::audit_log_filter_flush_udf_init(AuditUdf *udf [[maybe_unused]],
     return true;
   }
 
+  if (!udf->set_return_value_charset(initid) ||
+      !udf->set_args_charset(udf_args)) {
+    std::snprintf(message, MYSQL_ERRMSG_SIZE,
+                  "Unable to set character set service for "
+                  "audit_log_filter_set_filter UDF");
+    return true;
+  }
+
   initid->maybe_null = false;
   initid->const_item = false;
 
@@ -632,6 +649,14 @@ bool AuditUdf::audit_log_read_udf_init(AuditUdf *udf [[maybe_unused]],
   if (udf_args->arg_count == 1 && udf_args->arg_type[0] != STRING_RESULT) {
     std::snprintf(message, MYSQL_ERRMSG_SIZE,
                   "Wrong argument type: audit_log_read(string)");
+    return true;
+  }
+
+  if (!udf->set_return_value_charset(initid) ||
+      !udf->set_args_charset(udf_args)) {
+    std::snprintf(message, MYSQL_ERRMSG_SIZE,
+                  "Unable to set character set service for "
+                  "audit_log_filter_set_filter UDF");
     return true;
   }
 
@@ -848,6 +873,14 @@ bool AuditUdf::audit_log_read_bookmark_udf_init(AuditUdf *udf [[maybe_unused]],
     return true;
   }
 
+  if (!udf->set_return_value_charset(initid) ||
+      !udf->set_args_charset(udf_args)) {
+    std::snprintf(message, MYSQL_ERRMSG_SIZE,
+                  "Unable to set character set service for "
+                  "audit_log_filter_set_filter UDF");
+    return true;
+  }
+
   initid->maybe_null = false;
   initid->const_item = false;
 
@@ -873,6 +906,71 @@ char *AuditUdf::audit_log_read_bookmark_udf(AuditUdf *udf [[maybe_unused]],
 }
 
 void AuditUdf::audit_log_read_bookmark_udf_deinit(UDF_INIT *) {}
+
+// audit_log_rotate()
+bool AuditUdf::audit_log_rotate_udf_init(AuditUdf *udf [[maybe_unused]],
+                                         UDF_INIT *initid, UDF_ARGS *udf_args,
+                                         char *message) noexcept {
+  my_service<SERVICE_TYPE(mysql_current_thread_reader)> thd_reader_srv(
+      "mysql_current_thread_reader", SysVars::get_comp_registry_srv());
+  my_service<SERVICE_TYPE(mysql_thd_security_context)> security_context_service(
+      "mysql_thd_security_context", SysVars::get_comp_registry_srv());
+  my_service<SERVICE_TYPE(global_grants_check)> grants_check_service(
+      "global_grants_check", SysVars::get_comp_registry_srv());
+
+  MYSQL_THD thd;
+  Security_context_handle ctx;
+
+  if (!security_context_service.is_valid() ||
+      !grants_check_service.is_valid() || thd_reader_srv->get(&thd) ||
+      security_context_service->get(thd, &ctx)) {
+    std::snprintf(message, MYSQL_ERRMSG_SIZE, "ERROR: Internal error");
+    return true;
+  }
+
+  if (!grants_check_service->has_global_grant(ctx,
+                                              STRING_WITH_LEN("AUDIT_ADMIN"))) {
+    my_error(ER_SPECIFIC_ACCESS_DENIED_ERROR, MYF(0), "AUDIT_ADMIN");
+    return true;
+  }
+
+  if (udf_args->arg_count != 0) {
+    std::snprintf(message, MYSQL_ERRMSG_SIZE,
+                  "Wrong argument list: audit_log_rotate()");
+    return true;
+  }
+
+  if (!udf->set_return_value_charset(initid) ||
+      !udf->set_args_charset(udf_args)) {
+    std::snprintf(message, MYSQL_ERRMSG_SIZE,
+                  "Unable to set character set service for "
+                  "audit_log_filter_set_filter UDF");
+    return true;
+  }
+
+  initid->maybe_null = false;
+  initid->const_item = false;
+
+  return false;
+}
+
+char *AuditUdf::audit_log_rotate_udf(AuditUdf *udf [[maybe_unused]],
+                                     UDF_INIT *initid [[maybe_unused]],
+                                     UDF_ARGS *udf_args [[maybe_unused]],
+                                     char *result, unsigned long *length,
+                                     unsigned char *is_null,
+                                     unsigned char *error) noexcept {
+  get_audit_log_filter_instance()->on_audit_log_rotate_requested();
+
+  std::snprintf(result, MYSQL_ERRMSG_SIZE, "OK");
+  *length = std::strlen(result);
+  *is_null = 0;
+  *error = 0;
+
+  return result;
+}
+
+void AuditUdf::audit_log_rotate_udf_deinit(UDF_INIT *) {}
 
 bool AuditUdf::audit_log_session_filter_id_udf_init(AuditUdf *udf
                                                     [[maybe_unused]],

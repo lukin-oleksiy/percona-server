@@ -207,6 +207,7 @@ DECLARE_AUDIT_STR_UDF(audit_log_filter_remove_user)
 DECLARE_AUDIT_STR_UDF(audit_log_filter_flush)
 DECLARE_AUDIT_STR_UDF(audit_log_read)
 DECLARE_AUDIT_STR_UDF(audit_log_read_bookmark)
+DECLARE_AUDIT_STR_UDF(audit_log_rotate)
 DECLARE_AUDIT_INT_UDF(audit_log_session_filter_id)
 
 #define DECLARE_AUDIT_STR_UDF_INFO(NAME)                          \
@@ -228,6 +229,7 @@ static std::array udfs_list{
     DECLARE_AUDIT_STR_UDF_INFO(audit_log_filter_flush),
     DECLARE_AUDIT_STR_UDF_INFO(audit_log_read),
     DECLARE_AUDIT_STR_UDF_INFO(audit_log_read_bookmark),
+    DECLARE_AUDIT_STR_UDF_INFO(audit_log_rotate),
     DECLARE_AUDIT_INT_UDF_INFO(audit_log_session_filter_id)};
 
 /**
@@ -349,6 +351,7 @@ mysql_service_status_t audit_log_filter_deinit() {
   }
 
   audit_log_filter->send_audit_stop_event();
+  audit_log_filter->deinit();
 
   LogComponentErr(INFORMATION_LEVEL, ER_AUDIT_DEINIT_DONE);
 
@@ -369,11 +372,18 @@ AuditLogFilter::AuditLogFilter(
       m_audit_rules_registry{std::move(audit_rules_registry)},
       m_audit_udf{std::move(audit_udf)},
       m_log_writer{std::move(log_writer)},
-      m_log_reader{std::move(log_reader)} {}
+      m_log_reader{std::move(log_reader)},
+      m_is_active{true} {}
+
+void AuditLogFilter::deinit() noexcept {
+  m_is_active = false;
+  m_audit_udf->deinit();
+  m_log_writer->close();
+}
 
 int AuditLogFilter::notify_event(audit_event_class_t event_class,
                                  const void *event_data) {
-  if (SysVars::get_log_disabled()) {
+  if (SysVars::get_log_disabled() || !m_is_active) {
     return 0;
   }
 
@@ -487,6 +497,10 @@ void AuditLogFilter::send_audit_stop_event() noexcept {
 }
 
 bool AuditLogFilter::on_audit_rule_flush_requested() noexcept {
+  if (!m_is_active) {
+    return false;
+  }
+
   const bool is_flushed = m_audit_rules_registry->load();
 
   DBUG_EXECUTE_IF("audit_log_filter_rotate_after_audit_rules_flush",
@@ -495,15 +509,23 @@ bool AuditLogFilter::on_audit_rule_flush_requested() noexcept {
   return is_flushed;
 }
 
-void AuditLogFilter::on_audit_log_flush_requested() noexcept {
-  m_log_writer->flush();
-}
-
 void AuditLogFilter::on_audit_log_prune_requested() noexcept {
-  m_log_writer->prune();
+  if (m_is_active) {
+    m_log_writer->prune();
+  }
 }
 
-void AuditLogFilter::on_audit_log_rotated() noexcept { m_log_reader->init(); }
+void AuditLogFilter::on_audit_log_rotate_requested() noexcept {
+  if (m_is_active) {
+    m_log_writer->rotate();
+  }
+}
+
+void AuditLogFilter::on_audit_log_rotated() noexcept {
+  if (m_is_active) {
+    m_log_reader->init();
+  }
+}
 
 void AuditLogFilter::get_connection_attrs(MYSQL_THD thd,
                                           AuditRecordVariant &audit_record) {
@@ -564,21 +586,19 @@ bool AuditLogFilter::get_connection_user(MYSQL_THD thd, std::string &user_name,
   MYSQL_LEX_CSTRING user{"", 0};
   MYSQL_LEX_CSTRING host{"", 0};
 
-  if (security_context_opts_service->get(ctx, "user", &user)) {
+  if (security_context_opts_service->get(ctx, "priv_user", &user)) {
     LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
                     "Can not get user name from security context");
     return false;
   }
 
-  if (security_context_opts_service->get(ctx, "host", &host)) {
+  if (security_context_opts_service->get(ctx, "priv_host", &host)) {
     LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
                     "Can not get user host from security context");
     return false;
   }
 
   if (user.length == 0 || host.length == 0) {
-    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
-                    "No user name or host name found in security context");
     return false;
   }
 

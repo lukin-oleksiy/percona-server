@@ -64,11 +64,6 @@ class LogWriter<AuditLogHandlerType::File> : public LogWriterBase {
   [[nodiscard]] uint64_t get_log_size() const noexcept override;
 
   /**
-   * @brief Close and reopen current log file. Used for manual log rotation.
-   */
-  void flush() noexcept override;
-
-  /**
    * @brief Prune outdated log files.
    */
   void prune() noexcept override;
@@ -96,6 +91,7 @@ class LogWriter<AuditLogHandlerType::File> : public LogWriterBase {
  private:
   bool m_is_rotating;
   bool m_is_log_empty;
+  bool m_is_opened;
   FileHandle m_file_handle;
 };
 
