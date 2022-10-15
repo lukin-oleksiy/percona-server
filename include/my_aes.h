@@ -37,9 +37,6 @@
 
 #include <openssl/evp.h>
 
-using std::string;
-using std::vector;
-
 /** AES IV size is 16 bytes for all supported ciphers except ECB */
 #define MY_AES_IV_SIZE 16
 
@@ -99,7 +96,7 @@ int my_aes_encrypt(const unsigned char *source, uint32 source_length,
                    unsigned char *dest, const unsigned char *key,
                    uint32 key_length, enum my_aes_opmode mode,
                    const unsigned char *iv, bool padding = true,
-                   vector<string> *kdf_options = nullptr);
+                   std::vector<std::string> *kdf_options = nullptr);
 
 /**
   Encrypt a buffer using AES.
@@ -125,7 +122,8 @@ int my_aes_encrypt(EVP_CIPHER_CTX *ctx, const unsigned char *source,
                    uint32 source_length, unsigned char *dest,
                    const unsigned char *key, uint32 key_length,
                    enum my_aes_opmode mode, const unsigned char *iv,
-                   bool padding = true, vector<string> *kdf_options = nullptr);
+                   bool padding = true,
+                   std::vector<std::string> *kdf_options = nullptr);
 
 /**
   Decrypt an AES encrypted buffer
@@ -146,7 +144,7 @@ int my_aes_decrypt(const unsigned char *source, uint32 source_length,
                    unsigned char *dest, const unsigned char *key,
                    uint32 key_length, enum my_aes_opmode mode,
                    const unsigned char *iv, bool padding = true,
-                   vector<string> *kdf_options = nullptr);
+                   std::vector<std::string> *kdf_options = nullptr);
 
 /**
   Decrypt an AES encrypted buffer.
@@ -170,7 +168,8 @@ int my_aes_decrypt(EVP_CIPHER_CTX *ctx, const unsigned char *source,
                    uint32 source_length, unsigned char *dest,
                    const unsigned char *key, uint32 key_length,
                    enum my_aes_opmode mode, const unsigned char *iv,
-                   bool padding = true, vector<string> *kdf_options = nullptr);
+                   bool padding = true,
+                   std::vector<std::string> *kdf_options = nullptr);
 
 /**
   Calculate the size of a buffer large enough for encrypted data.
