@@ -298,6 +298,7 @@ rocksdb_bulk_load_allow_unsorted	OFF
 rocksdb_bulk_load_fail_if_not_bottommost_level	OFF
 rocksdb_bulk_load_partial_index	ON
 rocksdb_bulk_load_size	1000
+rocksdb_bulk_load_use_sst_partitioner	OFF
 show session variables like 'rocksdb_bulk_load%';
 Variable_name	Value
 rocksdb_bulk_load	ON
@@ -306,6 +307,7 @@ rocksdb_bulk_load_allow_unsorted	OFF
 rocksdb_bulk_load_fail_if_not_bottommost_level	OFF
 rocksdb_bulk_load_partial_index	ON
 rocksdb_bulk_load_size	1000
+rocksdb_bulk_load_use_sst_partitioner	OFF
 CREATE TABLE t1 (i INT, j INT, PRIMARY KEY (i)) ENGINE = ROCKSDB;
 INSERT INTO t1 VALUES (1,1);
 # Disconnecting on con1
@@ -339,9 +341,7 @@ COUNT(*)
 set global rocksdb_bulk_load=0;
 DROP TABLE t1;
 SET @prior_rocksdb_merge_combine_read_size= @@rocksdb_merge_combine_read_size;
-SET @prior_rocksdb_strict_collation_check= @@rocksdb_strict_collation_check;
 SET @prior_rocksdb_merge_buf_size = @@rocksdb_merge_buf_size;
-SET global rocksdb_strict_collation_check = off;
 SET session rocksdb_merge_combine_read_size = 566;
 SET session rocksdb_merge_buf_size = 340;
 show variables like 'rocksdb_bulk_load%';
@@ -352,6 +352,7 @@ rocksdb_bulk_load_allow_unsorted	OFF
 rocksdb_bulk_load_fail_if_not_bottommost_level	OFF
 rocksdb_bulk_load_partial_index	ON
 rocksdb_bulk_load_size	1000
+rocksdb_bulk_load_use_sst_partitioner	OFF
 CREATE TABLE t1 (a VARCHAR(30)) ENGINE=RocksDB;
 INSERT INTO t1 (a) VALUES (REPEAT("a", 30));
 INSERT INTO t1 (a) VALUES (REPEAT("a", 30));
@@ -376,7 +377,6 @@ aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 DROP TABLE t1;
 SET session rocksdb_merge_buf_size = @prior_rocksdb_merge_buf_size;
 SET session rocksdb_merge_combine_read_size = @prior_rocksdb_merge_combine_read_size;
-SET global rocksdb_strict_collation_check = @prior_rocksdb_strict_collation_check;
 CREATE TABLE t1 (i INT, j INT, PRIMARY KEY (i)) ENGINE = ROCKSDB;
 set global rocksdb_force_flush_memtable_now=1;
 ALTER TABLE t1 ADD INDEX kj(j), ALGORITHM=INPLACE;
