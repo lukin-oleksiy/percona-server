@@ -103,7 +103,7 @@ ELSE()
   # get a list of rocksdb library source files
   # run with env -i to avoid passing variables
   EXECUTE_PROCESS(
-    COMMAND env -i ${CMAKE_CURRENT_SOURCE_DIR}/get_rocksdb_files.sh ${ROCKSDB_FOLLY}
+    COMMAND env -i CXX=${CMAKE_CXX_COMPILER} PATH="/sbin:/usr/sbin:/bin:/usr/bin" ${CMAKE_CURRENT_SOURCE_DIR}/get_rocksdb_files.sh ${ROCKSDB_FOLLY}
     OUTPUT_VARIABLE SCRIPT_OUTPUT
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
   )
@@ -117,7 +117,13 @@ ELSE()
 ENDIF()
 
 # This is a strong requirement coming from RocksDB. No conditional checks here.
-add_definitions(-DROCKSDB_PLATFORM_POSIX -DROCKSDB_LIB_IO_POSIX -DZLIB -DLZ4 -DZSTD)
+ADD_DEFINITIONS(-DROCKSDB_PLATFORM_POSIX -DROCKSDB_LIB_IO_POSIX -DZLIB -DLZ4 -DZSTD)
+
+IF (ROCKSDB_CUSTOM_NAMESPACE)
+  ADD_DEFINITIONS(-DROCKSDB_NAMESPACE=${ROCKSDB_CUSTOM_NAMESPACE})
+  ADD_DEFINITIONS(-DROCKSDB_CUSTOM_NAMESPACE=${ROCKSDB_CUSTOM_NAMESPACE})
+ENDIF()
+
 IF (WITH_UBSAN)
   ADD_DEFINITIONS(-DROCKSDB_UBSAN_RUN)
 ENDIF()
@@ -127,50 +133,24 @@ ENDIF()
 IF (WITH_JEMALLOC)
   ADD_DEFINITIONS(-DROCKSDB_JEMALLOC)
 ENDIF()
-
-IF (ROCKSDB_CUSTOM_NAMESPACE)
-  ADD_DEFINITIONS(-DROCKSDB_NAMESPACE=${ROCKSDB_CUSTOM_NAMESPACE})
-  ADD_DEFINITIONS(-DROCKSDB_CUSTOM_NAMESPACE=${ROCKSDB_CUSTOM_NAMESPACE})
+IF (WITH_NUMA)
+  ADD_DEFINITIONS(-DNUMA)
 ENDIF()
 
-include(compiler_features)
-
-IF (NOT HAVE_THREAD_LOCAL)
-  MESSAGE(FATAL_ERROR "No '__thread' support found. Not building MyRocks")
+IF (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  ADD_DEFINITIONS(-DOS_LINUX)
+ELSEIF(CMAKE_SYSTEM_NAME MATCHES "Darwin")
+  ADD_DEFINITIONS(-DOS_MACOSX)
 ENDIF()
 
-IF (CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
-  IF (HAVE_SSE42)
-    MESSAGE(STATUS "MyRocks: SSE42 support found")
-    add_compile_flags(${ROCKSDB_ROOT}/util/crc32c.cc COMPILE_FLAGS "-msse4.2") # use Fast_CRC32
-    IF (HAVE_PCLMUL)
-      add_compile_flags(${ROCKSDB_ROOT}/util/crc32c.cc COMPILE_FLAGS "-mpclmul") # use crc32c_3way instead of Fast_CRC32
-    ENDIF()
-  ELSE()
-    IF (ALLOW_NO_SSE42)
-      MESSAGE(WARNING "No SSE42 support found and ALLOW_NO_SSE42 specified, building MyRocks but without SSE42/FastCRC32 support")
-    ELSE()
-      MESSAGE(FATAL_ERROR "No SSE42 support found. Not building MyRocks")
-    ENDIF()
-  ENDIF()
-ELSE() # aarch64
-  CHECK_C_COMPILER_FLAG("-march=armv8-a+crc+crypto" ARMV8A_CRC_CRYPTO_SUPPORTED)
-  IF (ARMV8A_CRC_CRYPTO_SUPPORTED)
-    MESSAGE(STATUS "MyRocks: ARMv8-A+crc+crypto support found")
-    add_compile_flags(${ROCKSDB_ROOT}/util/crc32c.cc COMPILE_FLAGS "-march=armv8-a+crc+crypto")
-    add_compile_flags(${ROCKSDB_ROOT}/util/crc32c_arm64.cc COMPILE_FLAGS "-march=armv8-a+crc+crypto")
-  ELSE()
-    IF (ALLOW_NO_ARMV8A_CRC_CRYPTO)
-      MESSAGE(WARNING "No ARMv8-A+crc+crypto support found and ALLOW_NO_ARMV8A_CRC_CRYPTO specified, building MyRocks but without ARMv8-A+crc+crypto/FastCRC32 support")
-    ELSE()
-      MESSAGE(FATAL_ERROR "No ARMv8-A+crc+crypto support found. Not building MyRocks")
-    ENDIF()
-  ENDIF()
+IF (CMAKE_COMPILER_IS_GNUCXX)
+  ADD_COMPILE_OPTIONS(-fno-builtin-memcmp)
 ENDIF()
 
-IF (HAVE_AVX2 AND NOT ROCKSDB_DISABLE_AVX2)
-  add_compile_flags(${ROCKSDB_ROOT}/table/block_based/filter_policy.cc COMPILE_FLAGS "-mavx2")
-ENDIF()
+
+INCLUDE(compiler_features)
+ROCKSDB_SET_BUILD_ARCHITECTURE()  # sets "-march=" using ROCKSDB_BUILD_ARCH or ROCKSDB_DISABLE_MARCH_NATIVE
+ROCKSDB_SET_DEFINTIONS()          # sets HAVE_URING, HAVE_MEMKIND, HAVE_ALIGNED_NEW
 
 IF (HAVE_URING AND ROCKSDB_USE_IO_URING)
   SET(rocksdb_static_libs ${rocksdb_static_libs} ${URING_LIBRARY})
@@ -181,27 +161,12 @@ IF (HAVE_MEMKIND AND ROCKSDB_USE_MEMKIND)
 ENDIF()
 
 IF (HAVE_ALIGNED_NEW AND NOT ROCKSDB_DISABLE_ALIGNED_NEW)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -faligned-new")
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -faligned-new")
 ENDIF()
 
-IF (CMAKE_COMPILER_IS_GNUCXX)
-  add_compile_options(-fno-builtin-memcmp)
-ENDIF()
-
-IF (CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64" AND NOT ROCKSDB_DISABLE_MARCH_NATIVE)
-  add_compile_options(-march=native)
-ENDIF()
-
-IF(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  add_definitions(-DOS_LINUX)
-ELSEIF(CMAKE_SYSTEM_NAME MATCHES "Darwin")
-  add_definitions(-DOS_MACOSX)
-ENDIF()
-
-ROCKSDB_SET_DEFINTIONS()
-get_directory_property(COMPILE_DEFINITIONS COMPILE_DEFINITIONS)
-list(SORT COMPILE_DEFINITIONS)
-message(STATUS "MyRocks compile definitions: ${COMPILE_DEFINITIONS}")
+GET_DIRECTORY_PROPERTY(COMPILE_DEFINITIONS COMPILE_DEFINITIONS)
+LIST(SORT COMPILE_DEFINITIONS)
+MESSAGE(STATUS "MyRocks compile definitions: ${COMPILE_DEFINITIONS}")
 
 
 # Suppress warnings for all compilers
@@ -215,11 +180,17 @@ IF(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   remove_compile_flags(-Wdeprecated -Winconsistent-missing-destructor-override -Wnon-virtual-dtor)
   ADD_CXX_COMPILE_FLAGS_TO_FILES(-Wno-shadow-field FILES ha_rocksdb.cc rocksdb/memtable/hash_skiplist_rep.cc)
   ADD_CXX_COMPILE_FLAGS_TO_FILES(-Wno-conditional-uninitialized FILES ha_rocksdb.cc rdb_datadic.cc rocksdb/db/db_impl/db_impl.cc rocksdb/db/write_thread.cc rocksdb/env/env_posix.cc rocksdb/env/fs_posix.cc)
+  ADD_CXX_COMPILE_FLAGS_TO_FILES(-Wno-nontrivial-memcall FILES rocksdb/port/mmap.cc)
 ENDIF()
 
 # Suppress warnings for clang-9 or older
 IF(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 10)
   ADD_CXX_COMPILE_FLAGS_TO_FILES(-Wno-range-loop-analysis FILES rocksdb/db/db_impl/db_impl_compaction_flush.cc)
+ENDIF()
+
+# Suppress warnings for clang-21 or newer
+IF(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT CMAKE_CXX_COMPILER_VERSION VERSION_LESS 21)
+  ADD_CXX_COMPILE_FLAGS_TO_FILES(-Wno-missing-format-attribute FILES rocksdb/env/file_system.cc rocksdb/env/env.cc rocksdb/env/mock_env.cc rocksdb/logging/auto_roll_logger.cc rocksdb/util/stderr_logger.cc rocksdb/logging/log_buffer.cc)
 ENDIF()
 
 # Suppress warnings for clang-15 or newer
@@ -259,16 +230,36 @@ ENDIF()
 
 # Suppress warnings for gcc-12 or newer
 IF(CMAKE_COMPILER_IS_GNUCXX AND NOT CMAKE_CXX_COMPILER_VERSION VERSION_LESS 12)
-  CHECK_AVX512_SUPPORT(HAVE_AVX512)
-  IF(HAVE_AVX512)
-    MESSAGE(STATUS "AVX-512: add -Wno-uninitialized for xxhash.cc (check https://gcc.gnu.org/bugzilla/show_bug.cgi?id=105593)")
-    ADD_CXX_COMPILE_FLAGS_TO_FILES(-Wno-uninitialized -Wno-maybe-uninitialized FILES rocksdb/util/xxhash.cc ${BUNDLED_LZ4_PATH}/xxhash.c)
+  IF(HAVE_AVX512F)
+    MESSAGE(STATUS "AVX-512: add -Wno-uninitialized flag (check https://gcc.gnu.org/bugzilla/show_bug.cgi?id=105593)")
+    append_cflags_if_supported(-Wno-maybe-uninitialized -Wno-uninitialized)
   ENDIF()
+  ADD_CXX_COMPILE_FLAGS_TO_FILES(-Wno-maybe-uninitialized FILES rocksdb/db/blob/blob_file_reader.cc)
+  ADD_CXX_COMPILE_FLAGS_TO_FILES(-Wno-restrict FILES rocksdb/table/iterator.cc rocksdb/table/unique_id.cc)
+ENDIF()
+
+# Suppress -Wdeprecated-declarations for files that use APIs deprecated in
+# C++23 (e.g. std::aligned_storage). libstdc++ has emitted these deprecations
+# in C++23 mode since gcc-13.
+IF(CMAKE_COMPILER_IS_GNUCXX AND NOT CMAKE_CXX_COMPILER_VERSION VERSION_LESS 13)
+  ADD_CXX_COMPILE_FLAGS_TO_FILES(-Wno-deprecated-declarations FILES rocksdb/db/memtable.cc rocksdb/db/write_batch.cc rocksdb/util/random.cc)
 ENDIF()
 
 # Suppress warnings for gcc ASan build
 IF(CMAKE_COMPILER_IS_GNUCXX AND WITH_ASAN)
   ADD_CXX_COMPILE_FLAGS_TO_FILES(-Wno-error=maybe-uninitialized FILES rocksdb/util/bloom.cc)
+ENDIF()
+
+# GCC 16 -O2 emits false-positive -Wmaybe-uninitialized warnings on:
+#  - autovector::front() inlined into LevelCompactionBuilder::SetupInitialFiles()
+#    (the optimizer cannot see that !expired_files.empty() implies buf_[0]
+#    was written),
+#  - PSI inlining inside myrocks::Rdb_cond_var / Rdb_mutex constructors in
+#    rdb_mutex_wrapper.cc (same pattern as the plugin/x suppression).
+IF(CMAKE_COMPILER_IS_GNUCXX AND NOT CMAKE_CXX_COMPILER_VERSION VERSION_LESS 16)
+  ADD_CXX_COMPILE_FLAGS_TO_FILES(-Wno-maybe-uninitialized
+    FILES rocksdb/db/compaction/compaction_picker_level.cc
+          rdb_mutex_wrapper.cc)
 ENDIF()
 
 
@@ -342,6 +333,7 @@ IF (NOT HAVE_EXTERNAL_ROCKSDB)
     ${CMAKE_CURRENT_SOURCE_DIR}/rocksdb/tools/ldb_tool.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/rocksdb/tools/ldb_cmd.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/rocksdb/tools/sst_dump_tool.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/rocksdb/utilities/blob_db/blob_dump_tool.cc
     ${ROCKSDB_LIB_SOURCES}
     ${ZSTD_SOURCES}
   )
