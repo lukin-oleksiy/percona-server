@@ -60,6 +60,7 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #include "mysql_version.h"
 #include "page0page.h"
 #include "rem0cmp.h"
+#include "scope_guard.h"
 #include "srv0srv.h"
 #include "srv0start.h"
 #include "ut0math.h"
