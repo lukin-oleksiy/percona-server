@@ -7122,9 +7122,8 @@ static bool add_set_gtid_purged(MYSQL *mysql_con, bool ftwrl_done) {
   setting the SET @@GLOBAL.GTID_PURGED in the output.
 
   @param[in]          mysql_con     the connection to the server
-  @param[in]      ftwrl_done    FLUSH TABLES WITH READ LOCK query was issued
-
   @param[in]          is_gtid_enabled  true if server has gtid_mode on
+  @param[in]          ftwrl_done    FLUSH TABLES WITH READ LOCK query was issued
 
   @retval             false         successful according to the value
                                     of opt_set_gtid_purged.
@@ -7688,7 +7687,6 @@ static int execute_sql_file(const char *sql_file) {
 #endif  // NDEBUG
 
 int main(int argc, char **argv) {
-  bool server_with_gtids_and_opt_purge_not_off = false;
   bool server_has_gtid_enabled = false;
   char bin_log_name[FN_REFLEN];
   int exit_code, md_result_fd = 0;
@@ -7754,12 +7752,6 @@ int main(int argc, char **argv) {
   }
 
   if (opt_replica_data && do_stop_replica_sql(mysql)) goto err;
-
-  server_has_gtid_enabled = get_gtid_mode(mysql);
-
-  server_with_gtids_and_opt_purge_not_off =
-      (server_has_gtid_enabled &&
-       (opt_set_gtid_purged_mode != SET_GTID_PURGED_OFF));
 
   if (opt_single_transaction && opt_source_data) {
     /*
@@ -7833,6 +7825,7 @@ int main(int argc, char **argv) {
   /* Process opt_set_gtid_purged and add SET @@GLOBAL.GTID_PURGED if
    * required.
    */
+  server_has_gtid_enabled = get_gtid_mode(mysql);
   if (process_set_gtid_purged(mysql, server_has_gtid_enabled, ftwrl_done))
     goto err;
 
