@@ -5,7 +5,7 @@
 SELECT audit_log_filter_set_filter('log_query', '{"filter": {"class": {"name": "query"}}}');
 SELECT audit_log_filter_set_user('%', 'log_query');
 
-SHOW GLOBAL STATUS LIKE 'Audit_log_filter_buffer_bypassing_writes';
+SHOW GLOBAL STATUS LIKE 'Audit_log_filter_direct_writes';
 
 --disable_query_log
 --disable_result_log
@@ -13,7 +13,7 @@ SELECT "4IHYyOZMEAUJcURiOO9nLoceKvbRi3HSZZObmonjTjv4IHYyOZMEAUJcURiOO9nLoceKvbRi
 --enable_result_log
 --enable_query_log
 
-SHOW GLOBAL STATUS LIKE 'Audit_log_filter_buffer_bypassing_writes';
+SHOW GLOBAL STATUS LIKE 'Audit_log_filter_direct_writes';
 
 --echo #
 --echo # Cleanup

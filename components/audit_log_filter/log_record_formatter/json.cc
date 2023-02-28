@@ -748,7 +748,8 @@ std::string LogRecordFormatterJson::make_timestamp(
   std::time_t tp = std::chrono::system_clock::to_time_t(time_point);
 
   DBUG_EXECUTE_IF("audit_log_filter_debug_timestamp", {
-    tp = std::chrono::system_clock::to_time_t(SysVars::get_debug_time_point());
+    tp = std::chrono::system_clock::to_time_t(
+        SysVars::get_debug_time_point_for_rotation());
   });
 
   std::stringstream timestamp;

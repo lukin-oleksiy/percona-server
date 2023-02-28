@@ -22,7 +22,6 @@
 #include <mysql/components/services/mysql_current_thread_reader.h>
 
 #include "components/audit_log_filter/audit_record.h"
-#include "components/audit_log_filter/component_registry_service.h"
 
 #include <atomic>
 #include <memory>
@@ -42,8 +41,7 @@ class AuditLogReader;
 class AuditLogFilter {
  public:
   AuditLogFilter() = delete;
-  AuditLogFilter(comp_registry_srv_container_t comp_registry_srv,
-                 std::unique_ptr<AuditRuleRegistry> audit_rules_registry,
+  AuditLogFilter(std::unique_ptr<AuditRuleRegistry> audit_rules_registry,
                  std::unique_ptr<AuditUdf> audit_udf,
                  std::unique_ptr<log_writer::LogWriterBase> log_writer,
                  std::unique_ptr<AuditLogReader> log_reader);
@@ -68,13 +66,6 @@ class AuditLogFilter {
    * @return UDF handler instance
    */
   AuditUdf *get_udf() noexcept;
-
-  /**
-   * @brief Get components registry handler.
-   *
-   * @return Components registry handler
-   */
-  comp_registry_srv_t *get_comp_registry_srv() noexcept;
 
   /**
    * @brief Get log reader instance.
@@ -102,7 +93,7 @@ class AuditLogFilter {
   bool on_audit_rule_flush_requested() noexcept;
 
   /**
-   * @brief Handle log files prunning request.
+   * @brief Handle log files pruning request.
    */
   void on_audit_log_prune_requested() noexcept;
 
@@ -110,6 +101,11 @@ class AuditLogFilter {
    * @brief Handle log files rotation request.
    */
   void on_audit_log_rotate_requested() noexcept;
+
+  /**
+   * @brief Handle encryption password pruning request.
+   */
+  void on_encryption_password_prune_requested() noexcept;
 
   /**
    * @brief Handle successful log rotation event.
@@ -132,7 +128,6 @@ class AuditLogFilter {
                            std::string &user_host) noexcept;
 
  private:
-  comp_registry_srv_container_t m_comp_registry_srv;
   std::unique_ptr<AuditRuleRegistry> m_audit_rules_registry;
   std::unique_ptr<AuditUdf> m_audit_udf;
   std::unique_ptr<log_writer::LogWriterBase> m_log_writer;

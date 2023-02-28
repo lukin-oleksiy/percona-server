@@ -16,12 +16,16 @@
 #define ALLOW_COMPONENT_INCLUDE  // for plugin.h
 #include "components/audit_log_filter/audit_udf.h"
 #include "components/audit_log_filter/audit_error_log.h"
+
+#include "components/audit_log_filter/audit_encryption.h"
+#include "components/audit_log_filter/audit_keyring.h"
 #include "components/audit_log_filter/audit_log_filter.h"
 #include "components/audit_log_filter/audit_log_reader.h"
 #include "components/audit_log_filter/audit_psi_info.h"
 #include "components/audit_log_filter/audit_rule_parser.h"
 #include "components/audit_log_filter/audit_table/audit_log_filter.h"
 #include "components/audit_log_filter/audit_table/audit_log_user.h"
+#include "components/audit_log_filter/json_reader/audit_json_handler.h"
 #include "components/audit_log_filter/log_record_formatter/base.h"
 #include "components/audit_log_filter/log_writer/file_handle.h"
 #include "components/audit_log_filter/sys_vars.h"
@@ -42,6 +46,9 @@
 
 namespace audit_log_filter {
 namespace {
+
+inline constexpr const size_t kKeyringIdLength = 766;
+inline constexpr const size_t kKeyringPasswordLength = 766;
 
 const std::unordered_set<std::string> log_read_udf_allowed_args{
     "start", "timestamp", "id", "max_array_length"};
@@ -117,14 +124,11 @@ std::unique_ptr<UserNameInfo> check_parse_user_name_host(
 
 }  // namespace
 
-AuditUdf::AuditUdf(comp_registry_srv_t *comp_registry_srv)
-    : m_comp_registry_srv{comp_registry_srv} {}
-
 AuditUdf::~AuditUdf() { deinit(); }
 
 bool AuditUdf::init(UdfFuncInfo *begin, UdfFuncInfo *end) {
   my_service<SERVICE_TYPE(udf_registration)> udf_registration_srv(
-      "udf_registration", m_comp_registry_srv);
+      "udf_registration", SysVars::get_comp_registry_srv());
 
   for (UdfFuncInfo *it = begin; it != end; ++it) {
     assert(it->return_type == STRING_RESULT || it->return_type == INT_RESULT);
@@ -150,7 +154,7 @@ void AuditUdf::deinit() noexcept {
   if (!m_active_udf_names.empty()) {
     int was_present = 0;
     my_service<SERVICE_TYPE(udf_registration)> udf_registration_srv(
-        "udf_registration", m_comp_registry_srv);
+        "udf_registration", SysVars::get_comp_registry_srv());
 
     for (const auto &name : m_active_udf_names) {
       udf_registration_srv->udf_unregister(name.c_str(), &was_present);
@@ -160,7 +164,8 @@ void AuditUdf::deinit() noexcept {
   }
 }
 
-bool AuditUdf::audit_log_filter_set_filter_udf_init(AuditUdf *udf,
+bool AuditUdf::audit_log_filter_set_filter_udf_init(AuditUdf *udf
+                                                    [[maybe_unused]],
                                                     UDF_INIT *initid,
                                                     UDF_ARGS *udf_args,
                                                     char *message) noexcept {
@@ -205,8 +210,7 @@ bool AuditUdf::audit_log_filter_set_filter_udf_init(AuditUdf *udf,
     return true;
   }
 
-  if (!udf->set_return_value_charset(initid) ||
-      !udf->set_args_charset(udf_args)) {
+  if (!set_return_value_charset(initid) || !set_args_charset(udf_args)) {
     std::snprintf(message, MYSQL_ERRMSG_SIZE,
                   "Unable to set character set service for "
                   "audit_log_filter_set_filter UDF");
@@ -219,9 +223,9 @@ bool AuditUdf::audit_log_filter_set_filter_udf_init(AuditUdf *udf,
 }
 
 char *AuditUdf::audit_log_filter_set_filter_udf(
-    AuditUdf *udf, UDF_INIT *initid [[maybe_unused]], UDF_ARGS *udf_args,
-    char *result, unsigned long *length, unsigned char *is_null,
-    unsigned char *error) noexcept {
+    AuditUdf *udf [[maybe_unused]], UDF_INIT *initid [[maybe_unused]],
+    UDF_ARGS *udf_args, char *result, unsigned long *length,
+    unsigned char *is_null, unsigned char *error) noexcept {
   *is_null = 0;
   *error = 0;
   AuditRule rule{udf_args->args[0]};
@@ -236,7 +240,7 @@ char *AuditUdf::audit_log_filter_set_filter_udf(
     return result;
   }
 
-  audit_table::AuditLogFilter audit_log_filter{udf->get_comp_registry_srv()};
+  audit_table::AuditLogFilter audit_log_filter;
 
   auto check_result = audit_log_filter.check_name_exists(udf_args->args[0]);
 
@@ -277,7 +281,8 @@ char *AuditUdf::audit_log_filter_set_filter_udf(
 void AuditUdf::audit_log_filter_set_filter_udf_deinit(UDF_INIT *) {}
 
 // audit_log_filter_remove_filter(filter_name)
-bool AuditUdf::audit_log_filter_remove_filter_udf_init(AuditUdf *udf,
+bool AuditUdf::audit_log_filter_remove_filter_udf_init(AuditUdf *udf
+                                                       [[maybe_unused]],
                                                        UDF_INIT *initid,
                                                        UDF_ARGS *udf_args,
                                                        char *message) noexcept {
@@ -308,8 +313,7 @@ bool AuditUdf::audit_log_filter_remove_filter_udf_init(AuditUdf *udf,
     return true;
   }
 
-  if (!udf->set_return_value_charset(initid) ||
-      !udf->set_args_charset(udf_args)) {
+  if (!set_return_value_charset(initid) || !set_args_charset(udf_args)) {
     std::snprintf(message, MYSQL_ERRMSG_SIZE,
                   "Unable to set character set service for "
                   "audit_log_filter_remove_filter UDF");
@@ -322,14 +326,14 @@ bool AuditUdf::audit_log_filter_remove_filter_udf_init(AuditUdf *udf,
 }
 
 char *AuditUdf::audit_log_filter_remove_filter_udf(
-    AuditUdf *udf, UDF_INIT *initid [[maybe_unused]], UDF_ARGS *udf_args,
-    char *result, unsigned long *length, unsigned char *is_null,
-    unsigned char *error) noexcept {
+    AuditUdf *udf [[maybe_unused]], UDF_INIT *initid [[maybe_unused]],
+    UDF_ARGS *udf_args, char *result, unsigned long *length,
+    unsigned char *is_null, unsigned char *error) noexcept {
   *is_null = 0;
   *error = 0;
 
-  audit_table::AuditLogFilter audit_log_filter{udf->get_comp_registry_srv()};
-  audit_table::AuditLogUser audit_log_user{udf->get_comp_registry_srv()};
+  audit_table::AuditLogFilter audit_log_filter;
+  audit_table::AuditLogUser audit_log_user;
 
   auto check_result = audit_log_filter.check_name_exists(udf_args->args[0]);
 
@@ -378,7 +382,8 @@ void AuditUdf::audit_log_filter_remove_filter_udf_deinit(UDF_INIT *) {}
 
 // audit_log_filter_set_user(user_name, filter_name)
 // user_name -> "user_name@host_name" or "%"
-bool AuditUdf::audit_log_filter_set_user_udf_init(AuditUdf *udf,
+bool AuditUdf::audit_log_filter_set_user_udf_init(AuditUdf *udf
+                                                  [[maybe_unused]],
                                                   UDF_INIT *initid,
                                                   UDF_ARGS *udf_args,
                                                   char *message) noexcept {
@@ -422,8 +427,7 @@ bool AuditUdf::audit_log_filter_set_user_udf_init(AuditUdf *udf,
     return true;
   }
 
-  if (!udf->set_return_value_charset(initid) ||
-      !udf->set_args_charset(udf_args)) {
+  if (!set_return_value_charset(initid) || !set_args_charset(udf_args)) {
     std::snprintf(message, MYSQL_ERRMSG_SIZE,
                   "Unable to set character set service for "
                   "audit_log_filter_set_user UDF");
@@ -437,7 +441,8 @@ bool AuditUdf::audit_log_filter_set_user_udf_init(AuditUdf *udf,
   return false;
 }
 
-char *AuditUdf::audit_log_filter_set_user_udf(AuditUdf *udf, UDF_INIT *initid,
+char *AuditUdf::audit_log_filter_set_user_udf(AuditUdf *udf [[maybe_unused]],
+                                              UDF_INIT *initid,
                                               UDF_ARGS *udf_args, char *result,
                                               unsigned long *length,
                                               unsigned char *is_null,
@@ -445,8 +450,8 @@ char *AuditUdf::audit_log_filter_set_user_udf(AuditUdf *udf, UDF_INIT *initid,
   *is_null = 0;
   *error = 0;
 
-  audit_table::AuditLogFilter audit_log_filter{udf->get_comp_registry_srv()};
-  audit_table::AuditLogUser audit_log_user{udf->get_comp_registry_srv()};
+  audit_table::AuditLogFilter audit_log_filter;
+  audit_table::AuditLogUser audit_log_user;
 
   std::string filter_name{udf_args->args[1]};
 
@@ -503,7 +508,8 @@ void AuditUdf::audit_log_filter_set_user_udf_deinit(UDF_INIT *initid) {
 
 // audit_log_filter_remove_user(user_name)
 // user_name -> "user_name@host_name" or "%"
-bool AuditUdf::audit_log_filter_remove_user_udf_init(AuditUdf *udf,
+bool AuditUdf::audit_log_filter_remove_user_udf_init(AuditUdf *udf
+                                                     [[maybe_unused]],
                                                      UDF_INIT *initid,
                                                      UDF_ARGS *udf_args,
                                                      char *message) noexcept {
@@ -532,8 +538,7 @@ bool AuditUdf::audit_log_filter_remove_user_udf_init(AuditUdf *udf,
     return true;
   }
 
-  if (!udf->set_return_value_charset(initid) ||
-      !udf->set_args_charset(udf_args)) {
+  if (!set_return_value_charset(initid) || !set_args_charset(udf_args)) {
     std::snprintf(message, MYSQL_ERRMSG_SIZE,
                   "Unable to set character set service for "
                   "audit_log_filter_remove_user UDF");
@@ -548,13 +553,13 @@ bool AuditUdf::audit_log_filter_remove_user_udf_init(AuditUdf *udf,
 }
 
 char *AuditUdf::audit_log_filter_remove_user_udf(
-    AuditUdf *udf, UDF_INIT *initid, UDF_ARGS *udf_args [[maybe_unused]],
-    char *result, unsigned long *length, unsigned char *is_null,
-    unsigned char *error) noexcept {
+    AuditUdf *udf [[maybe_unused]], UDF_INIT *initid,
+    UDF_ARGS *udf_args [[maybe_unused]], char *result, unsigned long *length,
+    unsigned char *is_null, unsigned char *error) noexcept {
   *is_null = 0;
   *error = 0;
 
-  audit_table::AuditLogUser audit_log_user{udf->get_comp_registry_srv()};
+  audit_table::AuditLogUser audit_log_user;
 
   auto *user_info_data = reinterpret_cast<UserNameInfo *>(initid->ptr);
 
@@ -594,8 +599,7 @@ bool AuditUdf::audit_log_filter_flush_udf_init(AuditUdf *udf [[maybe_unused]],
     return true;
   }
 
-  if (!udf->set_return_value_charset(initid) ||
-      !udf->set_args_charset(udf_args)) {
+  if (!set_return_value_charset(initid) || !set_args_charset(udf_args)) {
     std::snprintf(message, MYSQL_ERRMSG_SIZE,
                   "Unable to set character set service for "
                   "audit_log_filter_set_filter UDF");
@@ -652,8 +656,7 @@ bool AuditUdf::audit_log_read_udf_init(AuditUdf *udf [[maybe_unused]],
     return true;
   }
 
-  if (!udf->set_return_value_charset(initid) ||
-      !udf->set_args_charset(udf_args)) {
+  if (!set_return_value_charset(initid) || !set_args_charset(udf_args)) {
     std::snprintf(message, MYSQL_ERRMSG_SIZE,
                   "Unable to set character set service for "
                   "audit_log_filter_set_filter UDF");
@@ -668,8 +671,8 @@ bool AuditUdf::audit_log_read_udf_init(AuditUdf *udf [[maybe_unused]],
 
 char *AuditUdf::audit_log_read_udf(AuditUdf *udf [[maybe_unused]],
                                    UDF_INIT *initid [[maybe_unused]],
-                                   UDF_ARGS *udf_args [[maybe_unused]],
-                                   char *result, unsigned long *length,
+                                   UDF_ARGS *udf_args, char *result,
+                                   unsigned long *length,
                                    unsigned char *is_null,
                                    unsigned char *error) noexcept {
   /*
@@ -687,7 +690,7 @@ char *AuditUdf::audit_log_read_udf(AuditUdf *udf [[maybe_unused]],
   *error = 0;
 
   my_service<SERVICE_TYPE(mysql_current_thread_reader)> thd_reader_srv(
-      "mysql_current_thread_reader", udf->get_comp_registry_srv());
+      "mysql_current_thread_reader", SysVars::get_comp_registry_srv());
 
   MYSQL_THD thd;
 
@@ -699,7 +702,7 @@ char *AuditUdf::audit_log_read_udf(AuditUdf *udf [[maybe_unused]],
 
   auto *log_reader = get_audit_log_filter_instance()->get_log_reader();
   auto *reader_context = SysVars::get_log_reader_context(thd);
-  auto reader_args = AuditLogReaderArgs{};
+  auto reader_args = std::make_unique<AuditLogReaderArgs>();
 
   if (udf_args->arg_count == 1 && udf_args->args != nullptr &&
       udf_args->args[0] != nullptr) {
@@ -754,8 +757,8 @@ char *AuditUdf::audit_log_read_udf(AuditUdf *udf [[maybe_unused]],
           return result;
         }
 
-        reader_args.timestamp = json_doc["start"]["timestamp"].GetString();
-        reader_args.id = 0;
+        reader_args->timestamp = json_doc["start"]["timestamp"].GetString();
+        reader_args->id = 0;
       } else if (has_timestamp_tag) {
         if (!json_doc["timestamp"].IsString() || !json_doc["id"].IsUint64()) {
           my_error(ER_UDF_ERROR, MYF(0), "audit_log_read",
@@ -764,12 +767,12 @@ char *AuditUdf::audit_log_read_udf(AuditUdf *udf [[maybe_unused]],
           return result;
         }
 
-        reader_args.timestamp = json_doc["timestamp"].GetString();
-        reader_args.id = json_doc["id"].GetUint();
+        reader_args->timestamp = json_doc["timestamp"].GetString();
+        reader_args->id = json_doc["id"].GetUint();
       }
 
       if ((has_start_tag || has_timestamp_tag) &&
-          reader_args.timestamp.empty()) {
+          reader_args->timestamp.empty()) {
         my_error(ER_UDF_ERROR, MYF(0), "audit_log_read",
                  "Wrong JSON argument, bad timestamp format");
         *error = 1;
@@ -778,7 +781,8 @@ char *AuditUdf::audit_log_read_udf(AuditUdf *udf [[maybe_unused]],
 
       if (json_doc.HasMember("max_array_length")) {
         if (json_doc["max_array_length"].IsUint()) {
-          reader_args.max_array_length = json_doc["max_array_length"].GetUint();
+          reader_args->max_array_length =
+              json_doc["max_array_length"].GetUint();
         } else {
           my_error(ER_UDF_ERROR, MYF(0), "audit_log_read",
                    "Wrong JSON argument, bad max_array_length format");
@@ -787,7 +791,7 @@ char *AuditUdf::audit_log_read_udf(AuditUdf *udf [[maybe_unused]],
         }
       }
     } else if (json_doc.IsNull()) {
-      reader_args.close_read_sequence = true;
+      reader_args->close_read_sequence = true;
     } else {
       my_error(ER_UDF_ERROR, MYF(0), "audit_log_read", "Wrong argument format");
       *error = 1;
@@ -800,7 +804,7 @@ char *AuditUdf::audit_log_read_udf(AuditUdf *udf [[maybe_unused]],
   }
 
   if (udf_args->arg_count == 1) {
-    if (reader_args.close_read_sequence) {
+    if (reader_args->close_read_sequence) {
       if (reader_context != nullptr) {
         log_reader->close_reader_session(reader_context);
         SysVars::set_log_reader_context(thd, nullptr);
@@ -812,7 +816,7 @@ char *AuditUdf::audit_log_read_udf(AuditUdf *udf [[maybe_unused]],
       return result;
     }
 
-    bool is_new_session_request = !reader_args.timestamp.empty();
+    bool is_new_session_request = !reader_args->timestamp.empty();
 
     if ((reader_context == nullptr && !is_new_session_request) ||
         (reader_context != nullptr && is_new_session_request)) {
@@ -822,7 +826,7 @@ char *AuditUdf::audit_log_read_udf(AuditUdf *udf [[maybe_unused]],
     }
 
     if (is_new_session_request) {
-      reader_context = AuditLogReader::init_reader_session(reader_args);
+      reader_context = log_reader->init_reader_session(thd, reader_args.get());
 
       if (reader_context == nullptr) {
         my_error(ER_UDF_ERROR, MYF(0), "audit_log_read",
@@ -835,24 +839,48 @@ char *AuditUdf::audit_log_read_udf(AuditUdf *udf [[maybe_unused]],
     }
   }
 
-  auto read_buf_size = SysVars::get_read_buffer_size(thd);
-  initid->ptr = static_cast<char *>(my_malloc(
-      key_memory_audit_log_filter_read_buffer, read_buf_size, MY_ZEROFILL));
+  reader_context->batch_reader_args = std::move(reader_args);
 
-  if (!log_reader->read(reader_args, reader_context, initid->ptr,
-                        read_buf_size)) {
+  if (!AuditLogReader::read(reader_context)) {
+    if (reader_context != nullptr) {
+      log_reader->close_reader_session(reader_context);
+      SysVars::set_log_reader_context(thd, nullptr);
+      delete reader_context;
+    }
+
     my_error(ER_UDF_ERROR, MYF(0), "audit_log_read", "Could not read log");
     *error = 1;
     return result;
   }
 
+  reader_context->batch_reader_args.reset(nullptr);
+
+  initid->ptr = reader_context->audit_json_handler->get_result_buffer_ptr();
   *length = std::strlen(initid->ptr);
+
+  if (*length == 0) {
+    std::snprintf(initid->ptr, MYSQL_ERRMSG_SIZE, "[ null ]");
+    *length = std::strlen(initid->ptr);
+  }
+
   return initid->ptr;
 }
 
-void AuditUdf::audit_log_read_udf_deinit(UDF_INIT *initid) {
-  if (initid != nullptr && initid->ptr != nullptr) {
-    my_free(initid->ptr);
+void AuditUdf::audit_log_read_udf_deinit(UDF_INIT *initid [[maybe_unused]]) {
+  my_service<SERVICE_TYPE(mysql_current_thread_reader)> thd_reader_srv(
+      "mysql_current_thread_reader", SysVars::get_comp_registry_srv());
+
+  MYSQL_THD thd;
+
+  if (!thd_reader_srv->get(&thd)) {
+    auto *reader_context = SysVars::get_log_reader_context(thd);
+
+    if (reader_context != nullptr && reader_context->is_session_end) {
+      get_audit_log_filter_instance()->get_log_reader()->close_reader_session(
+          reader_context);
+      SysVars::set_log_reader_context(thd, nullptr);
+      delete reader_context;
+    }
   }
 }
 
@@ -873,8 +901,7 @@ bool AuditUdf::audit_log_read_bookmark_udf_init(AuditUdf *udf [[maybe_unused]],
     return true;
   }
 
-  if (!udf->set_return_value_charset(initid) ||
-      !udf->set_args_charset(udf_args)) {
+  if (!set_return_value_charset(initid) || !set_args_charset(udf_args)) {
     std::snprintf(message, MYSQL_ERRMSG_SIZE,
                   "Unable to set character set service for "
                   "audit_log_filter_set_filter UDF");
@@ -940,8 +967,7 @@ bool AuditUdf::audit_log_rotate_udf_init(AuditUdf *udf [[maybe_unused]],
     return true;
   }
 
-  if (!udf->set_return_value_charset(initid) ||
-      !udf->set_args_charset(udf_args)) {
+  if (!set_return_value_charset(initid) || !set_args_charset(udf_args)) {
     std::snprintf(message, MYSQL_ERRMSG_SIZE,
                   "Unable to set character set service for "
                   "audit_log_filter_set_filter UDF");
@@ -971,6 +997,178 @@ char *AuditUdf::audit_log_rotate_udf(AuditUdf *udf [[maybe_unused]],
 }
 
 void AuditUdf::audit_log_rotate_udf_deinit(UDF_INIT *) {}
+
+bool AuditUdf::audit_log_encryption_password_get_udf_init(
+    AuditUdf *udf [[maybe_unused]], UDF_INIT *initid, UDF_ARGS *udf_args,
+    char *message) noexcept {
+  if (!audit_keyring::check_keyring_initialized()) {
+    std::snprintf(message, MYSQL_ERRMSG_SIZE,
+                  "Keyring component not initialized");
+    return true;
+  }
+
+  if (udf_args->arg_count > 1) {
+    std::snprintf(
+        message, MYSQL_ERRMSG_SIZE,
+        "Wrong argument list: audit_log_encryption_password_get([keyring_id])");
+    return true;
+  }
+
+  if (udf_args->arg_count == 1) {
+    if (udf_args->arg_type[0] != STRING_RESULT) {
+      std::snprintf(
+          message, MYSQL_ERRMSG_SIZE,
+          "Wrong argument type: audit_log_encryption_password_get(string)");
+      return true;
+    }
+
+    if (udf_args->lengths[0] == 0) {
+      std::snprintf(message, MYSQL_ERRMSG_SIZE,
+                    "Wrong argument: empty keyring_id");
+      return true;
+    }
+
+    if (udf_args->lengths[0] > kKeyringIdLength) {
+      std::snprintf(message, MYSQL_ERRMSG_SIZE,
+                    "Wrong argument: keyring_id is too long, max length is %ld",
+                    kKeyringIdLength);
+      return true;
+    }
+  }
+
+  if (!set_return_value_charset(initid) || !set_args_charset(udf_args)) {
+    std::snprintf(message, MYSQL_ERRMSG_SIZE,
+                  "Unable to set character set service for "
+                  "audit_log_encryption_password_get UDF");
+    return true;
+  }
+
+  initid->maybe_null = false;
+  initid->const_item = false;
+
+  return false;
+}
+
+char *AuditUdf::audit_log_encryption_password_get_udf(
+    AuditUdf *udf [[maybe_unused]], UDF_INIT *initid, UDF_ARGS *udf_args,
+    char *result, unsigned long *length, unsigned char *is_null,
+    unsigned char *error) noexcept {
+  *is_null = 0;
+  *error = 0;
+
+  std::unique_ptr<encryption::EncryptionOptions> options;
+
+  if (udf_args->arg_count == 1 && udf_args->args != nullptr &&
+      udf_args->args[0] != nullptr) {
+    options = audit_keyring::get_encryption_options(udf_args->args[0]);
+  } else {
+    options = audit_keyring::get_encryption_options();
+  }
+
+  if (options == nullptr || !options->check_valid()) {
+    my_error(ER_UDF_ERROR, MYF(0), "audit_log_encryption_password_get_udf",
+             "Could not read options");
+    *error = 1;
+    return result;
+  }
+
+  const auto options_json_str = options->to_json_string();
+
+  initid->ptr =
+      static_cast<char *>(my_malloc(key_memory_audit_log_filter_password_buffer,
+                                    options_json_str.length(), MY_ZEROFILL));
+
+  if (initid->ptr == nullptr) {
+    my_error(ER_UDF_ERROR, MYF(0), "audit_log_encryption_password_get_udf",
+             "Could not allocate result buffer");
+    *error = 1;
+    return result;
+  }
+
+  memcpy(initid->ptr, options_json_str.c_str(), options_json_str.length());
+  *length = options_json_str.length();
+
+  return initid->ptr;
+}
+
+void AuditUdf::audit_log_encryption_password_get_udf_deinit(UDF_INIT *initid) {
+  if (initid != nullptr && initid->ptr != nullptr) {
+    my_free(initid->ptr);
+  }
+}
+
+bool AuditUdf::audit_log_encryption_password_set_udf_init(
+    AuditUdf *udf [[maybe_unused]], UDF_INIT *initid, UDF_ARGS *udf_args,
+    char *message) noexcept {
+  if (!audit_keyring::check_keyring_initialized()) {
+    std::snprintf(message, MYSQL_ERRMSG_SIZE,
+                  "Keyring component not initialized");
+    return true;
+  }
+
+  if (udf_args->arg_count != 1) {
+    std::snprintf(
+        message, MYSQL_ERRMSG_SIZE,
+        "Wrong argument list: audit_log_encryption_password_set(password)");
+    return true;
+  }
+
+  if (udf_args->arg_type[0] != STRING_RESULT) {
+    std::snprintf(
+        message, MYSQL_ERRMSG_SIZE,
+        "Wrong argument type: audit_log_encryption_password_set(string)");
+    return true;
+  }
+
+  if (udf_args->lengths[0] == 0) {
+    std::snprintf(message, MYSQL_ERRMSG_SIZE, "Wrong argument: empty password");
+    return true;
+  }
+
+  if (udf_args->lengths[0] > kKeyringPasswordLength) {
+    std::snprintf(message, MYSQL_ERRMSG_SIZE,
+                  "Wrong argument: password is too long, max length is %ld",
+                  kKeyringPasswordLength);
+    return true;
+  }
+
+  if (!set_return_value_charset(initid) || !set_args_charset(udf_args)) {
+    std::snprintf(message, MYSQL_ERRMSG_SIZE,
+                  "Unable to set character set service for "
+                  "audit_log_encryption_password_get UDF");
+    return true;
+  }
+
+  initid->maybe_null = false;
+  initid->const_item = false;
+
+  return false;
+}
+
+char *AuditUdf::audit_log_encryption_password_set_udf(
+    AuditUdf *udf [[maybe_unused]], UDF_INIT *initid [[maybe_unused]],
+    UDF_ARGS *udf_args, char *result, unsigned long *length,
+    unsigned char *is_null, unsigned char *error) noexcept {
+  *is_null = 0;
+  *error = 0;
+
+  if (!audit_keyring::set_encryption_options(udf_args->args[0])) {
+    my_error(ER_UDF_ERROR, MYF(0), "audit_log_encryption_password_set_udf",
+             "Could not set password");
+    *error = 1;
+    return result;
+  }
+
+  get_audit_log_filter_instance()->on_audit_log_rotate_requested();
+  get_audit_log_filter_instance()->on_encryption_password_prune_requested();
+
+  std::snprintf(result, MYSQL_ERRMSG_SIZE, "OK");
+  *length = std::strlen(result);
+
+  return result;
+}
+
+void AuditUdf::audit_log_encryption_password_set_udf_deinit(UDF_INIT *) {}
 
 bool AuditUdf::audit_log_session_filter_id_udf_init(AuditUdf *udf
                                                     [[maybe_unused]],
@@ -1013,7 +1211,7 @@ void AuditUdf::audit_log_session_filter_id_udf_deinit(UDF_INIT *) {}
 bool AuditUdf::set_return_value_charset(
     UDF_INIT *initid, const std::string &charset_name) noexcept {
   my_service<SERVICE_TYPE(mysql_udf_metadata)> udf_metadata_srv(
-      "mysql_udf_metadata", m_comp_registry_srv);
+      "mysql_udf_metadata", SysVars::get_comp_registry_srv());
   char *charset = const_cast<char *>(charset_name.c_str());
   return !udf_metadata_srv->result_set(initid, "charset",
                                        static_cast<void *>(charset));
@@ -1022,7 +1220,7 @@ bool AuditUdf::set_return_value_charset(
 bool AuditUdf::set_args_charset(UDF_ARGS *udf_args,
                                 const std::string &charset_name) noexcept {
   my_service<SERVICE_TYPE(mysql_udf_metadata)> udf_metadata_srv(
-      "mysql_udf_metadata", m_comp_registry_srv);
+      "mysql_udf_metadata", SysVars::get_comp_registry_srv());
   char *charset = const_cast<char *>(charset_name.c_str());
   for (uint index = 0; index < udf_args->arg_count; ++index) {
     if (udf_args->arg_type[index] == STRING_RESULT &&

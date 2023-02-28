@@ -21,7 +21,6 @@
 #define ALLOW_COMPONENT_INCLUDE  // for my_io.h and plugin.h
 #include "sql/mysqld.h"
 #include "sql/sql_class.h"
-#include "sql/sql_const.h"
 #include "sql/sql_error.h"
 #include "sql/sql_plugin_var.h"
 
@@ -50,8 +49,13 @@ constexpr std::string_view kSessionFilterIdSlotName{
 mysql_thd_store_slot reader_context_thread_slot{nullptr};
 mysql_thd_store_slot session_filter_id_slot{nullptr};
 
+/*
+ * Internally used variables
+ */
 std::atomic<uint64_t> record_id{0};
 LogBookmark log_bookmark;
+std::string encryption_options_id;
+bool log_encryption_enabled{false};
 
 /*
  * Status variables
@@ -64,7 +68,7 @@ std::atomic<uint64_t> write_waits{0};
 std::atomic<uint64_t> event_max_drop_size{0};
 std::atomic<uint64_t> current_log_size{0};
 std::atomic<uint64_t> total_log_size{0};
-std::atomic<uint64_t> buffer_bypassing_writes{0};
+std::atomic<uint64_t> direct_writes{0};
 
 int show_events_total(THD *, SHOW_VAR *var, char *buff) {
   var->type = SHOW_LONG;
@@ -130,11 +134,11 @@ int show_total_log_size(THD *, SHOW_VAR *var, char *buff) {
   return 0;
 }
 
-int show_buffer_bypassing_writes(THD *, SHOW_VAR *var, char *buff) {
+int show_direct_writes(THD *, SHOW_VAR *var, char *buff) {
   var->type = SHOW_LONG;
   var->value = buff;
   auto *value = reinterpret_cast<uint64_t *>(buff);
-  *value = buffer_bypassing_writes.load(std::memory_order_relaxed);
+  *value = direct_writes.load(std::memory_order_relaxed);
   return 0;
 }
 
@@ -160,8 +164,8 @@ SHOW_VAR status_vars[] = {
     {"Audit_log_filter_total_size",
      reinterpret_cast<char *>(&show_total_log_size), SHOW_FUNC,
      SHOW_SCOPE_GLOBAL},
-    {"Audit_log_filter_buffer_bypassing_writes",
-     reinterpret_cast<char *>(&show_buffer_bypassing_writes), SHOW_FUNC,
+    {"Audit_log_filter_direct_writes",
+     reinterpret_cast<char *>(&show_direct_writes), SHOW_FUNC,
      SHOW_SCOPE_GLOBAL},
     {nullptr, nullptr, SHOW_UNDEF, SHOW_SCOPE_UNDEF}};
 
@@ -185,6 +189,11 @@ char *log_syslog_tag = nullptr;
 std::string default_log_syslog_tag{"audit-filter"};
 ulong log_syslog_facility = 0;
 ulong log_syslog_priority = 0;
+ulong log_compression_type = static_cast<ulong>(AuditLogCompressionType::None);
+ulong log_encryption_type = static_cast<ulong>(AuditLogEncryptionType::None);
+ulonglong log_password_history_keep_days = 0;
+int key_derivation_iter_count_mean = 0;
+const int default_key_derivation_iter_count_mean = 600000;
 ulong read_buffer_size = 0;
 
 const char *audit_log_filter_handler_names[] = {"FILE", "SYSLOG", nullptr};
@@ -281,11 +290,9 @@ TYPE_LIB audit_log_filter_syslog_priority_typelib = {
 int log_disabled_check_func(MYSQL_THD thd, SYS_VAR *var, void *save,
                             st_mysql_value *value) {
   my_service<SERVICE_TYPE(mysql_thd_security_context)> security_context_service(
-      "mysql_thd_security_context",
-      get_audit_log_filter_instance()->get_comp_registry_srv());
+      "mysql_thd_security_context", SysVars::get_comp_registry_srv());
   my_service<SERVICE_TYPE(global_grants_check)> grants_check_service(
-      "global_grants_check",
-      get_audit_log_filter_instance()->get_comp_registry_srv());
+      "global_grants_check", SysVars::get_comp_registry_srv());
 
   bool has_audit_admin_grant = false;
   bool has_system_variables_admin_grant = false;
@@ -310,11 +317,57 @@ int log_disabled_check_func(MYSQL_THD thd, SYS_VAR *var, void *save,
   return check_func_bool(thd, var, save, value);
 }
 
+const char *audit_log_filter_compression_names[] = {"NONE", "GZIP", nullptr};
+TYPE_LIB audit_log_filter_compression_typelib = {
+    array_elements(audit_log_filter_compression_names) - 1,
+    "audit_log_filter_compression_typelib", audit_log_filter_compression_names,
+    nullptr};
+
+const char *audit_log_filter_encryption_names[] = {"NONE", "AES", nullptr};
+TYPE_LIB audit_log_filter_encryption_typelib = {
+    array_elements(audit_log_filter_encryption_names) - 1,
+    "audit_log_filter_encryption_typelib", audit_log_filter_encryption_names,
+    nullptr};
+
+int password_history_keep_days_check_func(MYSQL_THD thd, SYS_VAR *var,
+                                          void *save, st_mysql_value *value) {
+  my_service<SERVICE_TYPE(mysql_thd_security_context)> security_context_service(
+      "mysql_thd_security_context", SysVars::get_comp_registry_srv());
+  my_service<SERVICE_TYPE(global_grants_check)> grants_check_service(
+      "global_grants_check", SysVars::get_comp_registry_srv());
+
+  bool has_audit_admin_grant = false;
+
+  if (security_context_service.is_valid() && grants_check_service.is_valid()) {
+    Security_context_handle ctx;
+
+    if (!security_context_service->get(thd, &ctx)) {
+      has_audit_admin_grant = grants_check_service->has_global_grant(
+          ctx, STRING_WITH_LEN("AUDIT_ADMIN"));
+    }
+  }
+
+  if (!has_audit_admin_grant) {
+    my_error(ER_SPECIFIC_ACCESS_DENIED_ERROR, MYF(0), "AUDIT_ADMIN");
+    return 1;
+  }
+
+  return check_func_longlong(thd, var, save, value);
+}
+
+void password_history_keep_days_update_func(MYSQL_THD, SYS_VAR *, void *val_ptr,
+                                            const void *save) {
+  const auto *val = static_cast<const ulonglong *>(save);
+  *static_cast<ulonglong *>(val_ptr) = *val;
+  get_audit_log_filter_instance()->on_encryption_password_prune_requested();
+}
+
 using bool_arg_check_type = BOOL_CHECK_ARG(bool);
 using str_arg_check_type = STR_CHECK_ARG(str);
 using enum_arg_check_type = ENUM_CHECK_ARG(type_lib);
 using ulonglong_arg_check_type = INTEGRAL_CHECK_ARG(ulonglong);
 using ulong_arg_check_type = INTEGRAL_CHECK_ARG(ulong);
+using int_arg_check_type = INTEGRAL_CHECK_ARG(int);
 
 str_arg_check_type check_file{default_log_file_name.data()};
 enum_arg_check_type check_handler{static_cast<ulong>(AuditLogHandlerType::File),
@@ -337,6 +390,16 @@ enum_arg_check_type check_syslog_facility{
 enum_arg_check_type check_syslog_priority{
     0, &audit_log_filter_syslog_priority_typelib};
 bool_arg_check_type check_disable{false};
+enum_arg_check_type check_compression{
+    static_cast<ulong>(AuditLogCompressionType::None),
+    &audit_log_filter_compression_typelib};
+enum_arg_check_type check_encryption{
+    static_cast<ulong>(AuditLogEncryptionType::None),
+    &audit_log_filter_encryption_typelib};
+ulonglong_arg_check_type check_password_history_keep_days{0UL, 0UL, ULLONG_MAX,
+                                                          0UL};
+int_arg_check_type check_key_derivation_iterations_count_mean{
+    default_key_derivation_iter_count_mean, 1000, INT_MAX, 0};
 ulong_arg_check_type check_read_buffer_size{32768UL, 32768UL, ULONG_MAX, 0UL};
 
 struct SysVarInfo {
@@ -495,6 +558,58 @@ SysVarListType sys_vars = {
       "Disable audit logging for all connecting and connected sessions.",
       log_disabled_check_func, nullptr, static_cast<void *>(&check_disable),
       static_cast<void *>(&log_disabled)},
+     false},
+    /*
+     * The audit_log_filter.compression variable specifies type of compression
+     * for the audit log file, possible values are:
+     * NONE - (default) no compression
+     * GZIP - GNU Zip compression.
+     */
+    {{"compression",
+      PLUGIN_VAR_ENUM | PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
+      "The type of compression for the audit log file.", nullptr, nullptr,
+      static_cast<void *>(&check_compression),
+      static_cast<void *>(&log_compression_type)},
+     false},
+    /*
+     * The audit_log_filter.encryption variable specifies type of encryption
+     * for the audit log file, possible values are:
+     * NONE - (default) no encryption
+     * AES - AES-256-CBC cipher encryption.
+     */
+    {{"encryption", PLUGIN_VAR_ENUM | PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
+      "The type of encryption for the audit log file.", nullptr, nullptr,
+      static_cast<void *>(&check_encryption),
+      static_cast<void *>(&log_encryption_type)},
+     false},
+    /*
+     * The audit_log_filter.password_history_keep_days variable controls
+     * automatic removal of expired archived passwords. It indicates the number
+     * of days after which archived audit log encryption passwords are removed.
+     */
+    {{"password_history_keep_days",
+      PLUGIN_VAR_LONGLONG | PLUGIN_VAR_UNSIGNED | PLUGIN_VAR_OPCMDARG,
+      "Indicates the number of days after which archived audit log encryption "
+      "passwords are removed.",
+      password_history_keep_days_check_func,
+      password_history_keep_days_update_func,
+      static_cast<void *>(&check_password_history_keep_days),
+      static_cast<void *>(&log_password_history_keep_days)},
+     false},
+    /*
+     * The audit_log_filter.key_derivation_iterations_count_mean variable
+     * specifies the mean value of number of iterations used by password based
+     * derivation routine while calculating encryption key and iv values.
+     * Actual iterations count is calculated as random number which deviates
+     * not more than 10% from this value.
+     */
+    {{"key_derivation_iterations_count_mean",
+      PLUGIN_VAR_INT | PLUGIN_VAR_UNSIGNED | PLUGIN_VAR_OPCMDARG,
+      "Mean value of randomly generated iterations count used by password "
+      "based derivation routine.",
+      nullptr, nullptr,
+      static_cast<void *>(&check_key_derivation_iterations_count_mean),
+      static_cast<void *>(&key_derivation_iter_count_mean)},
      false},
     /*
      * The audit_log_filter.read_buffer_size variable defines buffer size for
@@ -658,6 +773,30 @@ int SysVars::get_syslog_priority() noexcept {
   return audit_log_filter_syslog_priority_codes[log_syslog_priority];
 }
 
+AuditLogCompressionType SysVars::get_compression_type() noexcept {
+  return static_cast<AuditLogCompressionType>(log_compression_type);
+}
+
+AuditLogEncryptionType SysVars::get_encryption_type() noexcept {
+  return static_cast<AuditLogEncryptionType>(log_encryption_type);
+}
+
+void SysVars::set_log_encryption_enabled(bool is_enabled) noexcept {
+  log_encryption_enabled = is_enabled;
+}
+
+bool SysVars::get_log_encryption_enabled() noexcept {
+  return log_encryption_enabled;
+}
+
+ulonglong SysVars::get_password_history_keep_days() noexcept {
+  return log_password_history_keep_days;
+}
+
+int SysVars::get_key_derivation_iter_count_mean() noexcept {
+  return key_derivation_iter_count_mean;
+}
+
 void SysVars::set_session_filter_id(MYSQL_THD thd, ulong id) noexcept {
   my_service<SERVICE_TYPE(mysql_thd_store)> thd_store_service(
       "mysql_thd_store", SysVars::get_comp_registry_srv());
@@ -771,12 +910,13 @@ void SysVars::update_total_log_size(uint64_t size) noexcept {
   total_log_size.fetch_add(size, std::memory_order_relaxed);
 }
 
-void SysVars::inc_buffer_bypassing_writes() noexcept {
-  buffer_bypassing_writes.fetch_add(1, std::memory_order_relaxed);
+void SysVars::inc_direct_writes() noexcept {
+  direct_writes.fetch_add(1, std::memory_order_relaxed);
 }
 
 #ifndef NDEBUG
-std::chrono::system_clock::time_point SysVars::get_debug_time_point() noexcept {
+std::chrono::system_clock::time_point
+SysVars::get_debug_time_point_for_rotation() noexcept {
   static auto debug_time_point = get_initial_debug_time_point();
 
   DBUG_EXECUTE_IF("audit_log_filter_reset_log_bookmark", {
@@ -789,6 +929,13 @@ std::chrono::system_clock::time_point SysVars::get_debug_time_point() noexcept {
   debug_time_point += std::chrono::minutes{1};
   return debug_time_point;
 }
+
+std::chrono::system_clock::time_point
+SysVars::get_debug_time_point_for_encryption() noexcept {
+  static auto debug_time_point = get_initial_debug_time_point();
+  debug_time_point += std::chrono::hours{24};
+  return debug_time_point;
+}
 #endif
 
 uint64_t SysVars::get_next_record_id() noexcept {
@@ -797,6 +944,15 @@ uint64_t SysVars::get_next_record_id() noexcept {
 
 void SysVars::init_record_id(uint64_t initial_record_id) noexcept {
   record_id.store(initial_record_id);
+}
+
+void SysVars::set_encryption_options_id(
+    const std::string &options_id) noexcept {
+  encryption_options_id = options_id;
+}
+
+std::string SysVars::get_encryption_options_id() noexcept {
+  return encryption_options_id;
 }
 
 decltype(get_component_registry_service().get())
