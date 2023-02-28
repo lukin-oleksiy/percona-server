@@ -43,12 +43,31 @@ enum class AuditLogStrategyType {
   StrategiesCount
 };
 
+enum class AuditLogCompressionType {
+  None,
+  Gzip,
+  TypesCount  // This item must be last in the list
+};
+
+enum class AuditLogEncryptionType {
+  None,
+  Aes,
+  TypesCount  // This item must be last in the list
+};
+
 class LogWriterBase {
  public:
   explicit LogWriterBase(
       std::unique_ptr<log_record_formatter::LogRecordFormatterBase> formatter);
 
   virtual ~LogWriterBase();
+
+  /**
+   * @brief Init log writer.
+   *
+   * @return true in case of success, false otherwise
+   */
+  virtual bool init() noexcept = 0;
 
   /**
    * @brief Open log writer.

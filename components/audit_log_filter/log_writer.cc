@@ -18,6 +18,7 @@
 #define ALLOW_COMPONENT_INCLUDE  // for plugin.h
 #include "log_record_formatter/base.h"
 #include "log_writer/file.h"
+#include "log_writer/file_writer_base.h"
 #include "log_writer/syslog.h"
 #include "sys_vars.h"
 

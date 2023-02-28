@@ -20,6 +20,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <string>
 #include <vector>
 
 namespace audit_log_filter::log_writer {
@@ -72,6 +73,18 @@ class FileHandle {
   [[nodiscard]] uint64_t get_file_size() const noexcept;
 
   /**
+   * @brief Get current file path.
+   *
+   * @return Current log file path
+   */
+  [[nodiscard]] std::filesystem::path get_file_path() const noexcept;
+
+  /**
+   * @brief Flush data to a log file.
+   */
+  void flush() noexcept;
+
+  /**
    * @brief Get total logs size in bytes.
    *
    * @param working_dir_name Working directory name
@@ -88,18 +101,17 @@ class FileHandle {
    * @param file_path File path
    * @param expected_footer Expected log footer
    */
-  void remove_file_footer(const std::filesystem::path &file_path,
-                          const std::string &expected_footer) const noexcept;
+  static void remove_file_footer(const std::filesystem::path &file_path,
+                                 const std::string &expected_footer) noexcept;
 
   /**
    * @brief Rotate file.
    *
-   * @param working_dir_name Working directory name
-   * @param file_name File name
+   * @param current_file_path Current file path
    * @return Instance of std::error_code holding operation result
    */
-  static std::error_code rotate(const std::string &working_dir_name,
-                                const std::string &file_name) noexcept;
+  static std::error_code rotate(
+      const std::filesystem::path &current_file_path) noexcept;
 
   /**
    * @brief Get list of rotated log files which may be a subject for pruning.
@@ -118,6 +130,28 @@ class FileHandle {
    * @return true in case file removed successfully, false otherwise
    */
   static bool remove_file(const std::filesystem::path &path) noexcept;
+
+  /**
+   * @brief Find path to not rotated log file if any.
+   *
+   * @param working_dir_name Working directory name
+   * @param base_file_name Base file name
+   * @return Path to not rotated log file
+   */
+  static std::filesystem::path get_not_rotated_file_path(
+      const std::string &working_dir_name,
+      const std::string &base_file_name) noexcept;
+
+  /**
+   * @brief Get list of currently existent audit log file names.
+   *
+   * @param working_dir_name Working directory name
+   * @param file_name Base file name
+   * @return List of audit log file names
+   */
+  static std::vector<std::string> get_log_names_list(
+      const std::string &working_dir_name,
+      const std::string &file_name) noexcept;
 
  private:
   std::fstream m_file;

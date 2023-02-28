@@ -13,7 +13,7 @@ SELECT audit_log_filter_set_user('%', 'log_all');
 --let $restart_parameters="restart: --audit_log_filter.format=OLD"
 --source include/restart_mysqld.inc
 
---let $new_name_suffix = NEW
+--let $new_name_suffix = xml.NEW
 --source rename_rotated_log.inc
 
 --source generate_audit_events.inc
@@ -21,7 +21,7 @@ SELECT audit_log_filter_set_user('%', 'log_all');
 --let $restart_parameters="restart: --audit_log_filter.format=JSON"
 --source include/restart_mysqld.inc
 
---let $new_name_suffix = OLD
+--let $new_name_suffix = xml.OLD
 --source rename_rotated_log.inc
 
 --source generate_audit_events.inc
@@ -29,25 +29,25 @@ SELECT audit_log_filter_set_user('%', 'log_all');
 --let $restart_parameters="restart: --audit_log_filter.format=NEW"
 --source include/restart_mysqld.inc
 
---let $new_name_suffix = JSON
+--let $new_name_suffix = json.JSON
 --source rename_rotated_log.inc
 
 # Make sure all rotated logs have valid format
---let $audit_filter_log_name = test_audit_filter.NEW
---source validate_xml_logs.inc
+--let $audit_filter_log_name = audit_filter.xml.NEW
+--source validate_logs_format.inc
 
---let $audit_filter_log_name = test_audit_filter.OLD
---source validate_xml_logs.inc
+--let $audit_filter_log_name = audit_filter.xml.OLD
+--source validate_logs_format.inc
 
---let $audit_filter_log_name = test_audit_filter.JSON
---source validate_json_logs.inc
+--let $audit_filter_log_name = audit_filter.json.JSON
+--source validate_logs_format.inc
 
 --echo #
 --echo # Cleanup
 --source ../inc/audit_comp_uninstall.inc
 --source ../inc/audit_tables_cleanup.inc
 
---let $log_base_name = test_audit_filter
---remove_file $audit_filter_log_path$log_base_name.NEW
---remove_file $audit_filter_log_path$log_base_name.OLD
---remove_file $audit_filter_log_path$log_base_name.JSON
+--let $log_base_name = audit_filter
+--remove_file $audit_filter_log_path$log_base_name.xml.NEW
+--remove_file $audit_filter_log_path$log_base_name.xml.OLD
+--remove_file $audit_filter_log_path$log_base_name.json.JSON

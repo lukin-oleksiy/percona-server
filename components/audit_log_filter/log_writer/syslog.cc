@@ -29,6 +29,10 @@ LogWriterSyslog::LogWriter(
       m_priority{SysVars::get_syslog_priority() |
                  SysVars::get_syslog_facility()} {}
 
+bool LogWriterSyslog::init() noexcept {
+  return true;  // nothing to do
+}
+
 bool LogWriterSyslog::open() noexcept { return true; }
 
 bool LogWriterSyslog::close() noexcept { return true; }
