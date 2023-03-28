@@ -15,7 +15,7 @@
 
 #include "components/audit_log_filter/audit_filter.h"
 #include "components/audit_log_filter/audit_error_log.h"
-#include "components/audit_log_filter/audit_record.h"
+#include "components/audit_log_filter/audit_rule.h"
 
 namespace audit_log_filter {
 

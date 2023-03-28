@@ -26,6 +26,7 @@
 
 #include "mysql/components/library_mysys/my_memory.h"
 
+#include <scope_guard.h>
 #include <algorithm>
 #include <cstdio>
 #include <filesystem>
@@ -73,11 +74,10 @@ bool AuditLogReader::init() noexcept {
     return false;
   }
 
-  auto read_buf_size = SysVars::get_read_buffer_size(thd);
-  char *read_buf = static_cast<char *>(my_malloc(
-      key_memory_audit_log_filter_read_buffer, read_buf_size, MY_ZEROFILL));
+  auto json_reader_stream =
+      std::make_unique<json_reader::AuditJsonReadStream>();
 
-  if (read_buf == nullptr) {
+  if (!json_reader_stream->init()) {
     return false;
   }
 
@@ -124,18 +124,18 @@ bool AuditLogReader::init() noexcept {
         }
       }
 
-      auto json_reader_stream =
-          std::make_unique<json_reader::AuditJsonReadStream>();
-
-      if (!json_reader_stream->init() ||
-          !json_reader_stream->open(file_info.get())) {
+      if (!json_reader_stream->open(file_info.get())) {
         continue;
       }
+
+      auto json_reader_guard =
+          create_scope_guard([&] { json_reader_stream->close(); });
 
       rapidjson::Document json_doc;
       json_doc.ParseStream(*json_reader_stream);
 
-      if (json_doc.HasParseError() || !json_doc.IsArray() || json_doc.Empty()) {
+      if (json_doc.HasParseError() || json_doc.Empty() || !json_doc.IsArray() ||
+          json_doc.GetArray().Empty()) {
         continue;
       }
 
@@ -151,8 +151,6 @@ bool AuditLogReader::init() noexcept {
           std::move(file_info));
     }
   }
-
-  my_free(read_buf);
 
   return true;
 }

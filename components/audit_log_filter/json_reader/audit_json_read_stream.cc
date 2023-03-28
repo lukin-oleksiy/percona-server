@@ -70,6 +70,7 @@ bool AuditJsonReadStream::open(FileInfo *file_info) noexcept {
     return false;
   }
 
+  memset(m_buffer.get(), 0, kStreamBufferSize);
   m_current = m_buffer.get();
   m_buffer_last = m_current;
   m_read_count = 0;
@@ -81,7 +82,7 @@ bool AuditJsonReadStream::open(FileInfo *file_info) noexcept {
 
 void AuditJsonReadStream::close() noexcept {
   m_file_reader->close();
-  m_file_reader.reset(nullptr);
+  m_file_reader.reset();
 }
 
 bool AuditJsonReadStream::check_eof_reached() const noexcept {
@@ -131,7 +132,7 @@ bool AuditJsonReadStream::read() noexcept {
     m_count += m_read_count;
     status =
         m_file_reader->read(reinterpret_cast<unsigned char *>(m_buffer.get()),
-                            kStreamBufferSize, m_read_count);
+                            kStreamBufferSize, &m_read_count);
     m_buffer_last = m_buffer.get() + m_read_count - 1;
     m_current = m_buffer.get();
 
