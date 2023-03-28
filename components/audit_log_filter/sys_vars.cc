@@ -734,7 +734,7 @@ void SysVars::validate() noexcept {
     LogComponentErr(
         WARNING_LEVEL, ER_LOG_PRINTF_MSG,
         "Both audit_log_filter.max_size and audit_log_filter.prune_seconds are "
-        "set to non-zero. audit_log_filter.max_size takes precedence and "
+        "set to non-zero, audit_log_filter.max_size takes precedence and "
         "audit_log_filter.prune_seconds is ignored");
   }
 }

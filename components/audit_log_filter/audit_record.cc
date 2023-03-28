@@ -502,6 +502,14 @@ AuditRecordVariant get_audit_record(audit_event_class_t event_class,
   }
 
   assert(false);
+
+  return AuditRecordVariant{
+      std::in_place_index<13>,
+      AuditRecordUnknown{kNameUnknown,
+                         kNameUnknown,
+                         audit_event_class_t::AUDIT_INTERNAL_UNKNOWN_CLASS,
+                         event,
+                         {}}};
 }
 
 void update_connection_type_pseudo_to_numeric(std::string &type) {

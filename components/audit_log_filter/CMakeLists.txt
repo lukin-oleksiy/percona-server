@@ -81,6 +81,10 @@ IF(WITH_COMPONENT_AUDIT_LOG_FILTER)
                       LINK_LIBRARIES OpenSSL::SSL OpenSSL::Crypto library_mysys extra::rapidjson ext::zlib
                       MODULE_ONLY)
 
+  IF(CMAKE_CXX_COMPILER_ID MATCHES "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9.1)
+    TARGET_LINK_LIBRARIES(component_audit_log_filter stdc++fs)
+  ENDIF()
+
   IF(APPLE)
     SET_TARGET_PROPERTIES(component_audit_log_filter PROPERTIES
       LINK_FLAGS "-undefined dynamic_lookup")
