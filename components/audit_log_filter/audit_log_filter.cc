@@ -30,6 +30,7 @@
 #include <mysql/components/component_implementation.h>
 #include <mysql/components/service_implementation.h>
 
+#include <mysql/components/services/dynamic_privilege.h>
 #include <mysql/components/services/mysql_connection_attributes_iterator.h>
 #include <mysql/components/services/mysql_current_thread_reader.h>
 #include <mysql/components/services/security_context.h>
@@ -151,6 +152,51 @@ class EventsConsumer {
         static_cast<const void *>(event_data));
   }
 };
+
+bool init_abort_exempt_privilege() {
+  my_service<SERVICE_TYPE(dynamic_privilege_register)> reg_priv_srv(
+      "dynamic_privilege_register", SysVars::get_comp_registry_srv());
+
+  if (reg_priv_srv.is_valid() &&
+      reg_priv_srv->register_privilege(STRING_WITH_LEN("AUDIT_ABORT_EXEMPT")) ==
+          0) {
+    return true;
+  }
+
+  return false;
+}
+
+void deinit_abort_exempt_privilege() {
+  my_service<SERVICE_TYPE(dynamic_privilege_register)> reg_priv_srv(
+      "dynamic_privilege_register", SysVars::get_comp_registry_srv());
+
+  if (reg_priv_srv.is_valid()) {
+    reg_priv_srv->unregister_privilege(STRING_WITH_LEN("AUDIT_ABORT_EXEMPT"));
+  }
+}
+
+bool check_abort_exempt_privilege(MYSQL_THD thd) {
+  my_service<SERVICE_TYPE(mysql_thd_security_context)> security_context_srv(
+      "mysql_thd_security_context", SysVars::get_comp_registry_srv());
+  my_service<SERVICE_TYPE(global_grants_check)> grants_check_srv(
+      "global_grants_check", SysVars::get_comp_registry_srv());
+
+  bool has_system_user_grant = false;
+  bool has_abort_exempt_grant = false;
+
+  if (security_context_srv.is_valid() && grants_check_srv.is_valid()) {
+    Security_context_handle ctx;
+
+    if (!security_context_srv->get(thd, &ctx)) {
+      has_system_user_grant = grants_check_srv->has_global_grant(
+          ctx, STRING_WITH_LEN("SYSTEM_USER"));
+      has_abort_exempt_grant = grants_check_srv->has_global_grant(
+          ctx, STRING_WITH_LEN("AUDIT_ABORT_EXEMPT"));
+    }
+  }
+
+  return has_system_user_grant && has_abort_exempt_grant;
+}
 
 }  // namespace
 
@@ -281,6 +327,11 @@ mysql_service_status_t audit_log_filter_init() {
                                       SysVars::get_encryption_type() !=
                                           AuditLogEncryptionType::None);
 
+  if (!init_abort_exempt_privilege()) {
+    LogComponentErr(ERROR_LEVEL, ER_AUDIT_INIT_PRIV_FAILURE);
+    return 1;
+  }
+
   auto audit_udf = std::make_unique<AuditUdf>();
 
   if (audit_udf == nullptr) {
@@ -370,6 +421,8 @@ mysql_service_status_t audit_log_filter_deinit() {
   audit_log_filter->send_audit_stop_event();
   audit_log_filter->deinit();
 
+  deinit_abort_exempt_privilege();
+
   LogComponentErr(INFORMATION_LEVEL, ER_AUDIT_DEINIT_DONE);
 
   SysVars::deinit();
@@ -426,7 +479,7 @@ int AuditLogFilter::notify_event(audit_event_class_t event_class,
     return 0;
   }
 
-  auto *filter_rule = m_audit_rules_registry->get_rule(rule_name);
+  auto filter_rule = m_audit_rules_registry->get_rule(rule_name);
 
   if (filter_rule == nullptr) {
     LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
@@ -448,14 +501,15 @@ int AuditLogFilter::notify_event(audit_event_class_t event_class,
 
   // Apply filtering rule
   AuditAction filter_result =
-      AuditEventFilter::apply(filter_rule, audit_record);
+      AuditEventFilter::apply(filter_rule.get(), audit_record);
 
   if (filter_result == AuditAction::Skip) {
     SysVars::inc_events_filtered();
     return 0;
   }
 
-  if (filter_result == AuditAction::Block) {
+  if (filter_result == AuditAction::Block &&
+      !check_abort_exempt_privilege(thd)) {
     auto ev_name = std::visit(
         [](const auto &rec) -> std::string_view {
           return rec.event_class_name;
