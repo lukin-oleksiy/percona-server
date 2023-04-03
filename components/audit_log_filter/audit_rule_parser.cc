@@ -35,7 +35,7 @@ namespace audit_log_filter {
 namespace {}  // namespace
 
 bool AuditRuleParser::parse(const char *rule_str,
-                            AuditRule &audit_rule) noexcept {
+                            AuditRule *audit_rule) noexcept {
   rapidjson::Document json_doc;
   json_doc.Parse(rule_str);
 
@@ -43,7 +43,7 @@ bool AuditRuleParser::parse(const char *rule_str,
 }
 
 bool AuditRuleParser::parse(rapidjson::Document &json_doc,
-                            AuditRule &audit_rule) noexcept {
+                            AuditRule *audit_rule) noexcept {
   // Do basic check of rule structure
   if (json_doc.HasParseError()) {
     return false;
@@ -71,7 +71,7 @@ bool AuditRuleParser::parse(rapidjson::Document &json_doc,
 }
 
 bool AuditRuleParser::parse_default_log_action_json(
-    const rapidjson::Document &json_doc, AuditRule &audit_rule) noexcept {
+    const rapidjson::Document &json_doc, AuditRule *audit_rule) noexcept {
   /*
    * Parsing default 'log' action.
    *
@@ -94,7 +94,7 @@ bool AuditRuleParser::parse_default_log_action_json(
     if (!json_doc["filter"]["log"].IsBool()) {
       LogComponentErr(ERROR_LEVEL,
                       ER_AUDIT_PARSE_DEFAULT_LOG_ACTION_BAD_LOG_TYPE,
-                      audit_rule.get_rule_name().c_str());
+                      audit_rule->get_rule_name().c_str());
       return false;
     }
 
@@ -103,13 +103,13 @@ bool AuditRuleParser::parse_default_log_action_json(
     should_log_unmatched = false;
   }
 
-  audit_rule.set_should_log_unmatched(should_log_unmatched);
+  audit_rule->set_should_log_unmatched(should_log_unmatched);
 
   return true;
 }
 
 bool AuditRuleParser::parse_event_class_json(
-    const rapidjson::Document &json_doc, AuditRule &audit_rule) noexcept {
+    const rapidjson::Document &json_doc, AuditRule *audit_rule) noexcept {
   /*
    * Parsing event class name
    *
@@ -146,7 +146,7 @@ bool AuditRuleParser::parse_event_class_json(
       if (!it->IsObject()) {
         LogComponentErr(ERROR_LEVEL,
                         ER_AUDIT_PARSE_EVENT_CLASS_BAD_CLASS_LIST_TYPE,
-                        audit_rule.get_rule_name().c_str());
+                        audit_rule->get_rule_name().c_str());
         return false;
       }
 
@@ -156,7 +156,7 @@ bool AuditRuleParser::parse_event_class_json(
     }
   } else {
     LogComponentErr(ERROR_LEVEL, ER_AUDIT_PARSE_EVENT_CLASS_BAD_CLASS_TYPE,
-                    audit_rule.get_rule_name().c_str());
+                    audit_rule->get_rule_name().c_str());
     return false;
   }
 
@@ -164,18 +164,18 @@ bool AuditRuleParser::parse_event_class_json(
 }
 
 bool AuditRuleParser::parse_event_class_obj_json(
-    const rapidjson::Value &event_class_json, AuditRule &audit_rule) noexcept {
+    const rapidjson::Value &event_class_json, AuditRule *audit_rule) noexcept {
   assert(event_class_json.IsObject());
 
   if (!event_class_json.HasMember("name")) {
     LogComponentErr(ERROR_LEVEL, ER_AUDIT_PARSE_EVENT_CLASS_NO_CLASS_NAME,
-                    audit_rule.get_rule_name().c_str());
+                    audit_rule->get_rule_name().c_str());
     return false;
   }
 
   if (event_class_json.HasMember("abort")) {
     LogComponentErr(ERROR_LEVEL, ER_AUDIT_PARSE_EVENT_CLASS_BAD_ABORT_DEF,
-                    audit_rule.get_rule_name().c_str());
+                    audit_rule->get_rule_name().c_str());
     return false;
   }
 
@@ -185,7 +185,7 @@ bool AuditRuleParser::parse_event_class_obj_json(
       should_log = event_class_json["log"].GetBool();
     } else {
       LogComponentErr(ERROR_LEVEL, ER_AUDIT_PARSE_EVENT_CLASS_BAD_LOG_TYPE,
-                      audit_rule.get_rule_name().c_str());
+                      audit_rule->get_rule_name().c_str());
       return false;
     }
   }
@@ -198,7 +198,7 @@ bool AuditRuleParser::parse_event_class_obj_json(
 
     if (replace_field == nullptr) {
       LogComponentErr(ERROR_LEVEL, ER_AUDIT_PARSE_EVENT_CLASS_BAD_PRINT_DEF,
-                      audit_rule.get_rule_name().c_str());
+                      audit_rule->get_rule_name().c_str());
       return false;
     }
   }
@@ -210,7 +210,7 @@ bool AuditRuleParser::parse_event_class_obj_json(
       if (replace_field != nullptr) {
         LogComponentErr(ERROR_LEVEL,
                         ER_AUDIT_PARSE_EVENT_CLASS_UNEXPECTED_PRINT_DEF,
-                        audit_rule.get_rule_name().c_str());
+                        audit_rule->get_rule_name().c_str());
         return false;
       }
 
@@ -223,13 +223,13 @@ bool AuditRuleParser::parse_event_class_obj_json(
       }
     }
 
-    audit_rule.add_action_for_event(
+    audit_rule->add_action_for_event(
         std::make_shared<EventFieldActionLog>(
             std::make_unique<EventFieldConditionBool>(should_log)),
         event_class_name);
 
     if (replace_field != nullptr) {
-      audit_rule.add_action_for_event(replace_field, event_class_name);
+      audit_rule->add_action_for_event(replace_field, event_class_name);
     }
   } else if (event_class_json["name"].IsArray()) {
     // There may be no event subclass specified in case event class name is
@@ -237,7 +237,7 @@ bool AuditRuleParser::parse_event_class_obj_json(
     if (event_class_json.HasMember("event")) {
       LogComponentErr(ERROR_LEVEL,
                       ER_AUDIT_PARSE_EVENT_CLASS_UNEXPECTED_EVENT_DEF,
-                      audit_rule.get_rule_name().c_str());
+                      audit_rule->get_rule_name().c_str());
       return false;
     }
 
@@ -250,20 +250,20 @@ bool AuditRuleParser::parse_event_class_obj_json(
       if (!it->IsString()) {
         LogComponentErr(ERROR_LEVEL,
                         ER_AUDIT_PARSE_EVENT_CLASS_BAD_EVENT_NAME_FOR_LIST,
-                        audit_rule.get_rule_name().c_str());
+                        audit_rule->get_rule_name().c_str());
         return false;
       }
 
       const std::string event_class_name = it->GetString();
-      audit_rule.add_action_for_event(log_action, event_class_name);
+      audit_rule->add_action_for_event(log_action, event_class_name);
 
       if (replace_field != nullptr) {
-        audit_rule.add_action_for_event(replace_field, event_class_name);
+        audit_rule->add_action_for_event(replace_field, event_class_name);
       }
     }
   } else {
     LogComponentErr(ERROR_LEVEL, ER_AUDIT_PARSE_EVENT_CLASS_BAD_EVENT_NAME_TYPE,
-                    audit_rule.get_rule_name().c_str());
+                    audit_rule->get_rule_name().c_str());
     return false;
   }
 
@@ -272,7 +272,7 @@ bool AuditRuleParser::parse_event_class_obj_json(
 
 bool AuditRuleParser::parse_event_subclass_json(
     const std::string &class_name, const rapidjson::Value &event_subclass_json,
-    AuditRule &audit_rule) noexcept {
+    AuditRule *audit_rule) noexcept {
   /*
    * Parse event subclass, 'event' may be an object or an array of objects
    *
@@ -300,7 +300,7 @@ bool AuditRuleParser::parse_event_subclass_json(
       if (!it->IsObject()) {
         LogComponentErr(ERROR_LEVEL,
                         ER_AUDIT_PARSE_EVENT_SUBCLASS_BAD_SUBCLASS_LIST_TYPE,
-                        audit_rule.get_rule_name().c_str());
+                        audit_rule->get_rule_name().c_str());
         return false;
       }
 
@@ -311,7 +311,7 @@ bool AuditRuleParser::parse_event_subclass_json(
   } else {
     LogComponentErr(ERROR_LEVEL,
                     ER_AUDIT_PARSE_EVENT_SUBCLASS_BAD_SUBCLASS_TYPE,
-                    audit_rule.get_rule_name().c_str());
+                    audit_rule->get_rule_name().c_str());
     return false;
   }
 
@@ -320,12 +320,12 @@ bool AuditRuleParser::parse_event_subclass_json(
 
 bool AuditRuleParser::parse_event_subclass_obj_json(
     const std::string &class_name, const rapidjson::Value &event_subclass_json,
-    AuditRule &audit_rule) noexcept {
+    AuditRule *audit_rule) noexcept {
   assert(event_subclass_json.IsObject());
 
   if (!event_subclass_json.HasMember("name")) {
     LogComponentErr(ERROR_LEVEL, ER_AUDIT_PARSE_NO_SUBCLASS_NAME,
-                    audit_rule.get_rule_name().c_str());
+                    audit_rule->get_rule_name().c_str());
     return false;
   }
 
@@ -338,7 +338,7 @@ bool AuditRuleParser::parse_event_subclass_obj_json(
          it != event_subclass_json["name"].End(); ++it) {
       if (!it->IsString()) {
         LogComponentErr(ERROR_LEVEL, ER_AUDIT_PARSE_BAD_SUBCLASS_NAME_TYPE,
-                        audit_rule.get_rule_name().c_str());
+                        audit_rule->get_rule_name().c_str());
         return false;
       }
 
@@ -346,7 +346,7 @@ bool AuditRuleParser::parse_event_subclass_obj_json(
     }
   } else {
     LogComponentErr(ERROR_LEVEL, ER_AUDIT_PARSE_BAD_SUBCLASS_NAME_LIST_TYPE,
-                    audit_rule.get_rule_name().c_str());
+                    audit_rule->get_rule_name().c_str());
     return false;
   }
 
@@ -355,7 +355,7 @@ bool AuditRuleParser::parse_event_subclass_obj_json(
 
   if (has_log_tag && has_abort_tag) {
     LogComponentErr(ERROR_LEVEL, ER_AUDIT_PARSE_CONDITION_DUPLICATED,
-                    audit_rule.get_rule_name().c_str());
+                    audit_rule->get_rule_name().c_str());
     return false;
   }
 
@@ -382,7 +382,7 @@ bool AuditRuleParser::parse_event_subclass_obj_json(
 
       if (action_type == EventActionType::Unknown) {
         LogComponentErr(ERROR_LEVEL, ER_AUDIT_PARSE_UNKNOWN_TAG,
-                        audit_rule.get_rule_name().c_str(),
+                        audit_rule->get_rule_name().c_str(),
                         it->name.GetString());
         return false;
       }
@@ -392,7 +392,7 @@ bool AuditRuleParser::parse_event_subclass_obj_json(
 
       if (action == nullptr) {
         LogComponentErr(ERROR_LEVEL, ER_AUDIT_PARSE_BAD_ACTION_FORMAT,
-                        audit_rule.get_rule_name().c_str(),
+                        audit_rule->get_rule_name().c_str(),
                         it->name.GetString());
         return false;
       }
@@ -409,7 +409,7 @@ bool AuditRuleParser::parse_event_subclass_obj_json(
 
     if (replace_filter_action == nullptr) {
       LogComponentErr(ERROR_LEVEL, ER_AUDIT_PARSE_BAD_REPLACEMENT_RULE,
-                      audit_rule.get_rule_name().c_str());
+                      audit_rule->get_rule_name().c_str());
       return false;
     }
 
@@ -418,7 +418,7 @@ bool AuditRuleParser::parse_event_subclass_obj_json(
 
   for (const auto &subclass_name : subclass_names) {
     for (const auto &action_ptr : actions_list) {
-      audit_rule.add_action_for_event(action_ptr, class_name, subclass_name);
+      audit_rule->add_action_for_event(action_ptr, class_name, subclass_name);
     }
   }
 
@@ -426,7 +426,7 @@ bool AuditRuleParser::parse_event_subclass_obj_json(
 }
 
 std::shared_ptr<EventFieldConditionBase> AuditRuleParser::parse_condition(
-    const rapidjson::Value &condition_json, AuditRule &audit_rule) noexcept {
+    const rapidjson::Value &condition_json, AuditRule *audit_rule) noexcept {
   auto cond_type = get_condition_type(condition_json, audit_rule);
 
   if (cond_type == EventFieldConditionType::Unknown) {
@@ -437,7 +437,7 @@ std::shared_ptr<EventFieldConditionBase> AuditRuleParser::parse_condition(
 }
 
 EventFieldConditionType AuditRuleParser::get_condition_type(
-    const rapidjson::Value &json, AuditRule &audit_rule) noexcept {
+    const rapidjson::Value &json, AuditRule *audit_rule) noexcept {
   /*
    * There may be either bool or one of the condition objects provided:
    *
@@ -458,7 +458,7 @@ EventFieldConditionType AuditRuleParser::get_condition_type(
   if (json.MemberCount() != 1) {
     LogComponentErr(ERROR_LEVEL,
                     ER_AUDIT_PARSE_CONDITION_TYPE_UNEXPECTED_COND_FORMAT,
-                    audit_rule.get_rule_name().c_str());
+                    audit_rule->get_rule_name().c_str());
     return EventFieldConditionType::Unknown;
   }
 
@@ -466,7 +466,7 @@ EventFieldConditionType AuditRuleParser::get_condition_type(
 
   if (!condition->name.IsString()) {
     LogComponentErr(ERROR_LEVEL, ER_AUDIT_PARSE_CONDITION_TYPE_BAD_COND_TYPE,
-                    audit_rule.get_rule_name().c_str());
+                    audit_rule->get_rule_name().c_str());
     return EventFieldConditionType::Unknown;
   }
 
@@ -488,14 +488,14 @@ EventFieldConditionType AuditRuleParser::get_condition_type(
 
   LogComponentErr(ERROR_LEVEL,
                   ER_AUDIT_PARSE_CONDITION_TYPE_UNEXPECTED_COND_NAME,
-                  audit_rule.get_rule_name().c_str(), condition_name.c_str());
+                  audit_rule->get_rule_name().c_str(), condition_name.c_str());
 
   return EventFieldConditionType::Unknown;
 }
 
 std::shared_ptr<EventFieldConditionBase> AuditRuleParser::parse_condition_json(
     const rapidjson::Value &condition_json,
-    const EventFieldConditionType cond_type, AuditRule &audit_rule) noexcept {
+    const EventFieldConditionType cond_type, AuditRule *audit_rule) noexcept {
   assert(condition_json.IsBool() || condition_json.IsObject());
 
   switch (cond_type) {
@@ -516,7 +516,7 @@ std::shared_ptr<EventFieldConditionBase> AuditRuleParser::parse_condition_json(
        */
       if (!condition_json["field"].IsObject()) {
         LogComponentErr(ERROR_LEVEL, ER_AUDIT_PARSE_CONDITION_BAD_FIELD_TYPE,
-                        audit_rule.get_rule_name().c_str());
+                        audit_rule->get_rule_name().c_str());
         return nullptr;
       }
 
@@ -526,7 +526,7 @@ std::shared_ptr<EventFieldConditionBase> AuditRuleParser::parse_condition_json(
           !condition_json["field"]["value"].IsString()) {
         LogComponentErr(ERROR_LEVEL,
                         ER_AUDIT_PARSE_CONDITION_BAD_FIELD_NAME_AND_VALUE,
-                        audit_rule.get_rule_name().c_str());
+                        audit_rule->get_rule_name().c_str());
         return nullptr;
       }
 
@@ -565,7 +565,7 @@ std::shared_ptr<EventFieldConditionBase> AuditRuleParser::parse_condition_json(
        */
       if (!condition_json["and"].IsArray()) {
         LogComponentErr(ERROR_LEVEL, ER_AUDIT_PARSE_CONDITION_BAD_AND_COND_TYPE,
-                        audit_rule.get_rule_name().c_str());
+                        audit_rule->get_rule_name().c_str());
         return nullptr;
       }
 
@@ -576,7 +576,7 @@ std::shared_ptr<EventFieldConditionBase> AuditRuleParser::parse_condition_json(
         if (!it->IsObject()) {
           LogComponentErr(ERROR_LEVEL,
                           ER_AUDIT_PARSE_CONDITION_BAD_AND_COND_FORMAT,
-                          audit_rule.get_rule_name().c_str());
+                          audit_rule->get_rule_name().c_str());
           return nullptr;
         }
 
@@ -598,7 +598,7 @@ std::shared_ptr<EventFieldConditionBase> AuditRuleParser::parse_condition_json(
       if (sub_conditions.size() < 2) {
         LogComponentErr(ERROR_LEVEL,
                         ER_AUDIT_PARSE_CONDITION_BAD_AND_COND_OPERANDS,
-                        audit_rule.get_rule_name().c_str());
+                        audit_rule->get_rule_name().c_str());
         return nullptr;
       }
 
@@ -619,7 +619,7 @@ std::shared_ptr<EventFieldConditionBase> AuditRuleParser::parse_condition_json(
        */
       if (!condition_json["or"].IsArray()) {
         LogComponentErr(ERROR_LEVEL, ER_AUDIT_PARSE_CONDITION_BAD_OR_COND_TYPE,
-                        audit_rule.get_rule_name().c_str());
+                        audit_rule->get_rule_name().c_str());
         return nullptr;
       }
 
@@ -630,7 +630,7 @@ std::shared_ptr<EventFieldConditionBase> AuditRuleParser::parse_condition_json(
         if (!it->IsObject()) {
           LogComponentErr(ERROR_LEVEL,
                           ER_AUDIT_PARSE_CONDITION_BAD_OR_COND_FORMAT,
-                          audit_rule.get_rule_name().c_str());
+                          audit_rule->get_rule_name().c_str());
           return nullptr;
         }
 
@@ -652,7 +652,7 @@ std::shared_ptr<EventFieldConditionBase> AuditRuleParser::parse_condition_json(
       if (sub_conditions.size() < 2) {
         LogComponentErr(ERROR_LEVEL,
                         ER_AUDIT_PARSE_CONDITION_BAD_OR_COND_OPERANDS,
-                        audit_rule.get_rule_name().c_str());
+                        audit_rule->get_rule_name().c_str());
         return nullptr;
       }
 
@@ -668,7 +668,7 @@ std::shared_ptr<EventFieldConditionBase> AuditRuleParser::parse_condition_json(
        */
       if (!condition_json["not"].IsObject()) {
         LogComponentErr(ERROR_LEVEL, ER_AUDIT_PARSE_CONDITION_BAD_NOT_COND_TYPE,
-                        audit_rule.get_rule_name().c_str());
+                        audit_rule->get_rule_name().c_str());
         return nullptr;
       }
 
@@ -703,7 +703,7 @@ std::shared_ptr<EventFieldConditionBase> AuditRuleParser::parse_condition_json(
       if (!condition_json["variable"].IsObject()) {
         LogComponentErr(ERROR_LEVEL,
                         ER_AUDIT_PARSE_CONDITION_BAD_VARIABLE_COND_TYPE,
-                        audit_rule.get_rule_name().c_str());
+                        audit_rule->get_rule_name().c_str());
         return nullptr;
       }
 
@@ -713,7 +713,7 @@ std::shared_ptr<EventFieldConditionBase> AuditRuleParser::parse_condition_json(
           !condition_json["variable"]["value"].IsString()) {
         LogComponentErr(ERROR_LEVEL,
                         ER_AUDIT_PARSE_CONDITION_BAD_VARIABLE_NAME_AND_VALUE,
-                        audit_rule.get_rule_name().c_str());
+                        audit_rule->get_rule_name().c_str());
         return nullptr;
       }
 
@@ -752,16 +752,16 @@ std::shared_ptr<EventFieldConditionBase> AuditRuleParser::parse_condition_json(
 std::unique_ptr<EventFilterFunctionBase> AuditRuleParser::parse_function(
     const rapidjson::Value &function_json,
     const FunctionReturnType expected_return_type,
-    AuditRule &audit_rule) noexcept {
+    AuditRule *audit_rule) noexcept {
   if (!function_json.IsObject()) {
     LogComponentErr(ERROR_LEVEL, ER_AUDIT_PARSE_FUNCTION_NOT_OBJECT,
-                    audit_rule.get_rule_name().c_str());
+                    audit_rule->get_rule_name().c_str());
     return nullptr;
   }
 
   if (!function_json.HasMember("name") || !function_json["name"].IsString()) {
     LogComponentErr(ERROR_LEVEL, ER_AUDIT_PARSE_FUNCTION_NO_FUNCTION_NAME,
-                    audit_rule.get_rule_name().c_str());
+                    audit_rule->get_rule_name().c_str());
     return nullptr;
   }
 
@@ -770,7 +770,7 @@ std::unique_ptr<EventFilterFunctionBase> AuditRuleParser::parse_function(
 
   if (func_type == EventFilterFunctionType::Unknown) {
     LogComponentErr(ERROR_LEVEL, ER_AUDIT_PARSE_FUNCTION_UNKNOWN_FUNCTION_NAME,
-                    audit_rule.get_rule_name().c_str(), func_name.c_str());
+                    audit_rule->get_rule_name().c_str(), func_name.c_str());
     return nullptr;
   }
 
@@ -779,13 +779,13 @@ std::unique_ptr<EventFilterFunctionBase> AuditRuleParser::parse_function(
   if (function_json.HasMember("args") &&
       !parse_function_args_json(function_json["args"], args)) {
     LogComponentErr(ERROR_LEVEL, ER_AUDIT_PARSE_FUNCTION_BAD_ARGS_FORMAT,
-                    audit_rule.get_rule_name().c_str());
+                    audit_rule->get_rule_name().c_str());
     return nullptr;
   }
 
   if (!validate_filter_function_args(func_type, args, expected_return_type)) {
     LogComponentErr(ERROR_LEVEL, ER_AUDIT_PARSE_FUNCTION_BAD_ARGS,
-                    audit_rule.get_rule_name().c_str(), func_name.c_str());
+                    audit_rule->get_rule_name().c_str(), func_name.c_str());
     return nullptr;
   }
 
@@ -856,7 +856,7 @@ bool AuditRuleParser::parse_function_args_json(
 
 std::shared_ptr<EventFieldActionBase> AuditRuleParser::parse_action_json(
     const EventActionType action_type, const rapidjson::Value &action_json,
-    AuditRule &audit_rule) noexcept {
+    AuditRule *audit_rule) noexcept {
   assert(action_json.IsObject());
 
   switch (action_type) {
@@ -881,7 +881,7 @@ std::shared_ptr<EventFieldActionBase> AuditRuleParser::parse_action_json(
 
       if (block_cond == nullptr) {
         LogComponentErr(ERROR_LEVEL, ER_AUDIT_PARSE_ACTION_BAD_ABORT_TYPE,
-                        audit_rule.get_rule_name().c_str());
+                        audit_rule->get_rule_name().c_str());
         return nullptr;
       }
 
@@ -1149,10 +1149,10 @@ std::shared_ptr<AuditRule> AuditRuleParser::make_replacement_rule(
                         d.GetAllocator());
   d["filter"]["class"].CopyFrom(rule_json, d.GetAllocator());
 
-  auto rule = AuditRule{};
+  auto rule = std::make_shared<AuditRule>();
 
-  if (AuditRuleParser::parse(d, rule)) {
-    return std::make_shared<AuditRule>(std::move(rule));
+  if (AuditRuleParser::parse(d, rule.get())) {
+    return rule;
   }
 
   return nullptr;

@@ -167,10 +167,13 @@ TableResult AuditLogFilter::load_filters(
     AuditRulesContainer &container) noexcept {
   container.clear();
 
+  DBUG_EXECUTE_IF("audit_log_filter_fail_filters_flush",
+                  { return TableResult::Fail; });
+
   auto ta_context = open_table();
 
   if (ta_context == nullptr) {
-    return TableResult::MissingTable;
+    return TableResult::Fail;
   }
 
   my_service<SERVICE_TYPE(mysql_charset)> charset_srv(
@@ -233,9 +236,10 @@ TableResult AuditLogFilter::load_filters(
         filter_filter_value.get(), buff_filter_filter_value,
         sizeof(buff_filter_filter_value), utf8);
 
-    AuditRule rule{static_cast<uint64_t>(filter_id), buff_filter_name_value};
+    auto rule = std::make_shared<AuditRule>(static_cast<uint64_t>(filter_id),
+                                            buff_filter_name_value);
 
-    if (AuditRuleParser::parse(buff_filter_filter_value, rule)) {
+    if (AuditRuleParser::parse(buff_filter_filter_value, rule.get())) {
       container.insert({buff_filter_name_value, std::move(rule)});
     } else {
       LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
