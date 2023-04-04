@@ -76,6 +76,7 @@ AuditRecordString LogRecordFormatterNew::apply(
          << "    <DB>" << make_escaped_string(&audit_record.event->database) << "</DB>\n"
          << "    <STATUS>" << audit_record.event->status << "</STATUS>\n"
          << "    <CONNECTION_TYPE>" << connection_type_name_to_string(audit_record.event->connection_type) << "</CONNECTION_TYPE>\n"
+         << extra_attrs_to_string(audit_record.extended_info) << "\n"
          << "  </AUDIT_RECORD>\n";
   /* clang-format on */
 
@@ -341,6 +342,29 @@ void LogRecordFormatterNew::apply_debug_info(
   std::string insert_after_tag{"<AUDIT_RECORD>\n"};
   auto tag_begin = record_str.find(insert_after_tag, 0);
   record_str.insert(tag_begin + insert_after_tag.length(), debug_info.str());
+}
+
+std::string LogRecordFormatterNew::extra_attrs_to_string(
+    const ExtendedInfo &info) const noexcept {
+  std::stringstream result;
+  auto attrs_it = info.attrs.find("connection_attributes");
+
+  /* clang-format off */
+  if (attrs_it != info.attrs.cend()) {
+    result << "    <CONNECTION_ATTRIBUTES>\n";
+
+    for (const auto &name_value : attrs_it->second) {
+      result << "      <ATTRIBUTE>\n"
+             << "        <NAME>" << make_escaped_string(name_value.first) << "</NAME>\n"
+             << "        <VALUE>" << make_escaped_string(name_value.second) << "</VALUE>\n"
+             << "      </ATTRIBUTE>\n";
+    }
+
+    result << "    </CONNECTION_ATTRIBUTES>";
+  }
+  /* clang-format on */
+
+  return result.str();
 }
 
 }  // namespace audit_log_filter::log_record_formatter

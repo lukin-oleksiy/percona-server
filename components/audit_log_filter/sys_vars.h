@@ -57,8 +57,10 @@ class SysVars {
 
   /**
    * @brief Validate system variables settings.
+   *
+   * @return true in case of success, false otherwise
    */
-  static void validate() noexcept;
+  [[nodiscard]] static bool validate() noexcept;
 
   /**
    * @brief Get audit log filter file base name.
@@ -66,6 +68,13 @@ class SysVars {
    * @return Audit log filter file base name
    */
   [[nodiscard]] static const char *get_file_name() noexcept;
+
+  /**
+   * @brief Get database name where to search for config tables.
+   *
+   * @return Database name
+   */
+  [[nodiscard]] static const char *get_config_database_name() noexcept;
 
   /**
    * @brief Get audit log filter handler type.
@@ -197,6 +206,15 @@ class SysVars {
    * @return mean value of randomly generated PBKDF iterations count
    */
   [[nodiscard]] static int get_key_derivation_iter_count_mean() noexcept;
+
+  /**
+   * @brief Check if a 'time' field is enabled for JSON formatted logs.
+   *
+   * @return true in case 'time' field containing UNIX timestamp should be
+   *             added to log record,
+   *         false otherwise
+   */
+  [[nodiscard]] static bool get_format_unix_timestamp() noexcept;
 
   /**
    * @brief Set filter_id for a session.
