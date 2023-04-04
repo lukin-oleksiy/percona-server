@@ -309,11 +309,9 @@ mysql_service_status_t audit_log_filter_init() {
 
   LogComponentErr(INFORMATION_LEVEL, ER_AUDIT_INIT_STARTED);
 
-  if (!SysVars::init()) {
+  if (!SysVars::init() || !SysVars::validate()) {
     return 1;
   }
-
-  SysVars::validate();
 
   auto is_keyring_initialized = audit_keyring::check_keyring_initialized();
 
@@ -348,12 +346,6 @@ mysql_service_status_t audit_log_filter_init() {
 
   if (audit_rule_registry == nullptr) {
     LogComponentErr(ERROR_LEVEL, ER_AUDIT_INIT_FILTERS_INIT_FAILURE);
-    return 1;
-  }
-
-  if (!audit_rule_registry->load()) {
-    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
-                    "Failed to load filtering rules");
     return 1;
   }
 

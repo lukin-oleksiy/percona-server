@@ -41,6 +41,7 @@ namespace audit_log_filter {
 namespace {
 
 constexpr std::string_view kCompName{"audit_log_filter"};
+const size_t kMaxDbNameLength = 64;
 
 constexpr std::string_view kReaderContextSlotName{
     "component_audit_reader_context"};
@@ -48,6 +49,29 @@ constexpr std::string_view kSessionFilterIdSlotName{
     "component_audit_reader_session_filter_id"};
 mysql_thd_store_slot reader_context_thread_slot{nullptr};
 mysql_thd_store_slot session_filter_id_slot{nullptr};
+
+bool has_system_variables_privilege(MYSQL_THD thd) {
+  my_service<SERVICE_TYPE(mysql_thd_security_context)> security_context_service(
+      "mysql_thd_security_context", SysVars::get_comp_registry_srv());
+  my_service<SERVICE_TYPE(global_grants_check)> grants_check_service(
+      "global_grants_check", SysVars::get_comp_registry_srv());
+
+  bool has_audit_admin_grant = false;
+  bool has_system_variables_admin_grant = false;
+
+  if (security_context_service.is_valid() && grants_check_service.is_valid()) {
+    Security_context_handle ctx;
+
+    if (!security_context_service->get(thd, &ctx)) {
+      has_audit_admin_grant = grants_check_service->has_global_grant(
+          ctx, STRING_WITH_LEN("AUDIT_ADMIN"));
+      has_system_variables_admin_grant = grants_check_service->has_global_grant(
+          ctx, STRING_WITH_LEN("SYSTEM_VARIABLES_ADMIN"));
+    }
+  }
+
+  return has_audit_admin_grant && has_system_variables_admin_grant;
+}
 
 /*
  * Internally used variables
@@ -174,6 +198,8 @@ SHOW_VAR status_vars[] = {
  */
 char *log_file_name;
 std::string default_log_file_name{"audit_filter.log"};
+char *config_database_name;
+std::string default_config_database_name{"mysql"};
 ulong log_handler_type = static_cast<ulong>(AuditLogHandlerType::File);
 ulong log_format_type = static_cast<ulong>(AuditLogFormatType::New);
 ulong log_strategy_type =
@@ -194,6 +220,7 @@ ulong log_encryption_type = static_cast<ulong>(AuditLogEncryptionType::None);
 ulonglong log_password_history_keep_days = 0;
 int key_derivation_iter_count_mean = 0;
 const int default_key_derivation_iter_count_mean = 600000;
+bool json_with_unix_timestamp = false;
 ulong read_buffer_size = 0;
 
 const char *audit_log_filter_handler_names[] = {"FILE", "SYSLOG", nullptr};
@@ -289,26 +316,7 @@ TYPE_LIB audit_log_filter_syslog_priority_typelib = {
 
 int log_disabled_check_func(MYSQL_THD thd, SYS_VAR *var, void *save,
                             st_mysql_value *value) {
-  my_service<SERVICE_TYPE(mysql_thd_security_context)> security_context_service(
-      "mysql_thd_security_context", SysVars::get_comp_registry_srv());
-  my_service<SERVICE_TYPE(global_grants_check)> grants_check_service(
-      "global_grants_check", SysVars::get_comp_registry_srv());
-
-  bool has_audit_admin_grant = false;
-  bool has_system_variables_admin_grant = false;
-
-  if (security_context_service.is_valid() && grants_check_service.is_valid()) {
-    Security_context_handle ctx;
-
-    if (!security_context_service->get(thd, &ctx)) {
-      has_audit_admin_grant = grants_check_service->has_global_grant(
-          ctx, STRING_WITH_LEN("AUDIT_ADMIN"));
-      has_system_variables_admin_grant = grants_check_service->has_global_grant(
-          ctx, STRING_WITH_LEN("SYSTEM_VARIABLES_ADMIN"));
-    }
-  }
-
-  if (!has_audit_admin_grant || !has_system_variables_admin_grant) {
+  if (!has_system_variables_privilege(thd)) {
     my_error(ER_SPECIFIC_ACCESS_DENIED_ERROR, MYF(0),
              "SYSTEM_VARIABLES_ADMIN and AUDIT_ADMIN");
     return 1;
@@ -362,6 +370,30 @@ void password_history_keep_days_update_func(MYSQL_THD, SYS_VAR *, void *val_ptr,
   get_audit_log_filter_instance()->on_encryption_password_prune_requested();
 }
 
+int format_unix_timestamp_check_func(MYSQL_THD thd, SYS_VAR *var, void *save,
+                                     st_mysql_value *value) {
+  if (!has_system_variables_privilege(thd)) {
+    my_error(ER_SPECIFIC_ACCESS_DENIED_ERROR, MYF(0),
+             "SYSTEM_VARIABLES_ADMIN and AUDIT_ADMIN");
+    return 1;
+  }
+
+  return check_func_bool(thd, var, save, value);
+}
+
+void format_unix_timestamp_update_func(MYSQL_THD, SYS_VAR *, void *val_ptr,
+                                       const void *save) {
+  const auto new_val = *static_cast<const bool *>(save);
+
+  if (json_with_unix_timestamp != new_val) {
+    *static_cast<bool *>(val_ptr) = new_val;
+
+    if (SysVars::get_format_type() == AuditLogFormatType::Json) {
+      get_audit_log_filter_instance()->on_audit_log_rotate_requested();
+    }
+  }
+}
+
 using bool_arg_check_type = BOOL_CHECK_ARG(bool);
 using str_arg_check_type = STR_CHECK_ARG(str);
 using enum_arg_check_type = ENUM_CHECK_ARG(type_lib);
@@ -400,6 +432,8 @@ ulonglong_arg_check_type check_password_history_keep_days{0UL, 0UL, ULLONG_MAX,
                                                           0UL};
 int_arg_check_type check_key_derivation_iterations_count_mean{
     default_key_derivation_iter_count_mean, 1000, INT_MAX, 0};
+bool_arg_check_type check_format_unix_timestamp{false};
+str_arg_check_type check_database{default_config_database_name.data()};
 ulong_arg_check_type check_read_buffer_size{32768UL, 32768UL, ULONG_MAX, 0UL};
 
 struct SysVarInfo {
@@ -612,6 +646,32 @@ SysVarListType sys_vars = {
       static_cast<void *>(&key_derivation_iter_count_mean)},
      false},
     /*
+     * The audit_log_filter.format_unix_timestamp variable when enabled causes
+     * each log file record to include a time field. The field value is an
+     * integer that represents the UNIX timestamp value indicating the date
+     * and time when the audit event was generated. Applies to JSON formatted
+     * logs only.
+     */
+    {{"format_unix_timestamp", PLUGIN_VAR_BOOL | PLUGIN_VAR_RQCMDARG,
+      "Add 'time' field to JSON formatted log records representing the UNIX "
+      "timestamp value indicating the date and time when the audit event was "
+      "generated.",
+      format_unix_timestamp_check_func, format_unix_timestamp_update_func,
+      static_cast<void *>(&check_format_unix_timestamp),
+      static_cast<void *>(&json_with_unix_timestamp)},
+     false},
+    /*
+     * The audit_log_filter.database variable specifies which database the
+     * plugin uses to find its tables. Defaults to 'mysql'.
+     */
+    {{"database",
+      PLUGIN_VAR_STR | PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY |
+          PLUGIN_VAR_MEMALLOC,
+      "Specifies which database the plugin uses to find its tables.", nullptr,
+      nullptr, static_cast<void *>(&check_database),
+      static_cast<void *>(&config_database_name)},
+     false},
+    /*
      * The audit_log_filter.read_buffer_size variable defines buffer size for
      * reading from the audit log file, in bytes. The audit_log_read() function
      * reads no more than this many bytes. Log file reading is supported only
@@ -729,7 +789,16 @@ void SysVars::deinit() noexcept {
   }
 }
 
-void SysVars::validate() noexcept {
+bool SysVars::validate() noexcept {
+  const auto *db_name = get_config_database_name();
+
+  if (db_name == nullptr || strlen(db_name) == 0 ||
+      strlen(db_name) > kMaxDbNameLength) {
+    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
+                    "Bad audit_log_filter.database value");
+    return false;
+  }
+
   if (SysVars::get_log_max_size() > 0 && SysVars::get_log_prune_seconds() > 0) {
     LogComponentErr(
         WARNING_LEVEL, ER_LOG_PRINTF_MSG,
@@ -737,9 +806,15 @@ void SysVars::validate() noexcept {
         "set to non-zero, audit_log_filter.max_size takes precedence and "
         "audit_log_filter.prune_seconds is ignored");
   }
+
+  return true;
 }
 
 const char *SysVars::get_file_name() noexcept { return log_file_name; }
+
+const char *SysVars::get_config_database_name() noexcept {
+  return config_database_name;
+}
 
 AuditLogHandlerType SysVars::get_handler_type() noexcept {
   return static_cast<AuditLogHandlerType>(log_handler_type);
@@ -795,6 +870,10 @@ ulonglong SysVars::get_password_history_keep_days() noexcept {
 
 int SysVars::get_key_derivation_iter_count_mean() noexcept {
   return key_derivation_iter_count_mean;
+}
+
+bool SysVars::get_format_unix_timestamp() noexcept {
+  return json_with_unix_timestamp;
 }
 
 void SysVars::set_session_filter_id(MYSQL_THD thd, ulong id) noexcept {

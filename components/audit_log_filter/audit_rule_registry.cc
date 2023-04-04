@@ -16,8 +16,8 @@
 #include "components/audit_log_filter/audit_rule_registry.h"
 #include "components/audit_log_filter/audit_error_log.h"
 #include "components/audit_log_filter/audit_rule.h"
+#include "components/audit_log_filter/sys_vars.h"
 
-#include <mutex>
 #include <string>
 #include <tuple>
 
@@ -42,6 +42,14 @@ std::shared_ptr<AuditRule> AuditRuleRegistry::get_rule(
 bool AuditRuleRegistry::lookup_rule_name(const std::string &user_name,
                                          const std::string &host_name,
                                          std::string &rule_name) noexcept {
+  if (!m_is_initialised) {
+    m_is_initialised = true;
+    if (!load()) {
+      LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
+                      "Failed to load filtering rules");
+    }
+  }
+
   std::shared_lock lock(m_registry_mutex);
 
   if (m_audit_users.count(std::make_pair(user_name, host_name)) != 0) {
@@ -60,8 +68,9 @@ bool AuditRuleRegistry::lookup_rule_name(const std::string &user_name,
 }
 
 bool AuditRuleRegistry::load() noexcept {
-  audit_table::AuditLogFilter audit_log_filter;
-  audit_table::AuditLogUser audit_log_user;
+  audit_table::AuditLogFilter audit_log_filter{
+      SysVars::get_config_database_name()};
+  audit_table::AuditLogUser audit_log_user{SysVars::get_config_database_name()};
 
   auto tmp_users = audit_table::AuditLogUser::AuditUsersContainer{};
   auto tmp_rules = audit_table::AuditLogFilter::AuditRulesContainer{};
