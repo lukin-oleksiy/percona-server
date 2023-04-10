@@ -481,6 +481,7 @@ int AuditLogFilter::notify_event(audit_event_class_t event_class,
 
   if (!m_audit_rules_registry->lookup_rule_name(user_name, user_host,
                                                 rule_name)) {
+    SysVars::set_session_filter_id(thd, 0);
     return 0;
   }
 
@@ -653,13 +654,13 @@ bool AuditLogFilter::get_connection_user(Security_context_handle &ctx,
   MYSQL_LEX_CSTRING user{"", 0};
   MYSQL_LEX_CSTRING host{"", 0};
 
-  if (m_security_context_opts_srv->get(ctx, "priv_user", &user) == 1) {
+  if (m_security_context_opts_srv->get(ctx, "user", &user) == 1) {
     LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
                     "Can not get user name from security context");
     return false;
   }
 
-  if (m_security_context_opts_srv->get(ctx, "priv_host", &host) == 1) {
+  if (m_security_context_opts_srv->get(ctx, "host", &host) == 1) {
     LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
                     "Can not get user host from security context");
     return false;
