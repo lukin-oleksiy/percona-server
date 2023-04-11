@@ -32,6 +32,7 @@ extern SERVICE_TYPE(log_builtins_string) * log_bs;
 namespace audit_log_filter {
 namespace log_writer {
 class LogWriterBase;
+struct FileRotationResult;
 }  // namespace log_writer
 
 class AuditRuleRegistry;
@@ -100,7 +101,8 @@ class AuditLogFilter {
   /**
    * @brief Handle log files rotation request.
    */
-  void on_audit_log_rotate_requested() noexcept;
+  void on_audit_log_rotate_requested(
+      log_writer::FileRotationResult *result = nullptr) noexcept;
 
   /**
    * @brief Handle encryption password pruning request.

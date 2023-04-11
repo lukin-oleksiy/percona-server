@@ -377,13 +377,7 @@ mysql_service_status_t audit_log_filter_init() {
     return 1;
   }
 
-  if (!log_reader->init()) {
-    char errbuf[MYSYS_STRERROR_SIZE];
-    my_strerror(errbuf, sizeof(errbuf), errno);
-    LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
-                    "Cannot open log reader, error: %s", errbuf);
-    return 1;
-  }
+  log_reader->reset();
 
   audit_log_filter =
       new AuditLogFilter(std::move(audit_rule_registry), std::move(audit_udf),
@@ -565,7 +559,7 @@ bool AuditLogFilter::on_audit_rule_flush_requested() noexcept {
   const bool is_flushed = m_audit_rules_registry->load();
 
   DBUG_EXECUTE_IF("audit_log_filter_rotate_after_audit_rules_flush",
-                  { m_log_writer->rotate(); });
+                  { m_log_writer->rotate(nullptr); });
 
   return is_flushed;
 }
@@ -576,9 +570,10 @@ void AuditLogFilter::on_audit_log_prune_requested() noexcept {
   }
 }
 
-void AuditLogFilter::on_audit_log_rotate_requested() noexcept {
+void AuditLogFilter::on_audit_log_rotate_requested(
+    log_writer::FileRotationResult *result) noexcept {
   if (m_is_active) {
-    m_log_writer->rotate();
+    m_log_writer->rotate(result);
   }
 }
 
@@ -587,14 +582,14 @@ void AuditLogFilter::on_encryption_password_prune_requested() noexcept {
       audit_keyring::check_keyring_initialized()) {
     audit_keyring::prune_encryption_options(
         SysVars::get_password_history_keep_days(),
-        log_writer::FileHandle::get_log_names_list(mysql_data_home,
+        log_writer::FileHandle::get_log_names_list(SysVars::get_file_dir(),
                                                    SysVars::get_file_name()));
   }
 }
 
 void AuditLogFilter::on_audit_log_rotated() noexcept {
   if (m_is_active) {
-    m_log_reader->init();
+    m_log_reader->reset();
   }
 }
 

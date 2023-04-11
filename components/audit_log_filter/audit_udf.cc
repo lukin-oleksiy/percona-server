@@ -25,7 +25,6 @@
 #include "components/audit_log_filter/audit_rule_parser.h"
 #include "components/audit_log_filter/audit_table/audit_log_filter.h"
 #include "components/audit_log_filter/audit_table/audit_log_user.h"
-#include "components/audit_log_filter/json_reader/audit_json_handler.h"
 #include "components/audit_log_filter/log_record_formatter/base.h"
 #include "components/audit_log_filter/log_writer/file_handle.h"
 #include "components/audit_log_filter/sys_vars.h"
@@ -873,7 +872,7 @@ char *AuditUdf::audit_log_read_udf(AuditUdf *udf [[maybe_unused]],
 
   reader_context->batch_reader_args = std::move(reader_args);
 
-  if (!AuditLogReader::read(reader_context)) {
+  if (!log_reader->read(reader_context)) {
     if (reader_context != nullptr) {
       log_reader->close_reader_session(reader_context);
       SysVars::set_log_reader_context(thd, nullptr);
@@ -1018,12 +1017,24 @@ char *AuditUdf::audit_log_rotate_udf(AuditUdf *udf [[maybe_unused]],
                                      char *result, unsigned long *length,
                                      unsigned char *is_null,
                                      unsigned char *error) noexcept {
-  get_audit_log_filter_instance()->on_audit_log_rotate_requested();
+  auto rotation_result = std::make_unique<log_writer::FileRotationResult>();
 
-  std::snprintf(result, MYSQL_ERRMSG_SIZE, "OK");
-  *length = std::strlen(result);
+  get_audit_log_filter_instance()->on_audit_log_rotate_requested(
+      rotation_result.get());
+
+  if (rotation_result->error_code == 0) {
+    std::snprintf(result, MYSQL_ERRMSG_SIZE, "%s",
+                  rotation_result->status_string.c_str());
+  } else {
+    LogComponentErr(ERROR_LEVEL, ER_AUDIT_LOG_ROTATE_UDF_FAIL,
+                    rotation_result->status_string.c_str());
+    std::snprintf(result, MYSQL_ERRMSG_SIZE, "ERROR: Log rotation failed: '%s'",
+                  rotation_result->status_string.c_str());
+  }
+
   *is_null = 0;
   *error = 0;
+  *length = std::strlen(result);
 
   return result;
 }

@@ -1,6 +1,9 @@
 --source include/have_component_audit_log.inc
 --source ../inc/audit_tables_init.inc
 --source ../inc/audit_comp_install.inc
+
+--replace_regex /\d{8}T\d{6}(-\d+)?/<timestamp>/
+
 SELECT audit_log_rotate();
 
 --echo #
