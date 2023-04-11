@@ -33,6 +33,7 @@
 
 #include <syslog.h>
 #include <atomic>
+#include <filesystem>
 #include <iomanip>
 #include <string>
 #include <string_view>
@@ -196,7 +197,7 @@ SHOW_VAR status_vars[] = {
 /*
  * System variables
  */
-char *log_file_name;
+char *log_file_full_path;
 std::string default_log_file_name{"audit_filter.log"};
 char *config_database_name;
 std::string default_config_database_name{"mysql"};
@@ -457,7 +458,8 @@ SysVarListType sys_vars = {
       PLUGIN_VAR_STR | PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY |
           PLUGIN_VAR_MEMALLOC,
       "The name of the log file.", nullptr, nullptr,
-      static_cast<void *>(&check_file), static_cast<void *>(&log_file_name)},
+      static_cast<void *>(&check_file),
+      static_cast<void *>(&log_file_full_path)},
      false},
     /*
      * The audit_log_filter.handler variable is used to configure where the
@@ -693,6 +695,27 @@ auto get_initial_debug_time_point() {
 }
 #endif
 
+std::string get_log_dir_name_value(const char *full_path) {
+  std::filesystem::path log_path{full_path};
+
+  if (log_path.is_absolute()) {
+    return log_path.has_parent_path() ? log_path.parent_path().string()
+                                      : mysql_data_home;
+  }
+
+  return log_path.has_parent_path()
+             ? std::filesystem::path{std::filesystem::path{mysql_data_home} /
+                                     log_path.parent_path()}
+                   .string()
+             : mysql_data_home;
+}
+
+std::string get_log_file_name_value(const char *full_path) {
+  std::filesystem::path log_path{full_path};
+  return log_path.has_filename() ? log_path.filename().string()
+                                 : default_log_file_name;
+}
+
 }  // namespace
 
 bool SysVars::init() noexcept {
@@ -810,7 +833,15 @@ bool SysVars::validate() noexcept {
   return true;
 }
 
-const char *SysVars::get_file_name() noexcept { return log_file_name; }
+const std::string &SysVars::get_file_dir() noexcept {
+  static std::string log_dir_name{get_log_dir_name_value(log_file_full_path)};
+  return log_dir_name;
+}
+
+const std::string &SysVars::get_file_name() noexcept {
+  static std::string log_file_name{get_log_file_name_value(log_file_full_path)};
+  return log_file_name;
+}
 
 const char *SysVars::get_config_database_name() noexcept {
   return config_database_name;

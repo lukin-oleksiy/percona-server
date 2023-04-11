@@ -31,9 +31,7 @@ LogWriterBase::LogWriterBase(
 
 LogWriterBase::~LogWriterBase() = default;
 
-void LogWriterBase::init_formatter() noexcept {
-  SysVars::init_record_id(get_log_size());
-}
+void LogWriterBase::init_formatter() noexcept { SysVars::init_record_id(0); }
 
 void LogWriterBase::write(AuditRecordVariant record) noexcept {
   // Format event data according to audit_log_filter_format settings
