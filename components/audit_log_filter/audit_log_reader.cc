@@ -28,7 +28,6 @@
 
 #include <scope_guard.h>
 #include <algorithm>
-#include <cstdio>
 #include <filesystem>
 #include <functional>
 #include <string>

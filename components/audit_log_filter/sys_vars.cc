@@ -432,7 +432,7 @@ enum_arg_check_type check_encryption{
 ulonglong_arg_check_type check_password_history_keep_days{0UL, 0UL, ULLONG_MAX,
                                                           0UL};
 int_arg_check_type check_key_derivation_iterations_count_mean{
-    default_key_derivation_iter_count_mean, 1000, INT_MAX, 0};
+    default_key_derivation_iter_count_mean, 1000, 1000000, 0};
 bool_arg_check_type check_format_unix_timestamp{false};
 str_arg_check_type check_database{default_config_database_name.data()};
 ulong_arg_check_type check_read_buffer_size{32768UL, 32768UL, ULONG_MAX, 0UL};
