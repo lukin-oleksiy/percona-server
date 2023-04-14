@@ -30,6 +30,7 @@ namespace {
 
 const size_t kEvpKeyLength = 32;
 const size_t kEncryptChunkSize = 1024 * 1024;
+const char magic[] = "Salted__";
 
 }  // namespace
 
@@ -84,7 +85,7 @@ bool FileWriterEncrypting::open() noexcept {
   std::string keyring_key_id = SysVars::get_encryption_options_id();
   const auto options = audit_keyring::get_encryption_options(keyring_key_id);
 
-  if (!options->check_valid()) {
+  if (options == nullptr || !options->check_valid()) {
     LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
                     "Failed to fetch options for id %s",
                     keyring_key_id.c_str());
@@ -116,13 +117,8 @@ bool FileWriterEncrypting::open() noexcept {
   // Derive key and default iv concatenated into a temporary buffer
   unsigned char tmp_key_iv[kEvpKeyLength + EVP_MAX_IV_LENGTH];
 
-#if OPENSSL_VERSION_NUMBER >= 0x30000000L
-  auto ik_len = EVP_CIPHER_get_key_length(m_cipher);
-  auto iv_len = EVP_CIPHER_get_iv_length(m_cipher);
-#else  /* OPENSSL_VERSION_NUMBER >= 0x30000000L */
   auto ik_len = EVP_CIPHER_key_length(m_cipher);
   auto iv_len = EVP_CIPHER_iv_length(m_cipher);
-#endif /* OPENSSL_VERSION_NUMBER >= 0x30000000L */
 
   if (!PKCS5_PBKDF2_HMAC(
           keyring_password.data(), static_cast<int>(keyring_password.size()),
@@ -156,7 +152,15 @@ bool FileWriterEncrypting::open() noexcept {
     return false;
   }
 
-  return FileWriterDecoratorBase::open();
+  if (!FileWriterDecoratorBase::open()) {
+    return false;
+  }
+
+  FileWriterDecoratorBase::write(magic, sizeof(magic) - 1);
+  FileWriterDecoratorBase::write(
+      reinterpret_cast<const char *>(keyring_salt.data()), keyring_salt.size());
+
+  return true;
 }
 
 void FileWriterEncrypting::close() noexcept {
