@@ -1,8 +1,5 @@
 SET GLOBAL audit_log_filter.strategy=ASYNCHRONOUS;
 ERROR HY000: Variable 'audit_log_filter.strategy' is a read only variable
-SELECT @@global.audit_log_filter.strategy;
-@@global.audit_log_filter.strategy
-ASYNCHRONOUS
 # restart: --audit-log-filter.strategy=ASYNCHRONOUS
 SELECT @@global.audit_log_filter.strategy;
 @@global.audit_log_filter.strategy

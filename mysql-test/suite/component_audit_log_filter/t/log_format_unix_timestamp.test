@@ -1,7 +1,8 @@
 --source include/have_component_audit_log.inc
 --source ../inc/audit_tables_init.inc
 --source ../inc/audit_comp_install.inc
---let $restart_parameters="restart: --audit_log_filter.format=JSON --audit_log_filter.file=audit_filter.json.log --audit_log_filter.format_unix_timestamp=ON --audit_log_filter.strategy=SYNCHRONOUS"
+
+--let $restart_parameters="restart: --audit_log_filter.format=JSON --audit_log_filter.file=audit_filter.json.log --audit_log_filter.format_unix_timestamp=ON"
 --source include/restart_mysqld.inc
 
 --let $audit_filter_log_path = `SELECT @@global.datadir`
