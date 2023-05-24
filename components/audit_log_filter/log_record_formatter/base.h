@@ -22,10 +22,10 @@
 
 #include <atomic>
 #include <chrono>
-#include <map>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 
 struct mysql_event_tracking_general_data;
 struct mysql_event_tracking_connection_data;
@@ -61,7 +61,7 @@ struct ExtendedInfo;
 
 namespace log_record_formatter {
 
-using EscapeRulesContainer = std::map<char, std::string>;
+using EscapeRulesContainer = std::unordered_map<char, const char *>;
 using AuditRecordString = std::string;
 
 enum class AuditLogFormatType {
