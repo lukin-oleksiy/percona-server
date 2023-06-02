@@ -2,7 +2,6 @@
 --source include/have_component_audit_log.inc
 --source include/have_debug.inc
 --source ../inc/audit_tables_init.inc
---source include/have_debug_sync.inc
 --source ../inc/audit_comp_install.inc
 
 SELECT audit_log_filter_set_filter('log_all', '{"filter": {"log": true}}');
