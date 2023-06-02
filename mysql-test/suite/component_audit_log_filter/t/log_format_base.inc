@@ -2,6 +2,7 @@
 --source ../inc/audit_comp_install.inc
 
 --let $audit_filter_log_path = `SELECT @@global.datadir`
+--let $audit_filter_log_name = `SELECT @@global.audit_log_filter.file`
 
 SELECT audit_log_filter_set_filter('log_all', '{"filter": {"log": true}}');
 SELECT audit_log_filter_set_user('%', 'log_all');
@@ -24,6 +25,7 @@ if (`SELECT @@global.audit_log_filter.compression = 'GZIP'`) {
 --source decompress_rotated_log.inc
 }
 
+--let $audit_filter_log_format = `SELECT IF(STRCMP(SUBSTRING_INDEX(@@global.audit_log_filter.file, "xml", 1), @@global.audit_log_filter.file), "xml", "json")`
 --source validate_logs_format.inc
 
 --echo #

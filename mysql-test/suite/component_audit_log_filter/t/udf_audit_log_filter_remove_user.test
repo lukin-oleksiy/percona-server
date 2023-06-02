@@ -1,6 +1,8 @@
 --source include/have_component_audit_log.inc
+--source include/have_debug.inc
 --source ../inc/audit_tables_init.inc
 --source ../inc/audit_comp_install.inc
+
 --echo #
 --echo # Check wrong argument number
 --error 1123

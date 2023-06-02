@@ -30,6 +30,7 @@
 #include <mysql/components/services/mysql_system_variable.h>
 #include <mysql/components/services/mysql_thd_store_service.h>
 #include <mysql/components/services/security_context.h>
+#include <mysql/components/services/system_variable_source.h>
 
 #include <syslog.h>
 #include <atomic>
@@ -42,6 +43,7 @@ namespace audit_log_filter {
 namespace {
 
 constexpr std::string_view kCompName{"audit_log_filter"};
+const std::string kMaxSizeVarName{"audit_log_filter.max_size"};
 const size_t kMaxDbNameLength = 64;
 
 constexpr std::string_view kReaderContextSlotName{
@@ -81,6 +83,7 @@ std::atomic<uint64_t> record_id{0};
 LogBookmark log_bookmark;
 std::string encryption_options_id;
 bool log_encryption_enabled{false};
+comp_registry_srv_container_t comp_registry_srv;
 
 /*
  * Status variables
@@ -242,38 +245,24 @@ TYPE_LIB audit_log_filter_strategy_typelib = {
     "audit_log_filter_strategy_typelib", audit_log_filter_strategy_names,
     nullptr};
 
-void max_size_update_func(MYSQL_THD thd, SYS_VAR *, void *val_ptr,
+void max_size_update_func(MYSQL_THD, SYS_VAR *, void *val_ptr,
                           const void *save) {
   const auto *val = static_cast<const ulonglong *>(save);
   *static_cast<ulonglong *>(val_ptr) = *val;
 
   if (*val > 0) {
-    if (SysVars::get_log_prune_seconds() > 0) {
-      push_warning(
-          thd, Sql_condition::SL_WARNING, 42000,
-          "Both audit_log_filter.max_size and audit_log_filter.prune_seconds "
-          "are set to non-zero, audit_log_filter_max_size takes precedence and "
-          "audit_log_filter_prune_seconds is ignored.");
-    }
-
+    log_prune_seconds = 0;
     get_audit_log_filter_instance()->on_audit_log_prune_requested();
   }
 }
 
-void prune_seconds_update_func(MYSQL_THD thd, SYS_VAR *, void *val_ptr,
+void prune_seconds_update_func(MYSQL_THD, SYS_VAR *, void *val_ptr,
                                const void *save) {
   const auto *val = static_cast<const ulonglong *>(save);
   *static_cast<ulonglong *>(val_ptr) = *val;
 
   if (*val > 0) {
-    if (SysVars::get_log_max_size() > 0) {
-      push_warning(
-          thd, Sql_condition::SL_WARNING, 42000,
-          "Both audit_log_filter.max_size and audit_log_filter.prune_seconds "
-          "are set to non-zero, audit_log_filter_max_size takes precedence and "
-          "audit_log_filter_prune_seconds is ignored.");
-    }
-
+    log_max_size = 0;
     get_audit_log_filter_instance()->on_audit_log_prune_requested();
   }
 }
@@ -754,7 +743,6 @@ bool SysVars::init() noexcept {
 
   if (status_var_registration_srv->register_variable(status_vars) == 1) {
     LogComponentErr(ERROR_LEVEL, ER_AUDIT_STATUS_VAR_REGISTER_FAILURE);
-    SysVars::deinit();
     return false;
   }
 
@@ -765,7 +753,6 @@ bool SysVars::init() noexcept {
             var.first.check_arg, var.first.variable_value) == 1) {
       LogComponentErr(ERROR_LEVEL, ER_AUDIT_SYS_VAR_REGISTER_FAILURE,
                       kCompName.data(), var.first.name);
-      SysVars::deinit();
       return false;
     }
 
@@ -820,6 +807,34 @@ bool SysVars::validate() noexcept {
     LogComponentErr(ERROR_LEVEL, ER_LOG_PRINTF_MSG,
                     "Bad audit_log_filter.database value");
     return false;
+  }
+
+  my_service<SERVICE_TYPE(system_variable_source)> sysvar_source_service(
+      "system_variable_source", SysVars::get_comp_registry_srv());
+
+  enum_variable_source log_max_size_source;
+
+  if (sysvar_source_service->get(kMaxSizeVarName.c_str(),
+                                 kMaxSizeVarName.length(),
+                                 &log_max_size_source)) {
+    LogComponentErr(ERROR_LEVEL, ER_AUDIT_SYS_VAR_SOURCE_CHECK_FAILURE,
+                    kMaxSizeVarName.c_str());
+    return false;
+  }
+
+  // Check if log file directory points to a valid file system directory or if
+  // it is left at the default setting (empty).
+  if (!SysVars::get_file_dir().empty() &&
+      !std::filesystem::is_directory(SysVars::get_file_dir())) {
+    LogComponentErr(ERROR_LEVEL, ER_AUDIT_SYS_VAR_INVALID_FILE_DIRECTORY,
+                    SysVars::get_file_dir().c_str());
+    return false;
+  }
+
+  if (log_max_size_source == COMPILED && SysVars::get_log_prune_seconds() > 0) {
+    // Clean default settings for max_size in case non-zero value for
+    // prune_seconds is provided
+    log_max_size = 0;
   }
 
   if (SysVars::get_log_max_size() > 0 && SysVars::get_log_prune_seconds() > 0) {
@@ -1065,9 +1080,19 @@ std::string SysVars::get_encryption_options_id() noexcept {
   return encryption_options_id;
 }
 
-decltype(get_component_registry_service().get())
-SysVars::get_comp_registry_srv() noexcept {
-  static auto comp_registry_srv = get_component_registry_service();
+comp_registry_srv_t *SysVars::acquire_comp_registry_srv() noexcept {
+  assert(comp_registry_srv == nullptr);
+  comp_registry_srv = get_component_registry_service();
+  return comp_registry_srv.get();
+}
+
+void SysVars::release_comp_registry_srv() noexcept {
+  assert(comp_registry_srv != nullptr);
+  comp_registry_srv.reset();
+}
+
+comp_registry_srv_t *SysVars::get_comp_registry_srv() noexcept {
+  assert(comp_registry_srv != nullptr);
   return comp_registry_srv.get();
 }
 

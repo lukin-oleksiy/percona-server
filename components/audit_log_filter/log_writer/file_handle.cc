@@ -16,6 +16,7 @@
 #define ALLOW_COMPONENT_INCLUDE  // for plugin.h
 #include "components/audit_log_filter/log_writer/file_handle.h"
 #include "components/audit_log_filter/audit_psi_info.h"
+#include "components/audit_log_filter/log_writer/file_name.h"
 #include "components/audit_log_filter/sys_vars.h"
 
 #include <mysql/psi/mysql_mutex.h>
@@ -102,11 +103,15 @@ void FileHandle::flush() noexcept {
 
 std::filesystem::path FileHandle::get_not_rotated_file_path(
     const std::string &working_dir_name,
-    const std::string &base_file_name) noexcept {
+    const std::string &file_name) noexcept {
+  const auto base_file_name = FileName::from_path(file_name).get_base_name();
+
   for (const auto &entry :
        std::filesystem::directory_iterator(working_dir_name)) {
-    if (entry.is_regular_file() && entry.path().filename().string().find(
-                                       base_file_name) != std::string::npos) {
+    if (entry.is_regular_file() &&
+        entry.path().filename().string().find(base_file_name) !=
+            std::string::npos &&
+        !FileName::from_path(entry.path().filename()).is_rotated()) {
       return entry.path();
     }
   }
@@ -237,22 +242,26 @@ PruneFilesList FileHandle::get_prune_files(
     const std::string &working_dir_name,
     const std::string &file_name) noexcept {
   PruneFilesList prune_files;
-  const std::regex log_time_regex(R"(.*\.(\d{8}T\d{6})\..*)");
-  auto base_file_name =
-      std::filesystem::path{file_name}.replace_extension().string();
+  const auto base_file_name = FileName::from_path(file_name).get_base_name();
   auto time_now = std::time(nullptr);
+
+  DBUG_EXECUTE_IF("audit_log_filter_debug_timestamp", {
+    // This will return the time of the newest rotated log + 1 minute so
+    // file age will be calculated properly for files which are subject
+    // for age based pruning.
+    time_now = std::chrono::system_clock::to_time_t(
+        SysVars::get_debug_time_point_for_rotation());
+  });
 
   for (const auto &entry :
        std::filesystem::directory_iterator{working_dir_name}) {
-    const auto name = entry.path().filename().string();
+    if (entry.is_regular_file() && entry.path().filename().string().find(
+                                       base_file_name) != std::string::npos) {
+      auto parsed_file_name = FileName::from_path(entry.path().filename());
 
-    if (entry.is_regular_file() &&
-        name.find(base_file_name) != std::string::npos) {
-      std::smatch pieces_match;
-
-      if (std::regex_match(name, pieces_match, log_time_regex)) {
+      if (parsed_file_name.is_rotated()) {
         std::tm tm{};
-        std::istringstream ss(pieces_match[1].str());
+        std::istringstream ss(parsed_file_name.get_rotation_time());
         ss >> std::get_time(&tm, kRotationTimeFormat.c_str());
         tm.tm_isdst = -1;
         auto time_rotated = timelocal(&tm);
