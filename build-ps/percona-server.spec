@@ -470,7 +470,7 @@ Summary:        MySQL packaging of ICU data files
 This package contains ICU data files needer by MySQL regular expressions.
 
 %prep
-%setup -q -T -a 0 -a 10 -c -n %{src_dir}
+%setup -q -T -a 0 -c -n %{src_dir}
 pushd %{src_dir}
 %patch0 -p0
 
@@ -990,8 +990,6 @@ fi
 %attr(755, root, root) %{_libdir}/mysql/plugin/ha_mock.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/keyring_file.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/keyring_udf.so
-%attr(755, root, root) %{_libdir}/mysql/plugin/innodb_engine.so
-%attr(755, root, root) %{_libdir}/mysql/plugin/libmemcached.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/locking_service.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/mypluglib.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/mysql_clone.so
@@ -1041,8 +1039,6 @@ fi
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/ha_mock.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/keyring_file.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/keyring_udf.so
-%attr(755, root, root) %{_libdir}/mysql/plugin/debug/innodb_engine.so
-%attr(755, root, root) %{_libdir}/mysql/plugin/debug/libmemcached.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/locking_service.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/mypluglib.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/mysql_clone.so
@@ -1096,8 +1092,8 @@ fi
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/dialog.so
 #%attr(755, root, root) %{_libdir}/mysql/plugin/query_response_time.so
 #%attr(755, root, root) %{_libdir}/mysql/plugin/debug/query_response_time.so
-%attr(755, root, root) %{_libdir}/mysql/plugin/keyring_vault.so
-%attr(755, root, root) %{_libdir}/mysql/plugin/debug/keyring_vault.so
+%attr(755, root, root) %{_libdir}/mysql/plugin/component_keyring_vault.so
+%attr(755, root, root) %{_libdir}/mysql/plugin/debug/component_keyring_vault.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/procfs.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/procfs.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/authentication_fido.so
@@ -1124,7 +1120,6 @@ fi
 %attr(644, root, root) %{_datadir}/percona-server/mysql-log-rotate
 #%attr(644, root, root) %{_datadir}/percona-server/mysql_security_commands.sql
 %attr(644, root, root) %{_datadir}/percona-server/dictionary.txt
-%attr(644, root, root) %{_datadir}/percona-server/innodb_memcached_config.sql
 %attr(644, root, root) %{_datadir}/percona-server/install_rewriter.sql
 %attr(644, root, root) %{_datadir}/percona-server/uninstall_rewriter.sql
 %attr(644, root, root) %{_datadir}/percona-server/audit_log_filter_linux_install.sql
@@ -1223,7 +1218,7 @@ fi
 %doc %{?license_files_server}
 %dir %attr(755, root, root) %{_libdir}/mysql
 %attr(644, root, root) %{_sysconfdir}/ld.so.conf.d/mysql-%{_arch}.conf
-%{_libdir}/mysql/lib%{shared_lib_pri_name}.so.21*
+%{_libdir}/mysql/lib%{shared_lib_pri_name}.so.23*
 #coredumper
 %attr(755, root, root) %{_includedir}/coredumper/coredumper.h
 %attr(755, root, root) /usr/lib/libcoredumper.a
