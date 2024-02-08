@@ -207,6 +207,9 @@ static int mecab_parse(MeCab::Lattice *mecab_lattice,
   if (param->mode == MYSQL_FTPARSER_FULL_BOOLEAN_INFO) {
     for (const MeCab::Node *node = mecab_lattice->bos_node(); node != nullptr;
          node = node->next) {
+      if (node->stat == MECAB_BOS_NODE || node->stat == MECAB_EOS_NODE) {
+        continue;
+      }
       token_num += 1;
     }
 
@@ -235,9 +238,12 @@ static int mecab_parse(MeCab::Lattice *mecab_lattice,
       bool_info->position = position;
       position += node->rlength;
 
-      param->mysql_add_word(param, const_cast<char *>(node->surface),
-                            node->length,
-                            term_converted ? &token_info : bool_info);
+      ret = param->mysql_add_word(param, const_cast<char *>(node->surface),
+                                  node->length,
+                                  term_converted ? &token_info : bool_info);
+      if (ret != 0) {
+        break;
+      }
     }
   }
 
