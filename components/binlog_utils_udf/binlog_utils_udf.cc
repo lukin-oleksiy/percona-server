@@ -56,6 +56,7 @@ constexpr std::size_t default_static_buffer_size{1024};
 using static_buffer_t = std::array<char, default_static_buffer_size + 1>;
 using dynamic_buffer_t = std::vector<char>;
 using uni_buffer_t = std::pair<static_buffer_t, dynamic_buffer_t>;
+using Return_status = mysql::utils::Return_status;
 
 std::string_view extract_sys_var_value(std::string_view component_name,
                                        std::string_view variable_name,
@@ -246,7 +247,8 @@ log_event_ptr find_last_gtid_event(std::string_view binlog_name) {
     if (reader.has_fatal_error())
       throw std::runtime_error(reader.get_error_str());
     auto ev_row = ev.get();
-    if (ev_row->get_type_code() == mysql::binlog::event::GTID_LOG_EVENT)
+    if (ev_row->get_type_code() == mysql::binlog::event::GTID_LOG_EVENT ||
+        ev_row->get_type_code() == mysql::binlog::event::GTID_TAGGED_LOG_EVENT)
       last_gtid_ev = std::move(ev);
     if (ev_row->common_header->log_pos >= end_pos) break;
   }
@@ -261,7 +263,8 @@ bool extract_last_gtid(std::string_view binlog_name, Tsid_map &tsid_map,
   auto ev = find_last_gtid_event(binlog_name);
   if (!ev) return false;
 
-  assert(ev->get_type_code() == mysql::binlog::event::GTID_LOG_EVENT);
+  assert(ev->get_type_code() == mysql::binlog::event::GTID_LOG_EVENT ||
+         ev->get_type_code() == mysql::binlog::event::GTID_TAGGED_LOG_EVENT);
   auto *casted_ev = static_cast<Gtid_log_event *>(ev.get());
   rpl_sidno sidno = casted_ev->get_sidno(&tsid_map);
   if (sidno < 0) throw std::runtime_error("Invalid GTID event encountered");
@@ -299,8 +302,7 @@ mysqlpp::udf_result_t<STRING_RESULT> get_binlog_by_gtid_impl::calculate(
   auto gtid_text = static_cast<std::string>(ctx.get_arg<STRING_RESULT>(0));
   Tsid_map tsid_map{nullptr};
   Gtid gtid;
-  if (gtid.parse(&tsid_map, gtid_text.c_str()) !=
-      mysql::utils::Return_status::ok)
+  if (gtid.parse(&tsid_map, gtid_text.c_str()) != Return_status::ok)
     throw std::invalid_argument("Invalid GTID specified");
 
   Gtid_set covering_gtids{&tsid_map};
