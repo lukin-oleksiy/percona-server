@@ -28,6 +28,8 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #define UT0COUNTER_H
 
 #include <string.h>
+#include <cassert>
+#include <cstdint>
 #include "my_dbug.h"
 
 /** CPU cache line size */

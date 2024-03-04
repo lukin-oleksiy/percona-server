@@ -27,9 +27,10 @@
 /* C++ standard header files */
 #include <algorithm>
 #include <array>
-#include <bit>
 #include <cstdint>
+#ifndef NDEBUG
 #include <limits>
+#endif
 #include <map>
 #include <set>
 #include <string>
@@ -47,6 +48,7 @@
 #include "sql/field.h"
 #include "sql/key.h"
 #include "sql/mysqld.h"
+#include "sql/sql_class.h"
 #include "sql/sql_table.h"
 #include "sql/table.h"
 #include "strings/m_ctype_internals.h"
@@ -55,7 +57,6 @@
 #include "./ha_rocksdb.h"
 #include "./ha_rocksdb_proto.h"
 #include "./rdb_cf_manager.h"
-#include "./rdb_psi.h"
 #include "./rdb_utils.h"
 
 extern CHARSET_INFO my_charset_utf16_bin;
