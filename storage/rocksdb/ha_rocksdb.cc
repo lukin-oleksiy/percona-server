@@ -777,6 +777,7 @@ static unsigned long long rocksdb_table_stats_max_num_rows_scanned = 0ul;
 static bool rocksdb_enable_bulk_load_api = true;
 static bool rocksdb_enable_remove_orphaned_dropped_cfs = true;
 static bool rpl_skip_tx_api_var = false;
+static bool rocksdb_enable_udt_in_mem = false;
 static bool rocksdb_print_snapshot_conflict_queries = false;
 static bool rocksdb_allow_to_start_after_corruption = false;
 static ulong rocksdb_write_policy = rocksdb::TxnDBWritePolicy::WRITE_COMMITTED;
@@ -791,6 +792,9 @@ enum read_free_rpl_type { OFF = 0, PK_ONLY, PK_SK };
 static ulong rocksdb_read_free_rpl = read_free_rpl_type::OFF;
 enum corrupt_data_action { ERROR = 0, ABORT_SERVER, WARNING };
 static ulong rocksdb_corrupt_data_action = corrupt_data_action::ERROR;
+enum class io_error_action : ulong { ABORT_SERVER = 0, IGNORE_ERROR };
+static ulong rocksdb_io_error_action =
+    static_cast<ulong>(io_error_action::ABORT_SERVER);
 static bool rocksdb_error_on_suboptimal_collation = false;
 static uint32_t rocksdb_stats_recalc_rate = 0;
 static bool rocksdb_no_create_column_family = false;
@@ -1075,6 +1079,14 @@ static TYPELIB corrupt_data_action_typelib = {
     array_elements(corrupt_data_action_names) - 1,
     "corrupt_data_action_typelib", corrupt_data_action_names, nullptr};
 
+/* This enum needs to be kept up to date with io_error_action */
+static const char *io_error_action_names[] = {"ABORT_SERVER", "IGNORE_ERROR",
+                                              NullS};
+
+static TYPELIB io_error_action_typelib = {
+    array_elements(io_error_action_names) - 1, "io_error_action_typelib",
+    io_error_action_names, nullptr};
+
 static void rocksdb_set_rocksdb_info_log_level(
     THD *const thd MY_ATTRIBUTE((__unused__)),
     struct SYS_VAR *const var MY_ATTRIBUTE((__unused__)),
@@ -1268,6 +1280,12 @@ static MYSQL_SYSVAR_BOOL(enable_remove_orphaned_dropped_cfs,
                          nullptr, nullptr,
                          rocksdb_enable_remove_orphaned_dropped_cfs);
 
+static MYSQL_SYSVAR_BOOL(enable_udt_in_mem, rocksdb_enable_udt_in_mem,
+                         PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
+                         "Enabled user define timestamp in memtable feature to "
+                         "support HLC snapshot reads in MyRocks",
+                         nullptr, nullptr, rocksdb_enable_udt_in_mem);
+
 static MYSQL_THDVAR_STR(tmpdir, PLUGIN_VAR_OPCMDARG | PLUGIN_VAR_MEMALLOC,
                         "Directory for temporary files during DDL operations.",
                         nullptr, nullptr, "");
@@ -1400,6 +1418,13 @@ static MYSQL_SYSVAR_ENUM(
     "Control behavior when hitting data corruption. We can fail the query, "
     "crash the server or pass the query and give users a warning. ",
     nullptr, nullptr, corrupt_data_action::ERROR, &corrupt_data_action_typelib);
+
+static MYSQL_SYSVAR_ENUM(
+    io_error_action, rocksdb_io_error_action, PLUGIN_VAR_RQCMDARG,
+    "Control behavior when hitting I/O error. By default MyRocks aborts server "
+    "and refuses to start. Setting IGNORE_ERROR suppresses an error instead.",
+    nullptr, nullptr, static_cast<ulong>(io_error_action::ABORT_SERVER),
+    &io_error_action_typelib);
 
 static MYSQL_THDVAR_BOOL(skip_bloom_filter_on_read,
                          PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_HINTUPDATEABLE,
@@ -2643,6 +2668,7 @@ static struct SYS_VAR *rocksdb_system_variables[] = {
     MYSQL_SYSVAR(enable_bulk_load_api),
     MYSQL_SYSVAR(enable_pipelined_write),
     MYSQL_SYSVAR(enable_remove_orphaned_dropped_cfs),
+    MYSQL_SYSVAR(enable_udt_in_mem),
     MYSQL_SYSVAR(tmpdir),
     MYSQL_SYSVAR(merge_combine_read_size),
     MYSQL_SYSVAR(merge_tmp_file_removal_delay_ms),
@@ -2820,6 +2846,7 @@ static struct SYS_VAR *rocksdb_system_variables[] = {
     MYSQL_SYSVAR(column_default_value_as_expression),
     MYSQL_SYSVAR(enable_delete_range_for_drop_index),
     MYSQL_SYSVAR(corrupt_data_action),
+    MYSQL_SYSVAR(io_error_action),
     MYSQL_SYSVAR(converter_record_cached_length),
     MYSQL_SYSVAR(file_checksums),
     nullptr};
@@ -6315,7 +6342,7 @@ static int rocksdb_init_internal(void *const p) {
 
   if (rdb_has_rocksdb_corruption()) {
     LogPluginErrMsg(ERROR_LEVEL, 0,
-                    "There was corruption detected in the RockDB data files. "
+                    "There was corruption detected in the RocksDB data files. "
                     "Check error log emitted earlier for more details.");
     if (rocksdb_allow_to_start_after_corruption) {
       LogPluginErrMsg(INFORMATION_LEVEL, 0,
@@ -16085,6 +16112,12 @@ MY_ATTRIBUTE((optimize("O0")))
 #endif
 void rdb_handle_io_error(const rocksdb::Status status,
                          const RDB_IO_ERROR_TYPE err_type) {
+  if (rocksdb_io_error_action ==
+      static_cast<ulong>(io_error_action::IGNORE_ERROR)) {
+    rdb_log_status_error(status, "Ignoring I/O errors.");
+    return;
+  }
+
   if (status.IsIOError()) {
     switch (err_type) {
       case RDB_IO_ERROR_TX_COMMIT:
