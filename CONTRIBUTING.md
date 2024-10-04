@@ -1,46 +1,46 @@
-  # Contributing guide
+  # Contributing Guide
   
   ## Welcome to Percona Server for MySQL!
 
-We’re glad that you would like to become a Percona community member and participate in keeping open source open.
+We're excited to have you join the Percona community and participate in keeping open-source open.
 
 You can contribute in one of the following ways:
 
 1. Submit a bug report or a feature
    request in [ our public Jira ](https://jira.percona.com/projects/PS/issues).
 2. Submit a pull request (PR) with the code patch.
-3. Contribute to [the documenation](https://github.com/percona/psmysql-docs/blob/innovation-release/contributing.md)
+3. Contribute to [the documentation](https://github.com/percona/psmysql-docs/blob/innovation-release/contributing.md)
 4. Reach us on our [ Forums ](https://forums.percona.com/c/mysql-mariadb)
 
 
 
 
 This document describes the workflow for submitting pull requests.
-By contributing, you agree to the [Percona Community code of conduct](https://percona.community/contribute/coc/). Thank you for deciding to contribute and help us improve Percona Server for MySQL.
+By contributing, you agree to the [Percona Community code of conduct](https://percona.community/contribute/coc/). Thank you for helping us enhance Percona Server for MySQL.
 
-## Why to contribute?
+## Why Your Contribution Matters?
 
-Main driving force of open source project is community. We, as developers team, highly appreciate any contributions.
+Main driving force of open-source project is community. We, as developers team, highly appreciate any contributions.
 
- Maybe it is the right way to offer bug fix to the updtream first, and then it will go to the Percona distribution with the next release. On the other hand, Percona team has shorter reaction times, keeps all internal work in the public repository and it is easier to get your work accepted with us. 
+ It may be advisable to initially submit bug fixes to the upstream project that will eventually become part of the next release of Percona. Alternatively, Percona provides expedited response times, transparent development processes, and streamlined contribution acceptance within a public repository. 
 
-## Creating a Jira issue
+## Creating a Jira Issue
 
-Creating Jira issue is a _reqired_ step. First, you should describe well the bug you found or new feature you're going to implement. It will help a lot to test your solution well then, to include proper information in the release notes, and all other important things. Second, it will link your PR to the provided issue with description. This step makes life of code development team easier. So, please, make this work carefully.
+The creation of a Jira issue is _mandatory_. A comprehensive description of the bug or feature is essential. Thorough testing of the solution, inclusion of pertinent information in the release notes, and other relevant details are highly recommended. Additionally, linking the pull request to the corresponding issue with a detailed description will facilitate the development process.
 
-To create Jira issue, please open the  [ LINK ](https://perconadev.atlassian.net/jira/software/c/projects/PS/issues) and authenticate with your favorite social network accounts (Google,, Facebook, etc). Then follow instructions on a pages and verify your e-mail. If Jira starts to redirect you back and forth (their bug, not ours), just open new browser window with the link above.
+To create Jira issue, please open the  [ LINK ](https://perconadev.atlassian.net/jira/software/c/projects/PS/issues) and authenticate with your favorite social network account (Google, Facebook, etc.). Then follow the instructions and verify your e-mail. If Jira starts to redirect you back and forth (their bug, not ours), just open a new browser window with the link above.
 
-Now you're ready to create issue. Find the big "Create" button in the top menu and press it. Choose issue type from the second drop-down, saying it is Bug, Improvement, or a New feature. Fill all required fields below. Don't spare the letters for the description field. Accurate and detailed description is a huge first step to the solution. Rest of fields are mostly for internal use, thw core team developers will fill it later.
+Now you're ready to an create issue. Find the big "Create" button in the top menu and press it. Choose issue type from the second drop-down, saying it is a Bug, an Improvement, or a New feature. Fill in all the required fields below. Don't spare the letters for the description field. Accurate and detailed description is a huge first step to the solution. The rest of the fields are mostly for internal use; the core team developers will fill it later.
 
-## Working with the source code
+## Working with the Source Code
 
-First, you should have GitHub account. You can not work with the Percona repository directly, you have to [ "Fork" ](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/working-with-forks/fork-a-repo) our repository tou your GitHub account. To do so, open [ Percona PS repository](https://github.com/percona/percona-server) in a browser. Then, right to the repository name you'll find the "Fork" button. Press it.
-After that return to you GitHub home page, find your "percona-server" repository and clone it locally.
-Note, that [ creating SSH keys and putting it to the GitHub ](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account) settings will save a lot of time for you.
+First, you should have a GitHub account. You can not work with the Percona repository directly, you have to [ "Fork" ](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/working-with-forks/fork-a-repo) our repository to your GitHub account. To do so, open [ Percona PS repository](https://github.com/percona/percona-server) in a browser. Then, right to the repository name you'll find the "Fork" button. Press it.
+Then return to your GitHub home page, find your "percona-server" repository and clone it locally.
+Note that [ creating SSH keys and putting it to the GitHub ](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account) settings will save a lot of time for you.
 
-In the cloned locally repository checkout the "trunk" branch you are going to work on. For 8.0.X releases is is 8.0. For 8.4.X series it is 8.4, and for 9.0.X it is "trunk".
+In the cloned local repository checkout the "trunk" branch you are going to work on. For 8.0.X releases is 8.0. For 8.4.X series it is 8.4, and for 9.0.X it is "trunk".
 
-Now you are ready to create a branch for your contribution. Please name the branch as following pattern:  
+Now you are ready to create a branch for your contribution. Please name the branch according to the following pattern:  
 ```
 PS-9876-8.0-bug_in_some_module
 ^^^^^^^
@@ -51,14 +51,14 @@ Jira issue number
             Very short definition of the issue 
 ``` 
 
-Before compilation of the code, you need to fetch third-party code which is organized as Git submodules. Go to the project directory and type following:
+Before compilation of the code, you need to fetch third-party code which is organized as Git submodules. Go to the project directory and type the following:
 
 ```
 git submodule update --init
 ``` 
 At this point Git will fetch required third-party modules into the source tree.
 
-Now we can try to build the project. Below is an quick and dirty shell script for that (works with GCC 14). It gives you hints how to do outside-the-tree build and set CMake flags.
+Now we can try to build the project. Below is a quick and dirty shell script for that (works with GCC 14). It gives you hints how to do outside-the-tree build and set CMake flags.
 ```
 #!/bin/bash
 
@@ -110,7 +110,7 @@ cd build-percona-server/mysql-test
 ./mtr main.1st
 ``` 
 
-When the test is OK, you're ready to setup your favorite IDE for the project development. The build script above will give you a clue what CMake parameters to add to project in IDE.
+When the tests are OK, you're ready to set up your favorite IDE for the project development. The build script above will give you a clue what CMake parameters to add to the project in IDE.
 
 To be able to run the mysqld binary in your IDE, first run the following command in the "mysql-test" directory of the build tree:
 ```
@@ -122,35 +122,35 @@ From this moment you're ready to code and debug!
 
 ### Testing
 
-When your code it ready in your local branch, test it well not only with manual tests, but with corresponding automated tests. Remember, quality is in the first place! Moreover, we support the code base for significant time, so tests will help us to avoid functionality breaks later.
+Prior to submitting your code, ensure it is thoroughly tested, both manually and with automated test suites. The maintenance of high-quality code is paramount to ensure the longevity and functionality of our project.
 
 Testing of MySQL is a whole big thing, so please go to the [ official documentation on MySQL testing ](https://dev.mysql.com/doc/dev/mysql-server/latest/PAGE_TESTING_TOOLS.html) first.
   
-If it is bug fix, make sure that corresponding tests from the test suite work fine. Maybe it's a good idea to patch existing test to cover your specific case. If it is new feature, please write a test suite for it.
+If it is bug fix, make sure that corresponding tests from the test suite work fine. It's a good idea to patch existing tests to cover your specific case. For the introduction of new features, the development of a comprehensive test suite is strongly recommended.
 
 ## Preparing PR
 
-When all things above are done, you have to prepare your branch for pull request.   
+After finishing the tasks outlined above, you must prepare your branch for a pull request.   
 Please do not forget to run ``` git clang-format ``` on your code.
 
 Then, squash all commits to one or a couple of logically consistent commits.
-For example, the fix of bug should have just one commit. If you have a new feature that requires some changes to the existing code, then first commit should contain required changes, and the second is a new feature and tests. It is not a dogma, but we're trying to make Git history clean and consistent, so please help us to keep it so.
+For example, the fix of bug should have just one commit. If you have a new feature that requires some changes to the existing code, then the first commit should contain required changes, and the second is a new feature and tests. It is not a dogma, on the other hand, we value a clean and consistent Git history. Please help us maintain this standard.
 
-Now you can push your local branch to your GitHub repository and make the pull request to the Perona repository.
+Now you can push your local branch to your GitHub repository and make the pull request to the Percona repository.
 
-Please, write meaningful title for the PR and put the number of Jira issue at the beginning of the first line in the description. The second line is usually a link to the Jira issue. Then the short description  follows. No need to write long description because you wrote it already in the Jira issue.
+Please, write meaningful title for the PR and put the number of Jira issue at the beginning of the first line in the description. The second line is usually a link to the Jira issue. Then the short description follows. No need to write a long description because you wrote one in the Jira issue.
 
-Peer reviw of the code always goes before PR merge. So, you have to add some core development team member in the "Reviewers" field of PR. Best guess is to assign the PR to Yura Sorokin, our team lead.
+Peer review of the code always goes before PR merge. So, you have to add some core development team members in the "Reviewers" field of PR. Best guess is to assign the PR to Yura Sorokin, our team lead.
 
-Our GitHub pipeline runs a lot of checks on each PR. Please make sure, you fixed all comments provided by checks. Well, sometime not all of them :) , you understand...
+Our GitHub pipeline runs a lot of checks on each PR. Please make sure you fixed all comments provided by checks. Well, sometime not all of them :) , you understand...
 
-After this step the developers team will review your code. Our main concern is quality, so please do not accept our comments and suggestions as something bad. Our comments are here to ensure the best solution possible.
+Following this step, the development team will conduct a thorough review of your code at their earliest convenience. Our primary objective is to ensure the highest quality standards. We encourage you to interpret our comments as opportunities for improvement and constructive feedback.
 
-When discussion and fixes are over, your PR will be merged to the main source tree.
+When the review is finished and all the issues are addressed, your pull request will be merged into the main source tree.
 
-Congratulation! You are recognized contributor now.
+Congratulations! You are now a recognized contributor.
 
-## Your code and MySQL versions
+## Your Code and MySQL Versions
   
   Percona officially supports 3 version lines of MySQL: 
   
@@ -158,17 +158,12 @@ Congratulation! You are recognized contributor now.
 2.  8.4.X - next stable line, or LTS line.
 3.  9.0.X - innovation line, a test bed for everything new at the moment.
 
-Next LTS version will be 9.7, so until then 9.X is "innovation" versions.
+Next LTS version will be 9.7, so until then 9.X are "innovation" versions.
 
-It is not easy to keep tracks of all changes and understand how the new code will work with different versions. Therefore, your best bet is to work with the version line you're using and know well. Nevertheless, Percona developers team will take care of your code, and port or backport it to other version lines if it is applicable.
+It is not easy to keep track of all the changes and understand how the new code will work with different versions. Therefore, your best bet is to work with the version line you're currently using and familiar with. Nevertheless, Percona developers team will take care of your code, and port or backport it to other version lines if it is applicable.
 
-## When my code will be in the release?
+## When will My Code be in the release?
 
-Percona releases follow upstream MySQL releases. We merge upstream code changes and our code from the "trunk" as soon as next official upstream release becomes available. Then we build packages and test everything thoroughly. It takes time.
+Percona releases follow upstream MySQL releases. We merge upstream code changes and our code from the "trunk" as soon as the next official upstream release becomes available. Then we build packages and test everything thoroughly. It takes time.
 
-We use a "train" approach. It means, that if some code is already in one of the "trunk" branches before official upstream release, it will be released in Percona's distribution of new release. So, if we are already in the process of work on some fresh upstream release, PR will be merged to the "trunk" but not to the release branch. And then your code will be released with the next upstream release.
-
-
-
-
-
+We use a "train" approach. It means, that if some code is already in one of the "trunk" branches before the official upstream release, it will be released in Percona's distribution of new release. So, if we are already in the process of working on some fresh upstream release, PR will be merged to the "trunk" but not to the release branch. And then your code will be released after the current one.
