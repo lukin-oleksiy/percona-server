@@ -28,7 +28,7 @@
 #include <opensslpp/accessor_fwd.hpp>
 #include <opensslpp/big_number_fwd.hpp>
 #include <opensslpp/key_generation_cancellation_callback_fwd.hpp>
-#include <opensslpp/rsa_padding_fwd.hpp>
+#include <opensslpp/rsa_encryption_padding_fwd.hpp>
 
 namespace opensslpp {
 
@@ -57,7 +57,8 @@ class rsa_key final {
   std::size_t get_size_in_bits() const noexcept;
   std::size_t get_size_in_bytes() const noexcept;
 
-  std::size_t get_max_block_size_in_bytes(rsa_padding padding) const noexcept;
+  std::size_t get_max_block_size_in_bytes(
+      rsa_encryption_padding padding) const noexcept;
 
   rsa_key derive_public_key() const;
 
