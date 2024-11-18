@@ -185,39 +185,52 @@ void MySQLSession::set_ssl_options(mysql_ssl_mode ssl_mode,
                                    const std::string &capath,
                                    const std::string &crl,
                                    const std::string &crlpath) {
+
   if (!ssl_cipher.empty() && !set_option(SslCipher(ssl_cipher.c_str()))) {
+    const unsigned int err_code = mysql_errno(connection_);
+    const std::string err_msg = mysql_error(connection_);
+    disconnect();
     throw Error(("Error setting SSL_CIPHER option for MySQL connection: " +
-                 std::string(mysql_error(connection_))),
-                mysql_errno(connection_));
+                 err_msg), err_code);
   }
 
   if (!tls_version.empty() && !set_option(TlsVersion(tls_version.c_str()))) {
+    unsigned int err_code =  mysql_errno(connection_);
+    disconnect();
     throw Error("Error setting TLS_VERSION option for MySQL connection",
-                mysql_errno(connection_));
+                err_code);
   }
 
   if (!ca.empty() && !set_option(SslCa(ca.c_str()))) {
+    const unsigned int err_code = mysql_errno(connection_);
+    const std::string err_msg = mysql_error(connection_);
+    disconnect();
     throw Error(("Error setting SSL_CA option for MySQL connection: " +
-                 std::string(mysql_error(connection_))),
-                mysql_errno(connection_));
+                 err_msg), err_code);
   }
 
   if (!capath.empty() && !set_option(SslCaPath(capath.c_str()))) {
+    const unsigned int err_code = mysql_errno(connection_);
+    const std::string err_msg = mysql_error(connection_);
+    disconnect();
     throw Error(("Error setting SSL_CAPATH option for MySQL connection: " +
-                 std::string(mysql_error(connection_))),
-                mysql_errno(connection_));
+                 err_msg), err_code);
   }
 
   if (!crl.empty() && !set_option(SslCrl(crl.c_str()))) {
+    const unsigned int err_code = mysql_errno(connection_);
+    const std::string err_msg = mysql_error(connection_);
+    disconnect();
     throw Error(("Error setting SSL_CRL option for MySQL connection: " +
-                 std::string(mysql_error(connection_))),
-                mysql_errno(connection_));
+                 err_msg), err_code);
   }
 
   if (!crlpath.empty() && !set_option(SslCrlPath(crlpath.c_str()))) {
+    const unsigned int err_code = mysql_errno(connection_);
+    const std::string err_msg = mysql_error(connection_);
+    disconnect();
     throw Error(("Error setting SSL_CRLPATH option for MySQL connection: " +
-                 std::string(mysql_error(connection_))),
-                mysql_errno(connection_));
+                 err_msg), err_code);
   }
 
   // this has to be the last option that gets set due to what appears to be a
@@ -225,9 +238,11 @@ void MySQLSession::set_ssl_options(mysql_ssl_mode ssl_mode,
   // (like tls_version) are also specified
   if (!set_option(SslMode(ssl_mode))) {
     const char *text = ssl_mode_to_string(ssl_mode);
+    const unsigned int err_code = mysql_errno(connection_);
     std::string msg = std::string("Setting SSL mode to '") + text +
                       "' on connection failed: " + mysql_error(connection_);
-    throw Error(msg, mysql_errno(connection_));
+    disconnect();
+    throw Error(msg, err_code);
   }
 }
 
@@ -297,9 +312,12 @@ std::string MySQLSession::ssl_crlpath() const {
 void MySQLSession::set_ssl_cert(const std::string &cert,
                                 const std::string &key) {
   if (!set_option(SslCert(cert.c_str())) || !set_option(SslKey(key.c_str()))) {
+    const unsigned int err_code = mysql_errno(connection_);
+    const std::string err_msg = mysql_error(connection_);
+    disconnect();
+
     throw Error("Error setting client SSL certificate for connection: " +
-                    std::string(mysql_error(connection_)),
-                mysql_errno(connection_));
+                    err_msg, err_code);
   }
 }
 
@@ -379,11 +397,14 @@ void MySQLSession::connect(const std::string &host, unsigned int port,
   if (!mysql_real_connect(connection_, host.c_str(), username.c_str(),
                           password.c_str(), default_schema.c_str(), port,
                           unix_socket.c_str(), client_flags)) {
+
+    unsigned int err_code = mysql_errno(connection_);
     std::stringstream ss;
     ss << "Error connecting to MySQL server at " << endpoint_str;
-    ss << ": " << mysql_error(connection_) << " (" << mysql_errno(connection_)
+    ss << ": " << mysql_error(connection_) << " (" << err_code
        << ")";
-    throw Error(ss.str(), mysql_errno(connection_));
+    disconnect();
+    throw Error(ss.str(), err_code);
   }
 
   if (!ssl_disabled) {
