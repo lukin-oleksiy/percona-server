@@ -87,7 +87,6 @@ TODO/Future work:
 Short-term
 ----------
 
-- Better error reporting (stacktraces!)
 - Console support
 - Handling of KILL/timeouts.
 - Memory tracking/limiting?
