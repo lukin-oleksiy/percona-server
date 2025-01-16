@@ -88,7 +88,6 @@ Short-term
 ----------
 
 - Console support
-- Handling of KILL/timeouts.
 - Memory tracking/limiting?
 - Handling of async JS features
 - Execution of SQL
