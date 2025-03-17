@@ -87,7 +87,6 @@ TODO/Future work:
 Short-term
 ----------
 
-- Console support
 - Memory tracking/limiting?
 - Handling of async JS features
 - Execution of SQL
