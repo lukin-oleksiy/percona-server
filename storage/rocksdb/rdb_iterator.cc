@@ -41,7 +41,8 @@ Rdb_iterator_base::Rdb_iterator_base(THD *thd, const Rdb_key_def &kd,
       m_scan_it_upper_bound(nullptr),
       m_prefix_buf(nullptr),
       m_check_iterate_bounds(false),
-      m_ignore_killed(false) {}
+      m_ignore_killed(false),
+      m_valid(false) {}
 
 Rdb_iterator_base::~Rdb_iterator_base() {
   release_scan_iterator();
@@ -234,6 +235,8 @@ int Rdb_iterator_base::calc_eq_cond_len(enum ha_rkey_function find_flag,
 }
 
 int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
+  if (!m_valid) return HA_ERR_END_OF_FILE;
+
   int rc = 0;
   Rdb_transaction *const tx = get_tx_from_thd(m_thd);
 
@@ -294,13 +297,17 @@ int Rdb_iterator_base::next_with_direction(bool move_forward, bool skip_next) {
     }
 
     // Record is not visible due to TTL, move to next record.
-    if (m_pkd.has_ttl() && rdb_should_hide_ttl_rec(m_kd, value, tx)) {
+    if (m_pkd.has_ttl() && rdb_should_hide_ttl_rec(m_kd, &value, tx)) {
       continue;
     }
 
     break;
   }
 
+  if (rc) {
+    assert(m_valid);
+    m_valid = false;
+  }
   return rc;
 }
 
@@ -348,18 +355,39 @@ int Rdb_iterator_base::seek(enum ha_rkey_function find_flag,
     rc = read_before_key(full_key_match, start_key);
   }
 
-  if (rc) {
-    return rc;
+  if (!rc) {
+    m_valid = true;
+    rc = next_with_direction(direction, true);
   }
 
-  rc = next_with_direction(direction, true);
+  m_valid = !rc;
+  return rc;
+}
+
+int Rdb_iterator_base::convert_get_status(myrocks::Rdb_transaction &tx,
+                                          const rocksdb::Status &s,
+                                          rocksdb::PinnableSlice *value,
+                                          bool skip_ttl_check) const {
+  int rc = HA_EXIT_SUCCESS;
+  if (!s.IsNotFound() && !s.ok()) {
+    return rdb_tx_set_status_error(tx, s, m_kd, m_tbl_def);
+  }
+
+  const bool hide_ttl_rec =
+      !skip_ttl_check && m_kd.has_ttl() &&
+      rdb_should_hide_ttl_rec(m_kd, s.IsNotFound() ? nullptr : value, &tx);
+
+  if (hide_ttl_rec || s.IsNotFound()) {
+    return HA_ERR_KEY_NOT_FOUND;
+  }
+
   return rc;
 }
 
 int Rdb_iterator_base::get(const rocksdb::Slice *key,
                            rocksdb::PinnableSlice *value, Rdb_lock_type type,
                            bool skip_ttl_check, bool skip_wait) {
-  int rc = HA_EXIT_SUCCESS;
+  m_valid = false;
   Rdb_transaction *const tx = get_tx_from_thd(m_thd);
   rocksdb::Status s;
   if (type == RDB_LOCK_NONE) {
@@ -372,20 +400,7 @@ int Rdb_iterator_base::get(const rocksdb::Slice *key,
   DBUG_EXECUTE_IF("rocksdb_return_status_corrupted",
                   { s = rocksdb::Status::Corruption(); });
 
-  if (!s.IsNotFound() && !s.ok()) {
-    return rdb_tx_set_status_error(tx, s, m_kd, m_tbl_def);
-  }
-
-  if (s.IsNotFound()) {
-    return HA_ERR_KEY_NOT_FOUND;
-  }
-
-  if (!skip_ttl_check && m_kd.has_ttl() &&
-      rdb_should_hide_ttl_rec(m_kd, *value, tx)) {
-    return HA_ERR_KEY_NOT_FOUND;
-  }
-
-  return rc;
+  return convert_get_status(*tx, s, value, skip_ttl_check);
 }
 
 Rdb_iterator_partial::Rdb_iterator_partial(THD *thd, const Rdb_key_def &kd,
@@ -397,7 +412,7 @@ Rdb_iterator_partial::Rdb_iterator_partial(THD *thd, const Rdb_key_def &kd,
       m_table(table),
       m_iterator_pk(thd, pkd, pkd, tbl_def),
       m_converter(thd, tbl_def, table, dd_table),
-      m_valid(false),
+      m_partial_valid(false),
       m_materialized(false),
       m_iterator_pk_position(Iterator_position::UNKNOWN),
       m_threshold(kd.partial_index_threshold()),
@@ -654,7 +669,7 @@ int Rdb_iterator_partial::materialize_prefix() {
     return HA_EXIT_SUCCESS;
   } else if (!s.IsNotFound()) {
     thd_proc_info(m_thd, old_proc_info);
-    return rdb_tx_set_status_error(tx, s, m_kd, m_tbl_def);
+    return rdb_tx_set_status_error(*tx, s, m_kd, m_tbl_def);
   }
 
   rocksdb::WriteOptions options;
@@ -666,7 +681,7 @@ int Rdb_iterator_partial::materialize_prefix() {
   // Write sentinel key with empty value.
   s = wb->Put(m_kd.get_cf(), cur_prefix_key, rocksdb::Slice());
   if (!s.ok()) {
-    rc = rdb_tx_set_status_error(tx, s, m_kd, m_tbl_def);
+    rc = rdb_tx_set_status_error(*tx, s, m_kd, m_tbl_def);
     rdb_tx_release_lock(tx, m_kd, cur_prefix_key, true /* force */);
     thd_proc_info(m_thd, old_proc_info);
     return rc;
@@ -708,7 +723,7 @@ int Rdb_iterator_partial::materialize_prefix() {
                 rocksdb::Slice((const char *)m_sk_tails.ptr(),
                                m_sk_tails.get_current_pos()));
     if (!s.ok()) {
-      rc = rdb_tx_set_status_error(tx, s, m_kd, m_tbl_def);
+      rc = rdb_tx_set_status_error(*tx, s, m_kd, m_tbl_def);
       goto exit;
     }
 
@@ -721,7 +736,7 @@ int Rdb_iterator_partial::materialize_prefix() {
 
   s = rdb_get_rocksdb_db()->Write(options, optimize, wb.get());
   if (!s.ok()) {
-    rc = rdb_tx_set_status_error(tx, s, m_kd, m_tbl_def);
+    rc = rdb_tx_set_status_error(*tx, s, m_kd, m_tbl_def);
     goto exit;
   }
 
@@ -963,7 +978,7 @@ int Rdb_iterator_partial::seek(enum ha_rkey_function find_flag,
     if (!m_kd.value_matches_prefix(key(), m_prefix_tuple)) {
       rc = HA_ERR_END_OF_FILE;
     } else {
-      m_valid = true;
+      m_partial_valid = true;
     }
   }
 
@@ -1001,7 +1016,7 @@ int Rdb_iterator_partial::get(const rocksdb::Slice *key,
     rc = 0;
   }
 
-  m_valid = false;
+  m_partial_valid = false;
   return rc;
 }
 
@@ -1038,7 +1053,7 @@ int Rdb_iterator_partial::next_with_direction_in_group(bool direction) {
 }
 
 int Rdb_iterator_partial::next_with_direction(bool direction) {
-  if (!m_valid) return HA_ERR_INTERNAL_ERROR;
+  if (!m_partial_valid) return HA_ERR_END_OF_FILE;
 
   int rc = next_with_direction_in_group(direction);
 
@@ -1062,23 +1077,25 @@ int Rdb_iterator_partial::next_with_direction(bool direction) {
     rc = seek_next_prefix(direction);
   }
 
+  if (rc) {
+    assert(m_partial_valid);
+    m_partial_valid = false;
+  }
   return rc;
 }
 
 int Rdb_iterator_partial::next() {
   int rc = next_with_direction(true);
-  if (rc == HA_ERR_END_OF_FILE) m_valid = false;
   return rc;
 }
 
 int Rdb_iterator_partial::prev() {
   int rc = next_with_direction(false);
-  if (rc == HA_ERR_END_OF_FILE) m_valid = false;
   return rc;
 }
 
 void Rdb_iterator_partial::reset() {
-  m_valid = false;
+  m_partial_valid = false;
   m_materialized = false;
   m_iterator_pk_position = Iterator_position::UNKNOWN;
   m_mem_root.ClearForReuse();
