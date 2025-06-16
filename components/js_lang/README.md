@@ -88,7 +88,6 @@ TODO/Future work:
 Short-term
 ----------
 
-- Handling of async JS features
 - Execution of SQL
 
 Long-term
