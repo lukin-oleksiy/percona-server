@@ -12,6 +12,4 @@ using pfs_optional_string = std::optional<pfs_string>;
 
 using pfs_ostringstream = std::ostringstream;
 
-using pfs_secure_ostringstream = std::ostringstream;
-
 #endif  // PFS_STRING_INCLUDED

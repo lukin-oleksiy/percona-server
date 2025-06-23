@@ -84,7 +84,7 @@ class Keyring_vault_curl final : public IKeyring_vault_curl {
   pfs_string get_secret_url(const pfs_string &type_of_data);
 
   char m_curl_errbuf[CURL_ERROR_SIZE];  // error from CURL
-  pfs_secure_ostringstream m_read_data_ss;
+  pfs_ostringstream m_read_data_ss;
   struct curl_slist *m_list;
 
   config::Config_pod *m_config;
