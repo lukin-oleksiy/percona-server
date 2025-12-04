@@ -29,6 +29,8 @@
 #include <mysql/components/services/defs/event_tracking_stored_program_defs.h>
 #include <mysql/components/services/defs/event_tracking_table_access_defs.h>
 
+#include <boost/date_time/c_time.hpp>
+
 #include <cassert>
 #include <chrono>
 #include <iomanip>
@@ -352,6 +354,7 @@ AuditRecordString LogRecordFormatterJson::apply(
   const auto time_now = std::chrono::system_clock::now();
   const auto timestamp = make_timestamp(time_now);
   const auto rec_id = make_record_id();
+  const auto &extra = audit_record.extended_info;
 
   /* clang-format off */
   result << "  {\n"
@@ -361,17 +364,31 @@ AuditRecordString LogRecordFormatterJson::apply(
     result << R"(    "time": )" << make_unix_timestamp(time_now) << ",\n";
   }
 
-  const auto escaped_user = make_escaped_string(&audit_record.event->user);
-  const auto escaped_host = make_escaped_string(&audit_record.event->host);
-  const auto escaped_ip = make_escaped_string(&audit_record.event->ip);
+  const auto escaped_user = make_escaped_string(extra.user);
+  const auto escaped_host = make_escaped_string(extra.host);
+  const auto escaped_ip = make_escaped_string(extra.ip);
+  const auto esc_external_user = make_escaped_string(extra.external_user);
+  const auto esc_proxy_user = make_escaped_string(extra.proxy_user);
+  const auto esc_command = make_escaped_string(extra.command);
+  const auto esc_sql_command = make_escaped_string(extra.sql_command);
+  const auto esc_query = audit_record.extended_info.digest.empty()
+                 ? make_escaped_string(extra.query)
+                 : make_escaped_string(audit_record.extended_info.digest);
 
   result << R"(    "id": )" << rec_id << ",\n"
          << R"(    "class": "general",)" << "\n"
          << R"(    "event": ")" << event_subclass_to_string(audit_record.event) << "\",\n"
          << R"(    "connection_id": )" << audit_record.event->connection_id << ",\n"
          << R"(    "account": { "user": ")" << escaped_user << R"(", "host": ")" << escaped_host << R"(" },)" << "\n"
-         << R"(    "login": { "user": ")" << escaped_user << R"(", "ip": ")" << escaped_ip << R"(", "proxy": "")" << " },\n"
-         << R"(    "general_data": { "status": )" << audit_record.event->error_code << " }"
+         << R"(    "login": { "user": ")" << escaped_user << R"(", "os": ")" << esc_external_user << R"(", "ip": ")" << escaped_ip << R"(", "proxy": ")" << esc_proxy_user << R"(" },)" << "\n"
+         << R"(    "general_data": {)" << "\n"
+         << R"(      "command": ")" << esc_command << "\",\n";
+  if (!esc_query.empty()) {
+    result << R"(      "sql_command": ")" << esc_sql_command << "\",\n"
+           << R"(      "query": ")" << esc_query << "\",\n";
+  }
+  result << R"(      "status": )" << audit_record.event->error_code
+         << "\n    }"
          << extra_attrs_to_string(audit_record.extended_info) << "\n  }";
   /* clang-format on */
 
@@ -425,6 +442,18 @@ AuditRecordString LogRecordFormatterJson::apply(
   const auto time_now = std::chrono::system_clock::now();
   const auto timestamp = make_timestamp(time_now);
   const auto rec_id = make_record_id();
+  const auto &extra = audit_record.extended_info;
+
+  const auto escaped_sql_command = make_escaped_string(extra.sql_command);
+  const auto escaped_user = make_escaped_string(extra.user);
+  const auto escaped_host = make_escaped_string(extra.host);
+  const auto escaped_ip = make_escaped_string(extra.ip);
+  const auto esc_external_user = make_escaped_string(extra.external_user);
+  const auto esc_proxy_user = make_escaped_string(extra.proxy_user);
+  const auto esc_query =
+      audit_record.extended_info.digest.empty()
+          ? make_escaped_string(extra.query)
+          : make_escaped_string(audit_record.extended_info.digest);
 
   /* clang-format off */
   result << "  {\n"
@@ -438,9 +467,13 @@ AuditRecordString LogRecordFormatterJson::apply(
          << R"(    "class": "table_access",)" << "\n"
          << R"(    "event": ")" << event_subclass_to_string(audit_record.event) << "\",\n"
          << R"(    "connection_id": )" << audit_record.event->connection_id << ",\n"
+         << R"(    "account": { "user": ")" << escaped_user << R"(", "host": ")" << escaped_host << R"(" },)" << "\n"
+         << R"(    "login": { "user": ")" << escaped_user << R"(", "os": ")" << esc_external_user << R"(", "ip": ")" << escaped_ip << R"(", "proxy": ")" << esc_proxy_user << R"(" },)" << "\n"
          << R"(    "table_access_data": {)" << "\n"
          << R"(      "db": ")" << make_escaped_string(&audit_record.event->table_database) << "\",\n"
-         << R"(      "table": ")" << make_escaped_string(&audit_record.event->table_name) << "\"}"
+         << R"(      "table": ")" << make_escaped_string(&audit_record.event->table_name) << "\",\n"
+         << R"(      "query": ")" << esc_query << "\",\n"
+         << R"(      "sql_command": ")" << escaped_sql_command << "\"\n    }"
          << extra_attrs_to_string(audit_record.extended_info) << "\n  }";
   /* clang-format on */
 
@@ -824,10 +857,16 @@ std::string LogRecordFormatterJson::make_timestamp(
         SysVars::get_debug_time_point_for_rotation());
   });
 
-  std::stringstream timestamp;
-  timestamp << std::put_time(std::localtime(&tp), "%F %T");
+  std::tm tm;
+  static constexpr std::size_t max_buffer_size{32};
+  std::string result(max_buffer_size, '\0');
 
-  return timestamp.str();
+  boost::date_time::c_time::localtime(&tp, &tm);
+  const std::size_t len =
+      std::strftime(result.data(), result.size(), "%F %T", &tm);
+  result.resize(len);
+
+  return result;
 }
 
 void LogRecordFormatterJson::apply_debug_info(
