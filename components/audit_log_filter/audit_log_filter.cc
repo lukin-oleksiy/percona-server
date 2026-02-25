@@ -568,6 +568,19 @@ int AuditLogFilter::notify_event(audit_event_class_t event_class,
 
   if (auto rec = std::get_if<AuditRecordGeneral>(&record)) {
     set_extended_info(thd, sctx, *rec);
+
+    if (SysVars::get_event_mode_type() == AuditLogEventModeType::Reduced &&
+        rec->extended_info.command == "Quit") {
+      return 0;
+    }
+  }
+
+  if (auto rec = std::get_if<AuditRecordQuery>(&record)) {
+    set_extended_info(thd, sctx, *rec);
+  }
+
+  if (auto rec = std::get_if<AuditRecordMessage>(&record)) {
+    set_extended_info(thd, sctx, *rec);
   }
 
   if (auto rec = std::get_if<AuditRecordTableAccess>(&record)) {
@@ -918,6 +931,36 @@ bool AuditLogFilter::set_extended_info(MYSQL_THD thd,
   get_security_context_option(sctx, "ip", extra.ip);
   get_security_context_option(sctx, "external_user", extra.external_user);
   get_security_context_option(sctx, "proxy_user", extra.proxy_user);
+
+  return true;
+}
+
+bool AuditLogFilter::set_extended_info(MYSQL_THD, Security_context_handle sctx,
+                                       AuditRecordQuery &record) {
+  if (!sctx) return false;
+
+  auto &extra = record.extended_info;
+
+  get_security_context_option(sctx, "user", extra.user);
+  get_security_context_option(sctx, "host", extra.host);
+  get_security_context_option(sctx, "ip", extra.ip);
+  get_security_context_option(sctx, "external_user", extra.external_user);
+  get_security_context_option(sctx, "proxy_user", extra.proxy_user);
+
+  return true;
+}
+
+bool AuditLogFilter::set_extended_info(MYSQL_THD thd, Security_context_handle,
+                                       AuditRecordMessage &record) {
+  if (!thd) return false;
+
+  auto &extra = record.extended_info;
+
+  mysql_cstring_with_length sql_command;
+  if (!mysql_service_mysql_thd_attributes->get(thd, "sql_command",
+                                               &sql_command)) {
+    extra.sql_command = {sql_command.str, sql_command.length};
+  }
 
   return true;
 }
