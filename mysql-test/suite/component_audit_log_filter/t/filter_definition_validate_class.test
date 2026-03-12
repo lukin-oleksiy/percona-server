@@ -1,6 +1,7 @@
 --source include/have_component_audit_log.inc
 --source ../inc/audit_tables_init.inc
 --source ../inc/audit_comp_install.inc
+SET GLOBAL audit_log_filter.event_mode=FULL;
 
 --disable_query_log
 call mtr.add_suppression("Component audit_log_filter reported: 'Wrong argument: incorrect rule definition");
@@ -152,6 +153,14 @@ SELECT audit_log_filter_set_filter('filter_broken_badEventArr', '{"filter": { "c
       "event": { "name": [ "status", "nonexistent" ] }
   }
 ] } }');
+
+--echo #
+--echo # Broken parse event name: rewrite flag name is not an event subclass
+SELECT audit_log_filter_set_filter('filter_broken_parseRewriteNone', '{"filter": { "class": [ { "name": "parse", "event": { "name": "rewrite_none" } } ] } }');
+
+--echo #
+--echo # Broken parse event name: rewrite flag name is not an event subclass
+SELECT audit_log_filter_set_filter('filter_broken_parseRewritePreparedStmt', '{"filter": { "class": [ { "name": "parse", "event": { "name": "rewrite_prepared_statement" } } ] } }');
 
 --echo #
 --echo # Cleanup
