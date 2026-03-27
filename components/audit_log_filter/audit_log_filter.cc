@@ -176,6 +176,11 @@ void deinit_abort_exempt_privilege() {
   }
 }
 
+bool is_stored_program_statement(MYSQL_THD thd) {
+  auto *server_thd = static_cast<THD *>(thd);
+  return server_thd != nullptr && server_thd->sp_runtime_ctx != nullptr;
+}
+
 }  // namespace
 
 AuditLogFilter *get_audit_log_filter_instance() noexcept {
@@ -640,6 +645,9 @@ int AuditLogFilter::notify_event(audit_event_class_t event_class,
             sc == EVENT_TRACKING_GENERAL_ERROR ||
             sc == EVENT_TRACKING_GENERAL_RESULT)
           return 0;
+        if (sc == EVENT_TRACKING_GENERAL_STATUS &&
+            is_stored_program_statement(thd))
+          return 0;
         break;
       }
       case audit_event_class_t::AUDIT_CONNECTION_CLASS: {
@@ -1051,7 +1059,8 @@ bool AuditLogFilter::set_extended_info(MYSQL_THD, Security_context_handle sctx,
   return true;
 }
 
-bool AuditLogFilter::set_extended_info(MYSQL_THD thd, Security_context_handle,
+bool AuditLogFilter::set_extended_info(MYSQL_THD thd,
+                                       Security_context_handle sctx,
                                        AuditRecordMessage &record) {
   if (!thd) return false;
 
@@ -1062,6 +1071,14 @@ bool AuditLogFilter::set_extended_info(MYSQL_THD thd, Security_context_handle,
                                                &sql_command)) {
     extra.sql_command = {sql_command.str, sql_command.length};
   }
+
+  if (!sctx) return false;
+
+  get_security_context_option(sctx, "user", extra.user);
+  get_security_context_option(sctx, "host", extra.host);
+  get_security_context_option(sctx, "ip", extra.ip);
+  get_security_context_option(sctx, "external_user", extra.external_user);
+  get_security_context_option(sctx, "proxy_user", extra.proxy_user);
 
   return true;
 }
