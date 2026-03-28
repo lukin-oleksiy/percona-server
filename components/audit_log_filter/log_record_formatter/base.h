@@ -60,7 +60,7 @@ using AuditRecordString = std::string;
 
 enum class AuditLogFormatType {
   New,
-  Old,
+  Jsonl,  // replaces Old format
   Json,
   FormatsCount  // This item must be last in the list
 };
