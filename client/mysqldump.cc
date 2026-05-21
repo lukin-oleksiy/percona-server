@@ -36,6 +36,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <forward_list>
+#include <list>
+#include <memory>
 #include <string>
 #include <unordered_map>
 
@@ -99,6 +101,8 @@
 
 #define MYSQL_UNIVERSAL_CLIENT_CHARSET "utf8mb4"
 
+enum class key_type_t { NONE, PRIMARY, UNIQUE, NON_UNIQUE };
+
 /* Maximum number of fields per table */
 #define MAX_FIELDS 4000
 
@@ -142,7 +146,7 @@ static bool verbose = false, opt_no_create_info = false, opt_no_data = false,
             column_statistics = false,
             opt_show_create_table_skip_secondary_engine = false,
             opt_ignore_views = false, opt_drop_masking_policies = true;
-static bool opt_order_by_primary_desc = false;
+static bool opt_order_by_primary_desc = false, opt_innodb_optimize_keys = false;
 static bool insert_pat_inited = false, debug_info_flag = false,
             debug_check_flag = false;
 static ulong opt_max_allowed_packet, opt_net_buffer_length;
@@ -261,6 +265,8 @@ bool seen_views = false;
 
 collation_unordered_set<string> *ignore_table, *include_user;
 std::forward_list<string> *exclude_user;
+
+static std::list<std::string> skipped_keys_list;
 
 static struct my_option my_long_options[] = {
     {"all-databases", 'A',
@@ -498,6 +504,11 @@ static struct my_option my_long_options[] = {
      "Use include-source-host-port instead.",
      &opt_include_source_host_port, &opt_include_source_host_port, nullptr,
      GET_BOOL, NO_ARG, 0, 0, 0, nullptr, 0, nullptr},
+    {"innodb-optimize-keys", OPT_INNODB_OPTIMIZE_KEYS,
+     "Use InnoDB fast index creation by creating secondary indexes after "
+     "dumping the data.",
+     &opt_innodb_optimize_keys, &opt_innodb_optimize_keys, nullptr, GET_BOOL,
+     NO_ARG, 0, 0, 0, nullptr, 0, nullptr},
     {"insert-ignore", OPT_INSERT_IGNORE, "Insert rows with INSERT IGNORE.",
      &opt_ignore, &opt_ignore, nullptr, GET_BOOL, NO_ARG, 0, 0, 0, nullptr, 0,
      nullptr},
@@ -3134,6 +3145,269 @@ static uint dump_routines_for_db(char *db) {
   return 0;
 }
 
+/*
+  Find the first occurrence of a quoted identifier in a given string. Returns
+  the pointer to the opening quote, and stores the pointer to the closing quote
+  to the memory location pointed to by the 'end' argument,
+
+  If no quoted identifiers are found, returns NULL (and the value pointed to by
+  'end' is undefined in this case).
+*/
+
+static const char *parse_quoted_identifier(const char *str,
+                                           const char **end) noexcept {
+  const char *from;
+
+  if (!(from = strchr(str, '`'))) return nullptr;
+
+  const char *to = from;
+
+  while ((to = strchr(to + 1, '`'))) {
+    /*
+      Double backticks represent a backtick in identifier, rather than a quote
+      character.
+    */
+    if (to[1] == '`') {
+      to++;
+      continue;
+    }
+
+    break;
+  }
+
+  if (to <= from + 1) return nullptr; /* Empty identifier */
+
+  *end = to;
+
+  return from;
+}
+
+/*
+  Parse the specified key definition string and check if the key contains an
+  AUTO_INCREMENT column as the first key part. We only check for the first key
+  part, because unlike MyISAM, InnoDB does not allow the AUTO_INCREMENT column
+  as a secondary key column, i.e. the AUTO_INCREMENT column would not be
+  considered indexed for such key specification.
+*/
+static bool contains_autoinc_column(const char *autoinc_column,
+                                    ssize_t autoinc_column_len,
+                                    const char *keydef,
+                                    key_type_t type) noexcept {
+  assert(type != key_type_t::NONE);
+
+  if (autoinc_column == nullptr) return false;
+
+  uint idnum = 0;
+
+  const char *from, *to;
+
+  /*
+    There is only 1 iteration of the following loop for type ==
+    key_type_t::PRIMARY and 2 iterations for type == key_type_t::UNIQUE /
+    key_type_t::NON_UNIQUE.
+  */
+  while ((from = parse_quoted_identifier(keydef, &to))) {
+    idnum++;
+
+    /*
+      Skip the check if it's the first identifier and we are processing a
+      secondary key.
+    */
+    if ((type == key_type_t::PRIMARY || idnum != 1) &&
+        to - from - 1 == autoinc_column_len &&
+        !strncmp(autoinc_column, from + 1, to - from - 1))
+      return true;
+
+    /*
+      Check only the first (for PRIMARY KEY) or the second (for secondary keys)
+      quoted identifier.
+    */
+    if (idnum == 1 + (type != key_type_t::PRIMARY)) break;
+
+    keydef = to + 1;
+  }
+
+  return false;
+}
+
+/*
+  Remove secondary key definitions from a given SHOW CREATE TABLE string
+  and store them into a temporary list to be used later.
+
+  SYNOPSIS
+  skip_secondary_keys()
+  create_str                SHOW CREATE TABLE output
+  has_pk                    TRUE, if the table has PRIMARY KEY
+  (or UNIQUE key on non-nullable columns)
+
+
+  DESCRIPTION
+
+  Stores all lines starting with "KEY" or "UNIQUE KEY"
+  into skipped_keys_list and removes them from the input string.
+  Ignoring FOREIGN KEYS constraints when creating the table is ok, because
+  mysqldump sets foreign_key_checks to 0 anyway.
+*/
+
+static void skip_secondary_keys(char *create_str, bool has_pk) noexcept {
+  char *last_comma = nullptr;
+  bool pk_processed = false;
+  char *autoinc_column = nullptr;
+  ssize_t autoinc_column_len = 0;
+
+  char *strend = create_str + strlen(create_str);
+
+  char *ptr = create_str;
+  while (*ptr) {
+    char *orig_ptr = ptr;
+    /* Skip leading whitespace */
+    while (*ptr && my_isspace(charset_info, *ptr)) ptr++;
+
+    /* Read the next line */
+    char *tmp;
+    for (tmp = ptr; *tmp != '\n' && *tmp != '\0'; tmp++)
+      ;
+
+    char c = *tmp;
+    *tmp = '\0'; /* so strstr() only processes the current line */
+
+    key_type_t type;
+    if (!strncmp(ptr, "UNIQUE KEY ", sizeof("UNIQUE KEY ") - 1))
+      type = key_type_t::UNIQUE;
+    else if (!strncmp(ptr, "KEY ", sizeof("KEY ") - 1))
+      type = key_type_t::NON_UNIQUE;
+    else if (!strncmp(ptr, "PRIMARY KEY ", sizeof("PRIMARY KEY ") - 1))
+      type = key_type_t::PRIMARY;
+    else
+      type = key_type_t::NONE;
+
+    const bool has_autoinc =
+        (type != key_type_t::NONE)
+            ? contains_autoinc_column(autoinc_column, autoinc_column_len, ptr,
+                                      type)
+            : false;
+
+    /* Is it a secondary index definition? */
+    if (c == '\n' && !has_autoinc &&
+        ((type == key_type_t::UNIQUE && (pk_processed || !has_pk)) ||
+         type == key_type_t::NON_UNIQUE)) {
+      char *end = tmp - 1;
+
+      /* Remove the trailing comma */
+      if (*end == ',') end--;
+      char *data =
+          my_strndup(PSI_NOT_INSTRUMENTED, ptr, end - ptr + 1, MYF(MY_FAE));
+
+      skipped_keys_list.emplace_back(data);
+
+      memmove(orig_ptr, tmp + 1, strend - tmp);
+      ptr = orig_ptr;
+      strend -= tmp + 1 - ptr;
+
+      /* Remove the comma on the previos line */
+      if (last_comma != nullptr) {
+        *last_comma = ' ';
+      }
+    } else {
+      if (last_comma != nullptr) {
+        /*
+          It's not the last line of CREATE TABLE, so we have skipped a key
+          definition. We have to restore the last removed comma.
+        */
+        *last_comma = ',';
+      }
+
+      /*
+        If we are skipping a key which indexes an AUTO_INCREMENT column, it is
+        safe to optimize all subsequent keys, i.e. we should not be checking for
+        that column anymore.
+      */
+      if (type != key_type_t::NONE && has_autoinc) {
+        assert(autoinc_column != NULL);
+
+        my_free(autoinc_column);
+        autoinc_column = NULL;
+      }
+
+      if ((has_pk && type == key_type_t::UNIQUE && !pk_processed) ||
+          type == key_type_t::PRIMARY)
+        pk_processed = true;
+
+      if (strstr(ptr, "AUTO_INCREMENT") && *ptr == '`') {
+        /*
+          The first secondary key defined on this column later cannot be
+          skipped, as CREATE TABLE would fail on import. Unless there is a
+          PRIMARY KEY and it indexes that column.
+        */
+        char *end;
+
+        for (end = ptr + 1;
+             /* Skip double backticks as they are a part of identifier */
+             *end != '\0' && (*end != '`' || end[1] == '`'); end++)
+          /* empty */;
+
+        if (*end == '`' && end > ptr + 1) {
+          assert(autoinc_column == NULL);
+
+          autoinc_column_len = end - ptr - 1;
+          autoinc_column = my_strndup(PSI_NOT_INSTRUMENTED, ptr + 1,
+                                      autoinc_column_len, MYF(MY_FAE));
+        }
+      }
+
+      *tmp = c;
+
+      if (tmp[-1] == ',') last_comma = tmp - 1;
+      ptr = (*tmp == '\0') ? tmp : tmp + 1;
+    }
+  }
+
+  my_free(autoinc_column);
+}
+
+/*
+  Check if the table has a primary key defined either explicitly or
+  implicitly (i.e. a unique key on non-nullable columns).
+
+  SYNOPSIS
+  bool has_primary_key(const char *table_name)
+
+  table_name  quoted table name
+
+  RETURNS     TRUE if the table has a primary key
+
+  DESCRIPTION
+*/
+
+static bool has_primary_key(const char *table_name) noexcept {
+  char query_buff[QUERY_LENGTH];
+  snprintf(query_buff, sizeof(query_buff),
+           "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE "
+           "TABLE_SCHEMA=DATABASE() AND TABLE_NAME='%s' AND "
+           "COLUMN_KEY='PRI'",
+           table_name);
+
+  bool has_pk = true;
+  MYSQL_RES *res = nullptr;
+  MYSQL_ROW row;
+  if (mysql_query(mysql, query_buff) || !(res = mysql_store_result(mysql)) ||
+      !(row = mysql_fetch_row(res))) {
+    fprintf(stderr,
+            "%s: Warning: Couldn't determine if table %s has a "
+            "primary key (%s). "
+            "--innodb-optimize-keys may work inefficiently.\n",
+            my_progname, table_name, mysql_error(mysql));
+    goto cleanup;
+  }
+
+  has_pk = atoi(row[0]) > 0;
+
+cleanup:
+  if (res) mysql_free_result(res);
+
+  return has_pk;
+}
+
 /* general_log or slow_log tables under mysql database */
 static inline bool general_log_or_slow_log_tables(const char *db,
                                                   const char *table) {
@@ -3281,6 +3555,11 @@ static uint get_table_structure(const char *table, char *db, char *table_type,
 
   result_table = quote_name(table, table_buff, true);
   opt_quoted_table = quote_name(table, table_buff2, false);
+
+  const bool has_pk =
+      (opt_innodb_optimize_keys && !strcmp(table_type, "InnoDB"))
+          ? has_primary_key(table)
+          : false;
 
   if (!opt_xml && !mysql_query_with_error_report(mysql, nullptr, query_buff)) {
     /* using SHOW CREATE statement */
@@ -3441,6 +3720,9 @@ static uint get_table_structure(const char *table, char *db, char *table_type,
       }
 
       row = mysql_fetch_row(result);
+
+      if (opt_innodb_optimize_keys && !strcmp(table_type, "InnoDB"))
+        skip_secondary_keys(row[1], has_pk);
 
       is_log_table = general_log_or_slow_log_tables(db, table);
       is_replication_metadata_table = replication_metadata_tables(db, table);
@@ -4206,6 +4488,31 @@ static char *alloc_query_str(size_t size) {
 }
 
 /*
+  Dump delayed secondary index definitions when --innodb-optimize-keys is used.
+*/
+
+static void dump_skipped_keys(const char *table) {
+  if (skipped_keys_list.empty()) return;
+
+  verbose_msg("-- Dumping delayed secondary index definitions for table %s\n",
+              table);
+
+  const auto sk_list_len = skipped_keys_list.size();
+  fprintf(md_result_file, "ALTER TABLE %s%s", table,
+          (sk_list_len > 1) ? "\n" : " ");
+
+  for (uint keys = sk_list_len; keys > 0; keys--) {
+    const char *const def = skipped_keys_list.front().c_str();
+
+    fprintf(md_result_file, "%sADD %s%s", (sk_list_len > 1) ? "  " : "", def,
+            (keys > 1) ? ",\n" : ";\n");
+
+    skipped_keys_list.pop_front();
+  }
+  assert(skipped_keys_list.empty());
+}
+
+/*
 
  SYNOPSIS
   dump_table()
@@ -4256,8 +4563,12 @@ static void dump_table(char *table, char *db) {
   */
   if (replication_metadata_tables(db, table)) return;
 
+  result_table = quote_name(table, table_buff, 1);
+  opt_quoted_table = quote_name(table, table_buff2, 0);
+
   /* Check --no-data flag */
   if (opt_no_data) {
+    dump_skipped_keys(opt_quoted_table);
     verbose_msg("-- Skipping dump data for table '%s', --no-data was used\n",
                 table);
     return;
@@ -4282,9 +4593,6 @@ static void dump_table(char *table, char *db) {
                 table);
     return;
   }
-
-  result_table = quote_name(table, table_buff, true);
-  opt_quoted_table = quote_name(table, table_buff2, false);
 
   verbose_msg("-- Sending SELECT query...\n");
 
@@ -4665,6 +4973,8 @@ static void dump_table(char *table, char *db) {
       error = EX_CONSCHECK;
       goto err;
     }
+
+    dump_skipped_keys(opt_quoted_table);
 
     /* Moved enable keys to before unlock per bug 15977 */
     if (opt_disable_keys) {
