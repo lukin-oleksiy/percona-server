@@ -7180,7 +7180,7 @@ void innobase_build_v_templ(const TABLE *table, const dict_table_t *ib_table,
  index creation/drop and DMLs that requires index lookup. All table
  handle will be closed before the index creation/drop.
  @return true if index translation table built successfully */
-static bool innobase_build_index_translation(
+bool innobase_build_index_translation(
     const TABLE *table,     /*!< in: table in MySQL data
                             dictionary */
     dict_table_t *ib_table, /*!< in: table in InnoDB data
