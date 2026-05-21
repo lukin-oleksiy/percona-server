@@ -166,6 +166,9 @@ class sp_cache;
 struct Binlog_user_var_event;
 struct Log_info;
 
+extern bool opt_log_slow_admin_statements;
+extern ulong opt_log_slow_sp_statements;
+
 typedef struct user_conn USER_CONN;
 struct MYSQL_LOCK;
 
@@ -184,6 +187,41 @@ extern "C" void thd_enter_stage(void *opaque_thd,
                                 PSI_stage_info *old_stage,
                                 const char *src_function, const char *src_file,
                                 int src_line);
+enum enum_slow_query_log_use_global_control {
+  SLOG_UG_LOG_SLOW_FILTER,
+  SLOG_UG_LOG_SLOW_RATE_LIMIT,
+  SLOG_UG_LOG_SLOW_VERBOSITY,
+  SLOG_UG_LONG_QUERY_TIME,
+  SLOG_UG_MIN_EXAMINED_ROW_LIMIT,
+  SLOG_UG_ALL
+};
+enum enum_log_slow_verbosity {
+  SLOG_V_MICROTIME,
+  SLOG_V_QUERY_PLAN,
+  SLOG_V_INNODB,
+  SLOG_V_PROFILING,
+  SLOG_V_PROFILING_USE_GETRUSAGE,
+  SLOG_V_MINIMAL,
+  SLOG_V_STANDARD,
+  SLOG_V_FULL
+};
+enum enum_slow_query_log_rate_type { SLOG_RT_SESSION, SLOG_RT_QUERY };
+#define QPLAN_NONE 0
+#define QPLAN_FULL_SCAN (1 << 0)
+#define QPLAN_FULL_JOIN (1 << 1)
+#define QPLAN_TMP_TABLE (1 << 2)
+#define QPLAN_TMP_DISK (1 << 3)
+#define QPLAN_FILESORT (1 << 4)
+#define QPLAN_FILESORT_DISK (1 << 5)
+enum class enum_log_slow_filter {
+  SLOG_F_FULL_SCAN,
+  SLOG_F_FULL_JOIN,
+  SLOG_F_TMP_TABLE,
+  SLOG_F_TMP_DISK,
+  SLOG_F_FILESORT,
+  SLOG_F_FILESORT_DISK
+};
+#define SLOG_SLOW_RATE_LIMIT_MAX 1000
 
 extern "C" void thd_set_waiting_for_disk_space(void *opaque_thd,
                                                const bool waiting);
@@ -763,6 +801,24 @@ class Sub_statement_state {
   ulong client_capabilities;
   uint in_sub_stmt;
   bool enable_slow_log;
+
+  /*** Following variables used in slow_extended.patch ***/
+  ulong tmp_tables_used;
+  ulong tmp_tables_disk_used;
+  ulonglong tmp_tables_size;
+
+  bool innodb_was_used;
+  ulong innodb_io_reads;
+  ulonglong innodb_io_read;
+  ulong innodb_io_reads_wait_timer;
+  ulong innodb_lock_que_wait_timer;
+  ulong innodb_innodb_que_wait_timer;
+  ulong innodb_page_access;
+
+  ulong query_plan_flags;
+  ulong query_plan_fsort_passes;
+  /*** The variables above used in slow_extended.patch ***/
+
   SAVEPOINT *savepoints;
   enum enum_check_fields check_for_truncated_fields;
 };
@@ -1688,6 +1744,66 @@ class THD : public MDL_context_owner,
   */
   thr_lock_type insert_lock_default;
 
+  /*** Following variables used in slow_extended.patch ***/
+  /*
+    Variable bytes_send_old saves value of thd->status_var.bytes_sent
+    before query execution.
+  */
+  ulonglong bytes_sent_old;
+  /*
+    Variables tmp_tables_*** collect statistics about usage of temporary tables
+  */
+  ulong tmp_tables_used;
+  ulong tmp_tables_disk_used;
+  ulonglong tmp_tables_size;
+  /*
+    Following Variables innodb_*** (is |should be) different from
+    default values only if (innodb_was_used==true)
+  */
+  ulonglong innodb_trx_id;
+  ulong innodb_io_reads;
+  ulonglong innodb_io_read;
+  ulong innodb_io_reads_wait_timer;
+  ulong innodb_lock_que_wait_timer;
+  ulong innodb_innodb_que_wait_timer;
+  ulong innodb_page_access;
+  /*
+    Variable innodb_was_used shows used or not InnoDB engine in current query.
+  */
+  bool innodb_was_used;
+  /*
+    Variable query_plan_flags collects information about query plan entites
+    used on query execution.
+  */
+  ulong query_plan_flags;
+  /*
+    Variable query_plan_fsort_passes collects information about file sort passes
+    acquired during query execution.
+  */
+  ulong query_plan_fsort_passes;
+  /*
+    Query can generate several errors/warnings during execution
+    (see THD::handle_condition comment in sql_class.h)
+    Variable last_errno contains the last error/warning acquired during
+    query execution.
+  */
+  uint last_errno;
+  /*** The variables above used in slow_extended.patch ***/
+
+  inline void set_slow_log_for_admin_command() noexcept {
+    enable_slow_log = opt_log_slow_admin_statements &&
+                      (sp_runtime_ctx ? opt_log_slow_sp_statements : true);
+  }
+  /*** Following methods used in slow_extended.patch ***/
+  void clear_slow_extended() noexcept;
+
+ private:
+  void reset_sub_statement_state_slow_extended(
+      Sub_statement_state *backup) noexcept;
+  void restore_sub_statement_state_slow_extended(
+      const Sub_statement_state &backup) noexcept;
+  /*** The methods above used in slow_extended.patch ***/
+ public:
   /* <> 0 if we are inside of trigger or stored function. */
   uint in_sub_stmt;
 
@@ -3234,6 +3350,8 @@ class THD : public MDL_context_owner,
   bool interpret_utf8_as_utf8mb4() const {
     return (variables.sql_mode & MODE_INTERPRET_UTF8_AS_UTF8MB4);
   }
+
+  static inline ulonglong current_utime() noexcept { return my_micro_time(); }
 
   /**
    Evaluate the current time, and if it exceeds the long-query-time
@@ -5031,6 +5149,11 @@ inline bool secondary_engine_lock_tables_mode(const THD &cthd) {
           cthd.locked_tables_mode == LTM_PRELOCKED_UNDER_LOCK_TABLES);
 }
 
+/* Returns string as 'IP' for the client-side of the connection represented by
+   'client'. Does not allocate memory. May return "".
+*/
+const char *get_client_host(const THD &client);
+
 /** A short cut for thd->get_stmt_da()->set_ok_status(). */
 void my_ok(THD *thd, ulonglong affected_rows = 0, ulonglong id = 0,
            const char *message = nullptr);
@@ -5071,6 +5194,10 @@ inline bool THD::is_system_user() {
 */
 inline void THD::set_system_user(bool system_user_flag) {
   m_is_system_user.store(system_user_flag, std::memory_order_seq_cst);
+}
+
+inline ulonglong get_query_time(THD *thd) {
+  return my_micro_time() - thd->start_utime;
 }
 
 /**
