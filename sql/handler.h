@@ -955,6 +955,8 @@ enum enum_schema_tables : int {
   SCH_FIRST = 0,
   SCH_COLUMN_PRIVILEGES = SCH_FIRST,
   SCH_ENGINES,
+  SCH_CLIENT_STATS,
+  SCH_INDEX_STATS,
   SCH_GLOBAL_TEMPORARY_TABLES,
   SCH_OPEN_TABLES,
   SCH_OPTIMIZER_TRACE,
@@ -963,11 +965,14 @@ enum enum_schema_tables : int {
   SCH_PROFILES,
   SCH_SCHEMA_PRIVILEGES,
   SCH_TABLE_PRIVILEGES,
-  SCH_TEMPORARY_TABLES,
   SCH_USER_PRIVILEGES,
   SCH_TMP_TABLE_COLUMNS,
   SCH_TMP_TABLE_KEYS,
-  SCH_LAST = SCH_TMP_TABLE_KEYS
+  SCH_TABLE_STATS,
+  SCH_TEMPORARY_TABLES,
+  SCH_THREAD_STATS,
+  SCH_USER_STATS,
+  SCH_LAST = SCH_USER_STATS
 };
 
 enum ha_stat_type { HA_ENGINE_STATUS, HA_ENGINE_LOGS, HA_ENGINE_MUTEX };
@@ -6371,6 +6376,8 @@ class handler {
 
   virtual bool low_byte_first() const { return true; }
   virtual ha_checksum checksum() const { return 0; }
+  void update_global_table_stats();
+  void update_global_index_stats();
   void update_index_stats(uint current_index) {
     rows_read++;
     if (current_index < MAX_KEY)
@@ -7818,6 +7825,7 @@ class DsMrr_impl {
 handlerton *ha_default_handlerton(THD *thd);
 plugin_ref ha_default_temp_plugin(THD *thd);
 handlerton *ha_default_temp_handlerton(THD *thd);
+handlerton *ha_enforce_handlerton(THD *thd);
 /**
   Resolve handlerton plugin by name, without checking for "DEFAULT" or
   HTON_NOT_USER_SELECTABLE.

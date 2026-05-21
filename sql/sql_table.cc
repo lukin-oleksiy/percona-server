@@ -468,7 +468,7 @@ static int copy_data_between_tables(
 
 static bool prepare_blob_field(THD *thd, Create_field *sql_field,
                                bool convert_character_set);
-static bool check_engine(const char *db_name, const char *table_name,
+static bool check_engine(THD *thd, const char *db_name, const char *table_name,
                          HA_CREATE_INFO *create_info);
 
 static bool prepare_set_field(THD *thd, Create_field *sql_field);
@@ -8536,6 +8536,12 @@ bool mysql_prepare_create_table(
 
   if (!*key_info_buffer || !key_part_info) return true;  // Out of memory
 
+  alter_info->delayed_key_count = 0;
+  if (alter_info->delayed_key_list.size() > 0) {
+    alter_info->delayed_key_info =
+        static_cast<KEY *>(sql_calloc(sizeof(KEY) * (*key_count)));
+  }
+
   Mem_root_array<const KEY *> keys_to_check(thd->mem_root);
   if (keys_to_check.reserve(*key_count)) return true;  // Out of memory
 
@@ -8563,6 +8569,13 @@ bool mysql_prepare_create_table(
                       &key_part_info, keys_to_check, key_number, file,
                       &auto_increment))
         return true;
+      for (const auto &it2 : alter_info->delayed_key_list) {
+        if (it2 == key) {
+          alter_info->delayed_key_info[alter_info->delayed_key_count++] =
+              *key_info;
+          break;
+        }
+      }
       key_info++;
       key_number++;
     }
@@ -9656,7 +9669,7 @@ static bool create_table_impl(
   DBUG_PRINT("enter", ("db: '%s'  table: '%s'  tmp: %d", db, table_name,
                        internal_tmp_table));
 
-  if (check_engine(db, table_name, create_info)) return true;
+  if (check_engine(thd, db, table_name, create_info)) return true;
 
   if (is_temp_table(*create_info) &&
       create_info->secondary_engine.str != nullptr &&
@@ -15661,6 +15674,8 @@ bool prepare_fields_and_keys(THD *thd, const dd::Table *src_table, TABLE *table,
       PSI_INSTRUMENT_ME, alter_info->alter_index_visibility_list.cbegin(),
       alter_info->alter_index_visibility_list.cend());
 
+  /* List with secondary keys which should be created after copying the data */
+  Mem_root_array<const Key_spec *> delayed_key_list(thd->mem_root);
   /*
     Alter_info::alter_list is used by fill_alter_inplace_info() call as well.
     So this function works on its copy rather than original list.
@@ -15956,7 +15971,26 @@ bool prepare_fields_and_keys(THD *thd, const dd::Table *src_table, TABLE *table,
   /*
     Collect all keys which isn't in drop list. Add only those
     for which some fields exists.
+
+    We also store secondary keys in delayed_key_list to make use of
+    the InnoDB fast index creation. The following conditions must be
+    met:
+
+    - fast_index_creation is enabled for the current session
+    - expand_fast_index_creation is enabled for the current session;
+    - we are going to create an InnoDB table (this is checked later when the
+      target engine is known);
+    - the key most be a non-UNIQUE one;
+    - there are no foreign keys. This can be optimized later to exclude only
+      those keys which are a part of foreign key constraints. Currently we
+      simply disable this optimization for all keys if there are any foreign
+      key constraints in the table.
   */
+
+  const dd::Table *obj =
+      (table->s->tmp_table ? table->s->tmp_table_def : src_table);
+  bool skip_secondary = thd->variables.expand_fast_index_creation &&
+                        (obj == nullptr || obj->foreign_key_parents().empty());
 
   for (uint i = 0; i < table->s->keys; i++, key_info++) {
     const char *key_name = key_info->name;
@@ -16156,16 +16190,34 @@ bool prepare_fields_and_keys(THD *thd, const dd::Table *src_table, TABLE *table,
         If we have dropped a column associated with an index,
         this warrants a check for duplicate indexes
       */
-      new_key_list.push_back(new (thd->mem_root) Key_spec(
-          thd->mem_root, key_type, to_lex_cstring(key_name), &key_create_info,
-          (key_info->flags & HA_GENERATED_KEY), index_column_dropped,
-          key_parts));
+      Key_spec *const key = new (thd->mem_root)
+          Key_spec(thd->mem_root, key_type, to_lex_cstring(key_name),
+                   &key_create_info, (key_info->flags & HA_GENERATED_KEY),
+                   index_column_dropped, key_parts);
+      new_key_list.push_back(key);
+      if (skip_secondary && key_type & KEYTYPE_MULTIPLE) {
+        delayed_key_list.push_back(key);
+      }
     }
   }
   {
     new_key_list.reserve(new_key_list.size() + alter_info->key_list.size());
-    for (size_t i = 0; i < alter_info->key_list.size(); i++)
-      new_key_list.push_back(alter_info->key_list[i]);  // Add new keys
+    for (size_t i = 0; i < alter_info->key_list.size(); i++) {
+      Key_spec *const key = alter_info->key_list[i];
+      new_key_list.push_back(key);  // Add new keys
+      if (key->type != KEYTYPE_FOREIGN) {
+        if (skip_secondary && key->type & KEYTYPE_MULTIPLE) {
+          delayed_key_list.push_back(key);
+        }
+      } else if (skip_secondary) {
+        /*
+          We are adding a foreign key so disable the secondary keys
+          optimization.
+        */
+        skip_secondary = false;
+        delayed_key_list.clear();
+      }
+    }
   }
 
   /*
@@ -16242,6 +16294,12 @@ bool prepare_fields_and_keys(THD *thd, const dd::Table *src_table, TABLE *table,
     return true;
   }
   std::ranges::copy(new_key_list, alter_info->key_list.begin());
+  alter_info->delayed_key_list.clear();
+  if (alter_info->delayed_key_list.resize(delayed_key_list.size())) {
+    return true;
+  }
+  std::copy(delayed_key_list.cbegin(), delayed_key_list.cend(),
+            alter_info->delayed_key_list.begin());
 
   return false;
 }
@@ -17045,6 +17103,141 @@ static bool simple_rename_or_index_change(
   return error != 0 || reopen_error;
 }
 
+/*
+  Temporarily remove secondary keys previously stored in
+  alter_info->delayed_key_info.
+*/
+static bool remove_secondary_keys(THD *thd, HA_CREATE_INFO *create_info,
+                                  TABLE *table, Alter_info *alter_info,
+                                  const dd::Table *table_def,
+                                  dd::Table *altered_table_def) {
+  uint i;
+  DBUG_ENTER("remove_secondary_keys");
+  assert(alter_info->delayed_key_count > 0);
+
+  /*
+    We need to mark all fields for read and write as being done in
+    mysql_alter_table.
+  */
+  table->use_all_columns();
+
+  /*
+    Create Alter_info for the table and fill create_list with fields
+    definitions. Note that fields not changed, so we set field==orig_field.
+  */
+  Alter_info alter_info_new(thd->mem_root);
+  Field **f_ptr, *field;
+
+  for (f_ptr = table->field; (field = *f_ptr); f_ptr++) {
+    Create_field *new_field = new (thd->mem_root) Create_field(field, field);
+    alter_info_new.create_list.push_back(new_field);
+  }
+
+  /* table->key_info cannot be passed to ha_alter_info constructor,
+     because it has 1-based fieldnr in key_parts while ha_alter_info
+     expect them to be 0-based */
+  KEY *key_buf = (KEY *)thd->alloc(sizeof(KEY) * table->s->keys);
+  for (uint key_idx = 0; key_idx < table->s->keys; key_idx++) {
+    KEY *key = table->key_info + key_idx;
+    KEY_PART_INFO *key_parts_buf = (KEY_PART_INFO *)thd->alloc(
+        sizeof(KEY_PART_INFO) * key->user_defined_key_parts);
+    for (uint key_part_idx = 0; key_part_idx < key->user_defined_key_parts;
+         key_part_idx++) {
+      key_parts_buf[key_part_idx] = key->key_part[key_part_idx];
+      key_parts_buf[key_part_idx].fieldnr--;
+    }
+    key_buf[key_idx] = *key;
+    key_buf[key_idx].key_part = key_parts_buf;
+  }
+
+  Alter_inplace_info ha_alter_info(create_info, &alter_info_new, false, key_buf,
+                                   table->s->keys, thd->work_part_info);
+
+  ha_alter_info.handler_flags = Alter_inplace_info::DROP_INDEX;
+  ha_alter_info.index_drop_count = alter_info->delayed_key_count;
+
+  /* Fill index_drop_buffer with keys to drop */
+  ha_alter_info.index_drop_buffer =
+      (KEY **)thd->alloc(sizeof(KEY *) * alter_info->delayed_key_count);
+  for (i = 0; i < alter_info->delayed_key_count; i++)
+    ha_alter_info.index_drop_buffer[i] = &(alter_info->delayed_key_info[i]);
+
+  if (table->file->check_if_supported_inplace_alter(table, &ha_alter_info) ==
+      HA_ALTER_INPLACE_NOT_SUPPORTED)
+    DBUG_RETURN(true);
+
+  if (table->file->ha_prepare_inplace_alter_table(
+          table, &ha_alter_info, table_def, altered_table_def) ||
+      table->file->ha_inplace_alter_table(table, &ha_alter_info, table_def,
+                                          altered_table_def) ||
+      table->file->ha_commit_inplace_alter_table(
+          table, &ha_alter_info, true, table_def, altered_table_def)) {
+    table->file->ha_commit_inplace_alter_table(table, &ha_alter_info, false,
+                                               table_def, altered_table_def);
+    DBUG_RETURN(true);
+  }
+
+  DBUG_RETURN(false);
+}
+
+/*
+  Restore secondary keys previously removed in remove_secondary_keys.
+*/
+
+static bool restore_secondary_keys(THD *thd, HA_CREATE_INFO *create_info,
+                                   TABLE *table, Alter_info *alter_info,
+                                   const dd::Table *table_def,
+                                   dd::Table *altered_table_def) {
+  uint i;
+  DBUG_ENTER("restore_secondary_keys");
+  assert(alter_info->delayed_key_count > 0);
+
+  THD_STAGE_INFO(thd, stage_restoring_secondary_keys);
+
+  /*
+    Create Alter_info for the table and fill create_list with fields
+    definitions. Not that fields not changed, so we set field==ogrig_field.
+  */
+  Alter_info alter_info_new(thd->mem_root);
+  Field **f_ptr, *field;
+
+  for (f_ptr = table->field; (field = *f_ptr); f_ptr++) {
+    Create_field *new_field = new (thd->mem_root) Create_field(field, field);
+    alter_info_new.create_list.push_back(new_field);
+  }
+
+  Alter_inplace_info ha_alter_info(create_info, &alter_info_new, false,
+                                   alter_info->delayed_key_info, table->s->keys,
+                                   thd->work_part_info);
+
+  ha_alter_info.handler_flags = Alter_inplace_info::ADD_INDEX;
+  ha_alter_info.index_add_count = alter_info->delayed_key_count;
+
+  ha_alter_info.index_add_buffer =
+      (uint *)thd->alloc(sizeof(uint) * alter_info->delayed_key_count);
+
+  /* Fill index_add_buffer with key indexes from key_info_buffer */
+  for (i = 0; i < alter_info->delayed_key_count; i++)
+    ha_alter_info.index_add_buffer[i] = i;
+
+  if (table->file->check_if_supported_inplace_alter(table, &ha_alter_info) ==
+      HA_ALTER_INPLACE_NOT_SUPPORTED)
+    DBUG_RETURN(-1);
+
+  if (table->file->ha_prepare_inplace_alter_table(
+          table, &ha_alter_info, table_def, altered_table_def) ||
+      table->file->ha_inplace_alter_table(table, &ha_alter_info, table_def,
+                                          altered_table_def) ||
+      table->file->ha_commit_inplace_alter_table(
+          table, &ha_alter_info, true, table_def, altered_table_def)) {
+    table->file->ha_commit_inplace_alter_table(table, &ha_alter_info, false,
+                                               table_def, altered_table_def);
+    DBUG_RETURN(true);
+  }
+
+  DBUG_RETURN(false);
+}
+
 /**
   Check if we are changing the SRID specification on a geometry column that
   has a spatial index. If that is the case, reject the change since allowing
@@ -17674,7 +17867,7 @@ bool mysql_alter_table(THD *thd, const char *new_db, const char *new_name,
       create_info->db_type = table->s->db_type();
   }
 
-  if (check_engine(alter_ctx.new_db, alter_ctx.new_name, create_info))
+  if (check_engine(thd, alter_ctx.new_db, alter_ctx.new_name, create_info))
     return true;
 
   /*
@@ -18748,6 +18941,16 @@ bool mysql_alter_table(THD *thd, const char *new_db, const char *new_name,
     MERGE tables have HA_NO_COPY_ON_ALTER set.
   */
   if (!(new_table->file->ha_table_flags() & HA_NO_COPY_ON_ALTER)) {
+    /*
+      Check if we can temporarily remove secondary indexes from the table
+      before copying the data and recreate them later to utilize InnoDB fast
+      index creation.
+      TODO: is there a better way to check for InnoDB?
+    */
+    const bool optimize_keys =
+        (alter_info->delayed_key_count > 0) &&
+        !my_strcasecmp(system_charset_info, new_table->file->table_type(),
+                       "InnoDB");
     new_table->next_number_field = new_table->found_next_number_field;
     THD_STAGE_INFO(thd, stage_copy_to_tmp_table);
     DBUG_EXECUTE_IF("abort_copy_table", {
@@ -18755,10 +18958,21 @@ bool mysql_alter_table(THD *thd, const char *new_db, const char *new_name,
       goto err_new_table_cleanup;
     });
 
+    if (optimize_keys) {
+      /* ignore the error */
+      remove_secondary_keys(thd, create_info, new_table, alter_info,
+                            old_table_def, table_def);
+    }
+
     if (copy_data_between_tables(thd, thd->m_stage_progress_psi, table,
                                  new_table, alter_info->create_list, &copied,
                                  &deleted, alter_info->keys_onoff, &alter_ctx))
       goto err_new_table_cleanup;
+
+    if (optimize_keys)
+      if (restore_secondary_keys(thd, create_info, new_table, alter_info,
+                                 old_table_def, table_def))
+        goto err_new_table_cleanup;
 
     DEBUG_SYNC(thd, "alter_after_copy_table");
   } else {
@@ -19431,6 +19645,7 @@ bool mysql_trans_prepare_alter_copy_data(THD *thd) {
 bool mysql_trans_commit_alter_copy_data(THD *thd) {
   bool error = false;
   DBUG_TRACE;
+
   /*
     Ensure that ha_commit_trans() which is implicitly called by
     ha_enable_transaction() doesn't update GTID and slave info states.
@@ -19976,10 +20191,25 @@ err:
   @retval true  Engine not available/supported, error has been reported.
   @retval false Engine available/supported.
 */
-static bool check_engine(const char *db_name, const char *table_name,
+static bool check_engine(THD *thd, const char *db_name, const char *table_name,
                          HA_CREATE_INFO *create_info) {
   DBUG_TRACE;
   handlerton **new_engine = &create_info->db_type;
+  handlerton *req_engine = *new_engine;
+  handlerton *enf_engine = nullptr;
+
+  bool no_substitution = (!is_engine_substitution_allowed(thd));
+
+  if (!opt_initialize && !opt_noacl) enf_engine = ha_enforce_handlerton(thd);
+
+  if (enf_engine) {
+    if (enf_engine != *new_engine && no_substitution) {
+      const char *engine_name = ha_resolve_storage_engine_name(req_engine);
+      my_error(ER_UNKNOWN_STORAGE_ENGINE, MYF(0), engine_name, engine_name);
+      return true;
+    }
+    *new_engine = enf_engine;
+  }
 
   /*
     Check, if the given table name is system table, and if the storage engine

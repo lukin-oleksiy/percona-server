@@ -6005,12 +6005,12 @@ ST_SCHEMA_TABLE schema_tables[] = {
      fill_schema_table_privileges, nullptr, nullptr, false},
     {"USER_PRIVILEGES", user_privileges_fields_info,
      fill_schema_user_privileges, nullptr, nullptr, false},
-    {"TEMPORARY_TABLES", temporary_table_fields_info, fill_temporary_tables,
-     make_temporary_tables_old_format, nullptr, false},
     {"TMP_TABLE_COLUMNS", tmp_table_columns_fields_info, show_temporary_tables,
      make_tmp_table_columns_format, get_schema_tmp_table_columns_record, true},
     {"TMP_TABLE_KEYS", tmp_table_keys_fields_info, show_temporary_tables,
      make_old_format, get_schema_tmp_table_keys_record, true},
+    {"TEMPORARY_TABLES", temporary_table_fields_info, fill_temporary_tables,
+     make_temporary_tables_old_format, nullptr, false},
     {nullptr, nullptr, nullptr, nullptr, nullptr, false}};
 
 int initialize_schema_table(st_plugin_int *plugin) {

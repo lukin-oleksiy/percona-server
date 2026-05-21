@@ -356,6 +356,9 @@ struct System_variables {
   char *track_sysvars_ptr;
   bool session_track_schema;
   bool session_track_state_change;
+
+  bool expand_fast_index_creation;
+
   ulong session_track_transaction_info;
 
   /*
