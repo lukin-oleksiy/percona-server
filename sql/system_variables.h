@@ -343,6 +343,21 @@ struct System_variables {
   bool sysdate_is_now;
   bool binlog_rows_query_log_events;
 
+#ifndef NDEBUG
+  ulonglong query_exec_time;
+  double query_exec_time_double;
+#endif
+  ulong log_slow_rate_limit;
+  ulonglong log_slow_filter;
+  ulonglong log_slow_verbosity;
+
+  ulong innodb_io_reads;
+  ulonglong innodb_io_read;
+  ulong innodb_io_reads_wait_timer;
+  ulong innodb_lock_que_wait_timer;
+  ulong innodb_innodb_que_wait_timer;
+  ulong innodb_page_access;
+
   double long_query_time_double;
 
   bool pseudo_replica_mode;

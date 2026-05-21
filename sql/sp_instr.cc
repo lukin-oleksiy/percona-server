@@ -47,6 +47,7 @@
 #include "sql/auth/auth_acls.h"
 #include "sql/auth/auth_common.h"  // check_table_access
 #include "sql/binlog.h"            // mysql_bin_log
+#include "sql/debug_sync.h"
 #include "sql/enum_query_type.h"
 #include "sql/error_handler.h"  // Strict_error_handler
 #include "sql/field.h"
@@ -63,7 +64,8 @@
 #include "sql/sp_head.h"      // sp_head
 #include "sql/sp_pcontext.h"  // sp_pcontext
 #include "sql/sp_rcontext.h"  // sp_rcontext
-#include "sql/sql_base.h"     // open_temporary_tables
+#include "sql/sql_audit.h"
+#include "sql/sql_base.h"  // open_temporary_tables
 #include "sql/sql_const.h"
 #include "sql/sql_digest_stream.h"
 #include "sql/sql_parse.h"    // parse_sql
@@ -1046,7 +1048,13 @@ bool sp_instr_stmt::execute(THD *thd, uint *nextp) {
     thd->send_statement_status();
   }
 
-  if (!rc && unlikely(log_slow_applicable(thd))) {
+  const std::string &cn = Command_names::str_notranslate(COM_QUERY);
+  mysql_event_tracking_general_notify(
+      thd, AUDIT_EVENT(MYSQL_AUDIT_GENERAL_STATUS),
+      thd->get_stmt_da()->is_error() ? thd->get_stmt_da()->mysql_errno() : 0,
+      cn.c_str(), cn.length());
+
+  if (!rc && unlikely(log_slow_applicable(thd, get_command()))) {
     /*
       We actually need to write the slow log. Check whether we already
       called subst_spvars() above, otherwise, do it now.  In the highly

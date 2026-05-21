@@ -1304,6 +1304,7 @@ bool relay_log_recovery;
 bool opt_allow_suspicious_udfs;
 const char *opt_secure_file_priv;
 bool opt_log_slow_admin_statements = false;
+ulong opt_log_slow_sp_statements = 0;
 bool opt_log_slow_replica_statements = false;
 bool lower_case_file_system = false;
 bool opt_large_pages = false;
@@ -1312,6 +1313,8 @@ bool opt_myisam_use_mmap = false;
 std::atomic<bool> offline_mode;
 uint opt_large_page_size = 0;
 uint default_password_lifetime = 0;
+ulonglong opt_slow_query_log_use_global_control = 0;
+ulong opt_slow_query_log_rate_type = 0;
 bool password_require_current = false;
 std::atomic<bool> partial_revokes;
 bool opt_partial_revokes;  // Initialized through Sys_var
@@ -13493,6 +13496,10 @@ static int get_options(int *argc_ptr, char ***argv_ptr) {
 
   global_system_variables.long_query_time =
       (ulonglong)(global_system_variables.long_query_time_double * 1e6);
+
+  init_log_slow_verbosity();
+  init_slow_query_log_use_global_control();
+  init_log_slow_sp_statements();
 
   if (opt_short_log_format) opt_specialflag |= SPECIAL_SHORT_LOG_FORMAT;
 
