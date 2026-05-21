@@ -391,6 +391,8 @@ page_size_t univ_page_size(0, 0, false);
 the checkpoints. */
 bool srv_adaptive_flushing = true;
 
+ulint srv_show_locks_held = 10;
+
 /* Allow IO bursts at the checkpoints ignoring io_capacity setting. */
 bool srv_flush_sync = true;
 
@@ -1560,6 +1562,7 @@ void srv_export_innodb_status(void) {
   ulint LRU_len;
   ulint free_len;
   ulint flush_list_len;
+  ulint i;
 
   buf_get_total_stat(&stat);
   buf_get_total_list_len(&LRU_len, &free_len, &flush_list_len);
@@ -1579,6 +1582,10 @@ void srv_export_innodb_status(void) {
   // on failure
   ut_ad(export_vars.innodb_data_pending_fsyncs <=
         std::numeric_limits<ulint>::max() - 1000);
+
+  export_vars.innodb_adaptive_hash_hash_searches = btr_cur_n_sea;
+  export_vars.innodb_adaptive_hash_non_hash_searches = btr_cur_n_non_sea;
+  export_vars.innodb_background_log_sync = srv_log_writes_and_flush;
 
   export_vars.innodb_data_fsyncs = os_n_fsyncs;
 
@@ -1608,6 +1615,9 @@ void srv_export_innodb_status(void) {
 
   export_vars.innodb_buffer_pool_read_ahead_evicted = stat.n_ra_pages_evicted;
 
+  export_vars.innodb_buffer_pool_pages_LRU_flushed =
+      stat.buf_lru_flush_page_count;
+
   export_vars.innodb_buffer_pool_pages_data = LRU_len;
 
   export_vars.innodb_buffer_pool_bytes_data =
@@ -1630,6 +1640,47 @@ void srv_export_innodb_status(void) {
 
   export_vars.innodb_buffer_pool_resize_status_progress =
       buf_pool_resize_status_progress.load();
+
+  export_vars.innodb_buffer_pool_pages_made_young = stat.n_pages_made_young;
+  export_vars.innodb_buffer_pool_pages_made_not_young =
+      stat.n_pages_not_made_young;
+  export_vars.innodb_buffer_pool_pages_old = 0;
+  for (i = 0; i < srv_buf_pool_instances; i++) {
+    buf_pool_t *buf_pool = buf_pool_from_array(i);
+    export_vars.innodb_buffer_pool_pages_old += buf_pool->LRU_old_len;
+  }
+  if (!srv_read_only_mode) {
+    export_vars.innodb_checkpoint_age =
+        (log_get_lsn(*log_sys) - log_sys->last_checkpoint_lsn);
+
+    log_limits_mutex_enter(*log_sys);
+    export_vars.innodb_checkpoint_max_age = log_free_check_capacity(*log_sys);
+    log_limits_mutex_exit(*log_sys);
+  } else {
+    export_vars.innodb_checkpoint_age = 0;
+    export_vars.innodb_checkpoint_max_age = 0;
+  }
+
+  ibuf_export_ibuf_status(&export_vars.innodb_ibuf_free_list,
+                          &export_vars.innodb_ibuf_segment_size);
+  export_vars.innodb_lsn_current = log_get_lsn(*log_sys);
+  export_vars.innodb_lsn_flushed = log_sys->flushed_to_disk_lsn;
+  export_vars.innodb_lsn_last_checkpoint = log_sys->last_checkpoint_lsn;
+  export_vars.innodb_master_thread_active_loops = srv_main_active_loops;
+  export_vars.innodb_master_thread_idle_loops = srv_main_idle_loops;
+  export_vars.innodb_max_trx_id = trx_sys_get_next_trx_id_or_no();
+
+  mutex_enter(&trx_sys->mutex);
+  auto *const oldest_view_for_low_limit_trx_id =
+      trx_sys->mvcc->get_oldest_view_stats();
+  export_vars.innodb_oldest_view_low_limit_trx_id =
+      oldest_view_for_low_limit_trx_id
+          ? oldest_view_for_low_limit_trx_id->low_limit_id()
+          : 0;
+  mutex_exit(&trx_sys->mutex);
+
+  export_vars.innodb_purge_trx_id = purge_sys->limit.trx_no;
+  export_vars.innodb_purge_undo_no = purge_sys->limit.undo_no;
 
   export_vars.innodb_page_size = UNIV_PAGE_SIZE;
 
