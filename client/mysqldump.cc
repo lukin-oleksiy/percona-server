@@ -146,7 +146,8 @@ static bool verbose = false, opt_no_create_info = false, opt_no_data = false,
             column_statistics = false,
             opt_show_create_table_skip_secondary_engine = false,
             opt_ignore_views = false, opt_drop_masking_policies = true;
-static bool opt_order_by_primary_desc = false, opt_innodb_optimize_keys = false;
+static bool opt_order_by_primary_desc = false, opt_lock_for_backup = false,
+            opt_innodb_optimize_keys = false;
 static bool insert_pat_inited = false, debug_info_flag = false,
             debug_check_flag = false;
 static ulong opt_max_allowed_packet, opt_net_buffer_length;
@@ -522,6 +523,13 @@ static struct my_option my_long_options[] = {
      "is achieved by taking a global read lock for the duration of the whole "
      "dump. Automatically turns --single-transaction and --lock-tables off.",
      &opt_lock_all_tables, &opt_lock_all_tables, nullptr, GET_BOOL, NO_ARG, 0,
+     0, 0, nullptr, 0, nullptr},
+    {"lock-for-backup", OPT_LOCK_FOR_BACKUP,
+     "Use lightweight metadata locks "
+     "to block updates to non-transactional tables and DDL to all tables. "
+     "This works only with --single-transaction, otherwise this option is "
+     "automatically converted to --lock-all-tables.",
+     &opt_lock_for_backup, &opt_lock_for_backup, nullptr, GET_BOOL, NO_ARG, 0,
      0, 0, nullptr, 0, nullptr},
     {"lock-tables", 'l', "Lock all tables for read.", &lock_tables,
      &lock_tables, nullptr, GET_BOOL, NO_ARG, 1, 0, 0, nullptr, 0, nullptr},
@@ -1359,6 +1367,23 @@ static int get_options(int *argc, char ***argv) {
     fprintf(stderr, "%s: You must use option --tab with --fields-...\n",
             my_progname);
     return (EX_USAGE);
+  }
+
+  if (opt_lock_for_backup && opt_lock_all_tables) {
+    fprintf(stderr,
+            "%s: You can't use --lock-for-backup and "
+            "--lock-all-tables at the same time.\n",
+            my_progname);
+    return (EX_USAGE);
+  }
+
+  /*
+    Convert --lock-for-backup to --lock-all-tables if --single-transaction is
+    not specified.
+  */
+  if (!opt_single_transaction && opt_lock_for_backup) {
+    opt_lock_all_tables = true;
+    opt_lock_for_backup = false;
   }
 
   /* We don't delete source logs if replica data option */
@@ -6151,6 +6176,19 @@ static int do_flush_tables_read_lock(MYSQL *mysql_con) {
           mysql_con, nullptr, "FLUSH /*!40101 LOCAL */ TABLES WITH READ LOCK"));
 }
 
+/**
+   Execute LOCK TABLES FOR BACKUP if supported by the server.
+
+   @note If LOCK TABLES FOR BACKUP is not supported by the server, then nothing
+   is done and no error condition is returned.
+
+   @returns  whether there was an error or not
+*/
+
+static int do_lock_tables_for_backup(MYSQL *mysql_con) noexcept {
+  return mysql_query_with_error_report(mysql_con, 0, "LOCK TABLES FOR BACKUP");
+}
+
 static int do_unlock_tables(MYSQL *mysql_con) {
   return mysql_query_with_error_report(mysql_con, nullptr, "UNLOCK TABLES");
 }
@@ -6709,19 +6747,6 @@ static bool process_set_gtid_purged(MYSQL *mysql_con, bool is_gtid_enabled) {
               "--all-databases --triggers --routines --events. \n");
     }
 
-    if (!opt_single_transaction && !opt_lock_all_tables && !opt_source_data) {
-      fprintf(stderr,
-              "Warning: A dump from a server that has GTIDs "
-              "enabled will by default include the GTIDs "
-              "of all transactions, even those that were "
-              "executed during its extraction and might "
-              "not be represented in the dumped data. "
-              "This might result in an inconsistent data dump. \n"
-              "In order to ensure a consistent backup of the "
-              "database, pass --single-transaction or "
-              "--lock-all-tables or --source-data. \n");
-    }
-
     set_session_binlog(false);
     if (add_set_gtid_purged(mysql_con)) {
       return true;
@@ -7167,6 +7192,31 @@ static bool has_session_variables_like(MYSQL *mysql_con,
   return has_var;
 }
 
+/**
+   Check if the server supports LOCK TABLES FOR BACKUP.
+
+   @returns  TRUE if there is support, FALSE otherwise.
+*/
+
+static bool server_supports_backup_locks(void) noexcept {
+  MYSQL_RES *res;
+  if (mysql_query_with_error_report(mysql, &res,
+                                    "SHOW VARIABLES LIKE 'have_backup_locks'"))
+    return false;
+
+  MYSQL_ROW row;
+  if ((row = mysql_fetch_row(res)) == nullptr) {
+    mysql_free_result(res);
+    return false;
+  }
+
+  const bool rc = mysql_num_fields(res) > 1 && !strcmp(row[1], "YES");
+
+  mysql_free_result(res);
+
+  return rc;
+}
+
 int main(int argc, char **argv) {
   bool server_with_gtids_and_opt_purge_not_off = false;
   bool server_has_gtid_enabled = false;
@@ -7204,6 +7254,15 @@ int main(int argc, char **argv) {
 
   if (!path) write_header(md_result_file, *argv);
 
+  if (opt_lock_for_backup && !server_supports_backup_locks()) {
+    fprintf(stderr,
+            "%s: Error: --lock-for-backup was specified with "
+            "--single-transaction, but the server does not support "
+            "LOCK TABLES FOR BACKUP.\n",
+            my_progname);
+    goto err;
+  }
+
   opt_server_version = mysql_get_server_version(mysql);
 
   if (opt_output_as_version_mode == Output_as_version_mode::SERVER) {
@@ -7225,10 +7284,11 @@ int main(int argc, char **argv) {
       (server_has_gtid_enabled &&
        (opt_set_gtid_purged_mode != SET_GTID_PURGED_OFF));
 
-  if ((opt_lock_all_tables || opt_source_data ||
-       (opt_single_transaction &&
-        (flush_logs || server_with_gtids_and_opt_purge_not_off))) &&
-      do_flush_tables_read_lock(mysql))
+  if (opt_lock_all_tables || opt_source_data ||
+      (opt_single_transaction &&
+       (flush_logs || server_with_gtids_and_opt_purge_not_off))) {
+    if (do_flush_tables_read_lock(mysql)) goto err;
+  } else if (opt_lock_for_backup && do_lock_tables_for_backup(mysql))
     goto err;
 
   /*
@@ -7278,7 +7338,7 @@ int main(int argc, char **argv) {
 
   if (opt_source_data && do_show_binary_log_status(mysql)) goto err;
   if (opt_replica_data && do_show_replica_status(mysql)) goto err;
-  if (opt_single_transaction &&
+  if (opt_single_transaction && (!opt_lock_for_backup || opt_source_data) &&
       do_unlock_tables(mysql)) /* unlock but no commit! */
     goto err;
 
