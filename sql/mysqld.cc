@@ -12505,6 +12505,10 @@ static int mysql_init_variables() {
   shared_memory_base_name = default_shared_memory_base_name;
 #endif
 
+  have_backup_locks = SHOW_OPTION_YES;
+  have_backup_safe_binlog_info = SHOW_OPTION_YES;
+  have_snapshot_cloning = SHOW_OPTION_YES;
+
   return 0;
 }
 

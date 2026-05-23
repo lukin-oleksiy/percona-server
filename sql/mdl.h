@@ -419,6 +419,7 @@ struct MDL_key {
     FOREIGN_KEY,
     CHECK_CONSTRAINT,
     LIBRARY,
+    BACKUP_TABLES, /* Percona LOCK TABLES FOR BACKUP */
     /* This should be the last ! */
     NAMESPACE_END
   };
