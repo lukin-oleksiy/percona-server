@@ -1593,6 +1593,8 @@ SHOW_COMP_OPTION have_compress;
 SHOW_COMP_OPTION have_profiling;
 SHOW_COMP_OPTION have_statement_timeout = SHOW_OPTION_DISABLED;
 
+char *enforce_storage_engine = nullptr;
+
 /* Thread specific variables */
 
 thread_local MEM_ROOT **THR_MALLOC = nullptr;
