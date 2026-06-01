@@ -5889,7 +5889,7 @@ class handler {
 
   virtual bool is_ignorable_error(int error);
   [[nodiscard]] virtual bool continue_partition_copying_on_error(
-      int error MY_ATTRIBUTE((unused))) {
+      int error [[maybe_unused]]) {
     return false;
   }
 
