@@ -2200,6 +2200,8 @@ int ha_rollback_trans(THD *thd, bool all) {
   }
 #endif
 
+  thd->diff_rollback_trans++;
+
   /* Always cleanup. Even if nht==0. There may be savepoints. */
   if (is_real_trans) {
     trn_ctx->cleanup();
@@ -2393,6 +2395,8 @@ int ha_rollback_to_savepoint(THD *thd, SAVEPOINT *sv) {
   if (thd->m_transaction_psi != nullptr)
     MYSQL_INC_TRANSACTION_ROLLBACK_TO_SAVEPOINT(thd->m_transaction_psi, 1);
 #endif
+
+  thd->diff_rollback_trans++;
 
   return error;
 }
@@ -2999,6 +3003,11 @@ int handler::ha_open(TABLE *table_arg, const char *name, int mode,
     cached_table_flags = table_flags();
   }
 
+  if (unlikely(opt_userstat)) {
+    rows_read = rows_changed = 0;
+    memset(index_rows_read, 0, sizeof(index_rows_read));
+  }
+
   return error;
 }
 
@@ -3269,6 +3278,10 @@ int handler::ha_sample_next(void *scan_ctx, uchar *buf) {
     m_update_generated_read_fields = false;
   }
   table->set_row_status_from_handler(result);
+
+  if (likely(!result)) {
+    update_index_stats(active_index);
+  }
 
   return result;
 }
@@ -5450,6 +5463,76 @@ int handler::index_next_same(uchar *buf, const uchar *key, uint keylen) {
     }
   }
   return error;
+}
+
+// Updates the global table stats with the TABLE this handler represents.
+void handler::update_global_table_stats() {
+  if (!rows_read && !rows_changed) return;  // Nothing to update.
+  // table_cache_key is db_name + '\0' + table_name + '\0'.
+  if (!table->s || !table->s->table_cache_key.str || !table->s->table_name.str)
+    return;
+
+  // [db] + '.' + [table]
+  std::string key{table->s->table_cache_key.str};
+  key.append(1, '.');
+  key.append(table->s->table_name.str);
+  key.shrink_to_fit();
+
+  const ulonglong rows_changed_x_indexes =
+      rows_changed * (table->s->keys ? table->s->keys : 1);
+
+  mysql_mutex_lock(&LOCK_global_table_stats);
+  // Gets the global table stats, creating one if necessary.
+  const auto &it = global_table_stats->find(key);
+  if (it == global_table_stats->cend()) {
+    global_table_stats->emplace(
+        std::piecewise_construct, std::forward_as_tuple(key),
+        std::forward_as_tuple(static_cast<int>(ht->db_type), rows_read,
+                              rows_changed, rows_changed_x_indexes));
+  } else {
+    TABLE_STATS *const table_stats = &it->second;
+    table_stats->rows_read += rows_read;
+    table_stats->rows_changed += rows_changed;
+    table_stats->rows_changed_x_indexes += rows_changed_x_indexes;
+  }
+  mysql_mutex_unlock(&LOCK_global_table_stats);
+  ha_thd()->diff_total_read_rows += rows_read;
+  rows_read = rows_changed = 0;
+}
+
+// Updates the global index stats with this handler's accumulated index reads.
+void handler::update_global_index_stats() {
+  // table_cache_key is db_name + '\0' + table_name + '\0'.
+  if (!table || !table->s || !table->s->table_cache_key.str ||
+      !table->s->table_name.str)
+    return;
+
+  for (uint x = 0; x < table->s->keys; ++x) {
+    if (index_rows_read[x]) {
+      // Rows were read using this index.
+      KEY *key_info = &table->key_info[x];
+
+      if (!key_info->name) continue;
+
+      // [db] + '.' + [table] + '.' + [index]
+      std::string key{table->s->table_cache_key.str};
+      key.append(1, '.');
+      key.append(table->s->table_name.str);
+      key.append(1, '.');
+      key.append(key_info->name);
+      key.shrink_to_fit();
+
+      mysql_mutex_lock(&LOCK_global_index_stats);
+      const auto &it = global_index_stats->find(key);
+      if (it == global_index_stats->cend()) {
+        global_index_stats->emplace(key, index_rows_read[x]);
+      } else {
+        it->second += index_rows_read[x];
+      }
+      mysql_mutex_unlock(&LOCK_global_index_stats);
+      index_rows_read[x] = 0;
+    }
+  }
 }
 
 /****************************************************************************
@@ -8398,6 +8481,7 @@ int handler::ha_delete_row(const uchar *buf) {
   if (unlikely(error)) return error;
   if (unlikely((error = binlog_log_row(table, buf, nullptr, log_func))))
     return error;
+  rows_changed++;
   return 0;
 }
 

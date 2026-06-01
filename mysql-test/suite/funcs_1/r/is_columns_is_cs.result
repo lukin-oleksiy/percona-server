@@ -642,6 +642,28 @@ NULL	information_schema	CHARACTER_SETS	MAXLEN	int	NULL	NULL	NULL	NULL	int unsign
 3.0000	information_schema	CHECK_CONSTRAINTS	CONSTRAINT_SCHEMA	varchar	64	192	utf8mb3	utf8mb3_bin	varchar(64)
 3.0000	information_schema	CHECK_CONSTRAINTS	CONSTRAINT_NAME	varchar	64	192	utf8mb3	utf8mb3_bin	varchar(64)
 1.0000	information_schema	CHECK_CONSTRAINTS	CHECK_CLAUSE	longtext	4294967295	4294967295	utf8mb3	utf8mb3_bin	longtext
+3.0000	information_schema	CLIENT_STATISTICS	CLIENT	varchar	64	192	utf8mb3	utf8mb3_general_ci	varchar(64)
+NULL	information_schema	CLIENT_STATISTICS	TOTAL_CONNECTIONS	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	CLIENT_STATISTICS	CONCURRENT_CONNECTIONS	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	CLIENT_STATISTICS	CONNECTED_TIME	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	CLIENT_STATISTICS	BUSY_TIME	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	CLIENT_STATISTICS	CPU_TIME	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	CLIENT_STATISTICS	BYTES_RECEIVED	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	CLIENT_STATISTICS	BYTES_SENT	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	CLIENT_STATISTICS	BINLOG_BYTES_WRITTEN	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	CLIENT_STATISTICS	ROWS_FETCHED	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	CLIENT_STATISTICS	ROWS_UPDATED	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	CLIENT_STATISTICS	TABLE_ROWS_READ	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	CLIENT_STATISTICS	SELECT_COMMANDS	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	CLIENT_STATISTICS	UPDATE_COMMANDS	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	CLIENT_STATISTICS	OTHER_COMMANDS	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	CLIENT_STATISTICS	COMMIT_TRANSACTIONS	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	CLIENT_STATISTICS	ROLLBACK_TRANSACTIONS	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	CLIENT_STATISTICS	DENIED_CONNECTIONS	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	CLIENT_STATISTICS	LOST_CONNECTIONS	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	CLIENT_STATISTICS	ACCESS_DENIED	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	CLIENT_STATISTICS	EMPTY_QUERIES	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	CLIENT_STATISTICS	TOTAL_SSL_CONNECTIONS	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
 3.0000	information_schema	COLLATIONS	COLLATION_NAME	varchar	64	192	utf8mb3	utf8mb3_general_ci	varchar(64)
 3.0000	information_schema	COLLATIONS	CHARACTER_SET_NAME	varchar	64	192	utf8mb3	utf8mb3_general_ci	varchar(64)
 NULL	information_schema	COLLATIONS	ID	bigint	NULL	NULL	NULL	NULL	bigint unsigned
@@ -762,6 +784,21 @@ NULL	information_schema	FILES	CHECK_TIME	varbinary	0	0	NULL	NULL	varbinary(0)
 NULL	information_schema	FILES	CHECKSUM	varbinary	0	0	NULL	NULL	varbinary(0)
 3.0000	information_schema	FILES	STATUS	varchar	256	768	utf8mb3	utf8mb3_general_ci	varchar(256)
 3.0000	information_schema	FILES	EXTRA	varchar	256	768	utf8mb3	utf8mb3_general_ci	varchar(256)
+NULL	information_schema	GLOBAL_TEMPORARY_TABLES	SESSION_ID	bigint	NULL	NULL	NULL	NULL	bigint
+3.0476	information_schema	GLOBAL_TEMPORARY_TABLES	TABLE_SCHEMA	varchar	21	64	utf8mb3	utf8mb3_general_ci	varchar(64)
+3.0476	information_schema	GLOBAL_TEMPORARY_TABLES	TABLE_NAME	varchar	21	64	utf8mb3	utf8mb3_general_ci	varchar(64)
+3.0476	information_schema	GLOBAL_TEMPORARY_TABLES	ENGINE	varchar	21	64	utf8mb3	utf8mb3_general_ci	varchar(64)
+3.0118	information_schema	GLOBAL_TEMPORARY_TABLES	NAME	varchar	170	512	utf8mb3	utf8mb3_general_ci	varchar(512)
+NULL	information_schema	GLOBAL_TEMPORARY_TABLES	TABLE_ROWS	bigint	NULL	NULL	NULL	NULL	bigint unsigned
+NULL	information_schema	GLOBAL_TEMPORARY_TABLES	AVG_ROW_LENGTH	bigint	NULL	NULL	NULL	NULL	bigint unsigned
+NULL	information_schema	GLOBAL_TEMPORARY_TABLES	DATA_LENGTH	bigint	NULL	NULL	NULL	NULL	bigint unsigned
+NULL	information_schema	GLOBAL_TEMPORARY_TABLES	INDEX_LENGTH	bigint	NULL	NULL	NULL	NULL	bigint unsigned
+NULL	information_schema	GLOBAL_TEMPORARY_TABLES	CREATE_TIME	datetime	NULL	NULL	NULL	NULL	datetime
+NULL	information_schema	GLOBAL_TEMPORARY_TABLES	UPDATE_TIME	datetime	NULL	NULL	NULL	NULL	datetime
+3.0000	information_schema	INDEX_STATISTICS	TABLE_SCHEMA	varchar	64	192	utf8mb3	utf8mb3_general_ci	varchar(192)
+3.0000	information_schema	INDEX_STATISTICS	TABLE_NAME	varchar	64	192	utf8mb3	utf8mb3_general_ci	varchar(192)
+3.0000	information_schema	INDEX_STATISTICS	INDEX_NAME	varchar	64	192	utf8mb3	utf8mb3_general_ci	varchar(192)
+NULL	information_schema	INDEX_STATISTICS	ROWS_READ	bigint	NULL	NULL	NULL	NULL	bigint unsigned
 3.0000	information_schema	JSON_DUALITY_VIEWS	TABLE_CATALOG	varchar	64	192	utf8mb3	utf8mb3_bin	varchar(64)
 3.0000	information_schema	JSON_DUALITY_VIEWS	TABLE_SCHEMA	varchar	64	192	utf8mb3	utf8mb3_bin	varchar(64)
 3.0000	information_schema	JSON_DUALITY_VIEWS	TABLE_NAME	varchar	64	192	utf8mb3	utf8mb3_bin	varchar(64)
@@ -907,6 +944,9 @@ NULL	information_schema	PROCESSLIST	ID	bigint	NULL	NULL	NULL	NULL	bigint unsigne
 NULL	information_schema	PROCESSLIST	TIME	int	NULL	NULL	NULL	NULL	int
 3.0476	information_schema	PROCESSLIST	STATE	varchar	21	64	utf8mb3	utf8mb3_general_ci	varchar(64)
 3.0000	information_schema	PROCESSLIST	INFO	varchar	21845	65535	utf8mb3	utf8mb3_general_ci	varchar(65535)
+NULL	information_schema	PROCESSLIST	TIME_MS	bigint	NULL	NULL	NULL	NULL	bigint
+NULL	information_schema	PROCESSLIST	ROWS_SENT	bigint	NULL	NULL	NULL	NULL	bigint unsigned
+NULL	information_schema	PROCESSLIST	ROWS_EXAMINED	bigint	NULL	NULL	NULL	NULL	bigint unsigned
 3.0000	information_schema	REFERENTIAL_CONSTRAINTS	CONSTRAINT_CATALOG	varchar	64	192	utf8mb3	utf8mb3_bin	varchar(64)
 3.0000	information_schema	REFERENTIAL_CONSTRAINTS	CONSTRAINT_SCHEMA	varchar	64	192	utf8mb3	utf8mb3_bin	varchar(64)
 3.0000	information_schema	REFERENTIAL_CONSTRAINTS	CONSTRAINT_NAME	varchar	64	192	utf8mb3	utf8mb3_bin	varchar(64)
@@ -1089,6 +1129,44 @@ NULL	information_schema	TABLE_CONSTRAINTS_EXTENSIONS	SECONDARY_ENGINE_ATTRIBUTE	
 3.0476	information_schema	TABLE_PRIVILEGES	TABLE_NAME	varchar	21	64	utf8mb3	utf8mb3_general_ci	varchar(64)
 3.0476	information_schema	TABLE_PRIVILEGES	PRIVILEGE_TYPE	varchar	21	64	utf8mb3	utf8mb3_general_ci	varchar(64)
 3.0000	information_schema	TABLE_PRIVILEGES	IS_GRANTABLE	varchar	1	3	utf8mb3	utf8mb3_general_ci	varchar(3)
+3.0000	information_schema	TABLE_STATISTICS	TABLE_SCHEMA	varchar	192	576	utf8mb3	utf8mb3_general_ci	varchar(192)
+3.0000	information_schema	TABLE_STATISTICS	TABLE_NAME	varchar	192	576	utf8mb3	utf8mb3_general_ci	varchar(192)
+NULL	information_schema	TABLE_STATISTICS	ROWS_READ	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	TABLE_STATISTICS	ROWS_CHANGED	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	TABLE_STATISTICS	ROWS_CHANGED_X_INDEXES	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	TEMPORARY_TABLES	SESSION_ID	bigint	NULL	NULL	NULL	NULL	bigint(4)
+3.0000	information_schema	TEMPORARY_TABLES	TABLE_SCHEMA	varchar	64	192	utf8mb3	utf8mb3_general_ci	varchar(64)
+3.0000	information_schema	TEMPORARY_TABLES	TABLE_NAME	varchar	64	192	utf8mb3	utf8mb3_general_ci	varchar(64)
+3.0000	information_schema	TEMPORARY_TABLES	ENGINE	varchar	64	192	utf8mb3	utf8mb3_general_ci	varchar(64)
+3.0000	information_schema	TEMPORARY_TABLES	NAME	varchar	512	1536	utf8mb3	utf8mb3_general_ci	varchar(512)
+NULL	information_schema	TEMPORARY_TABLES	TABLE_ROWS	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	TEMPORARY_TABLES	AVG_ROW_LENGTH	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	TEMPORARY_TABLES	DATA_LENGTH	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	TEMPORARY_TABLES	INDEX_LENGTH	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	TEMPORARY_TABLES	CREATE_TIME	datetime	NULL	NULL	NULL	NULL	datetime
+NULL	information_schema	TEMPORARY_TABLES	UPDATE_TIME	datetime	NULL	NULL	NULL	NULL	datetime
+NULL	information_schema	THREAD_STATISTICS	THREAD_ID	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	THREAD_STATISTICS	TOTAL_CONNECTIONS	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	THREAD_STATISTICS	CONCURRENT_CONNECTIONS	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	THREAD_STATISTICS	CONNECTED_TIME	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	THREAD_STATISTICS	BUSY_TIME	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	THREAD_STATISTICS	CPU_TIME	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	THREAD_STATISTICS	BYTES_RECEIVED	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	THREAD_STATISTICS	BYTES_SENT	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	THREAD_STATISTICS	BINLOG_BYTES_WRITTEN	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	THREAD_STATISTICS	ROWS_FETCHED	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	THREAD_STATISTICS	ROWS_UPDATED	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	THREAD_STATISTICS	TABLE_ROWS_READ	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	THREAD_STATISTICS	SELECT_COMMANDS	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	THREAD_STATISTICS	UPDATE_COMMANDS	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	THREAD_STATISTICS	OTHER_COMMANDS	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	THREAD_STATISTICS	COMMIT_TRANSACTIONS	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	THREAD_STATISTICS	ROLLBACK_TRANSACTIONS	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	THREAD_STATISTICS	DENIED_CONNECTIONS	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	THREAD_STATISTICS	LOST_CONNECTIONS	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	THREAD_STATISTICS	ACCESS_DENIED	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	THREAD_STATISTICS	EMPTY_QUERIES	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	THREAD_STATISTICS	TOTAL_SSL_CONNECTIONS	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
 3.0000	information_schema	TRIGGERS	TRIGGER_CATALOG	varchar	64	192	utf8mb3	utf8mb3_bin	varchar(64)
 3.0000	information_schema	TRIGGERS	TRIGGER_SCHEMA	varchar	64	192	utf8mb3	utf8mb3_bin	varchar(64)
 3.0000	information_schema	TRIGGERS	TRIGGER_NAME	varchar	64	192	utf8mb3	utf8mb3_general_ci	varchar(64)
@@ -1118,6 +1196,28 @@ NULL	information_schema	TRIGGERS	CREATED	timestamp	NULL	NULL	NULL	NULL	timestamp
 3.0118	information_schema	USER_PRIVILEGES	TABLE_CATALOG	varchar	170	512	utf8mb3	utf8mb3_general_ci	varchar(512)
 3.0476	information_schema	USER_PRIVILEGES	PRIVILEGE_TYPE	varchar	21	64	utf8mb3	utf8mb3_general_ci	varchar(64)
 3.0000	information_schema	USER_PRIVILEGES	IS_GRANTABLE	varchar	1	3	utf8mb3	utf8mb3_general_ci	varchar(3)
+3.0000	information_schema	USER_STATISTICS	USER	varchar	96	288	utf8mb3	utf8mb3_general_ci	varchar(96)
+NULL	information_schema	USER_STATISTICS	TOTAL_CONNECTIONS	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	USER_STATISTICS	CONCURRENT_CONNECTIONS	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	USER_STATISTICS	CONNECTED_TIME	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	USER_STATISTICS	BUSY_TIME	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	USER_STATISTICS	CPU_TIME	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	USER_STATISTICS	BYTES_RECEIVED	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	USER_STATISTICS	BYTES_SENT	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	USER_STATISTICS	BINLOG_BYTES_WRITTEN	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	USER_STATISTICS	ROWS_FETCHED	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	USER_STATISTICS	ROWS_UPDATED	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	USER_STATISTICS	TABLE_ROWS_READ	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	USER_STATISTICS	SELECT_COMMANDS	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	USER_STATISTICS	UPDATE_COMMANDS	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	USER_STATISTICS	OTHER_COMMANDS	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	USER_STATISTICS	COMMIT_TRANSACTIONS	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	USER_STATISTICS	ROLLBACK_TRANSACTIONS	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	USER_STATISTICS	DENIED_CONNECTIONS	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	USER_STATISTICS	LOST_CONNECTIONS	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	USER_STATISTICS	ACCESS_DENIED	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	USER_STATISTICS	EMPTY_QUERIES	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
+NULL	information_schema	USER_STATISTICS	TOTAL_SSL_CONNECTIONS	bigint	NULL	NULL	NULL	NULL	bigint(21) unsigned
 3.0000	information_schema	VIEWS	TABLE_CATALOG	varchar	64	192	utf8mb3	utf8mb3_bin	varchar(64)
 3.0000	information_schema	VIEWS	TABLE_SCHEMA	varchar	64	192	utf8mb3	utf8mb3_bin	varchar(64)
 3.0000	information_schema	VIEWS	TABLE_NAME	varchar	64	192	utf8mb3	utf8mb3_bin	varchar(64)
