@@ -769,6 +769,7 @@ MY_COMPILER_DIAGNOSTIC_POP()
 bool os_file_set_nocache(int fd, const char *file_name,
                          const char *operation_name,
                          bool on_error_silent = false);
+
 /** NOTE! Use the corresponding macro os_file_create(), not directly
 this function!
 Opens an existing file or creates a new.
