@@ -25,6 +25,7 @@
 
 #include <stddef.h>
 
+#include "my_systime.h"  //my_getsystime
 #include "mysql/psi/mysql_socket.h"
 #include "mysql/psi/mysql_thread.h"
 #include "mysql_com.h"
@@ -89,6 +90,11 @@ bool One_thread_connection_handler::add_connection(Channel_info *channel_info) {
     end_connection(thd);
   }
   close_connection(thd, 0, false, false);
+
+  if (unlikely(opt_userstat)) {
+    thd->update_stats(false);
+    update_global_user_stats(thd, create_user, my_getsystime());
+  }
 
   thd->release_resources();
   thd_manager->remove_thd(thd);

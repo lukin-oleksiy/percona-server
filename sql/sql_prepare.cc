@@ -168,6 +168,7 @@ When one supplies long data for a placeholder:
 #include "sql/sql_cmd.h"
 #include "sql/sql_cmd_ddl_table.h"
 #include "sql/sql_cmd_dml.h"
+#include "sql/sql_connect.h"  // update_global_user_stats
 #include "sql/sql_const.h"
 #include "sql/sql_cursor.h"  // Server_side_cursor
 #include "sql/sql_db.h"      // mysql_change_db

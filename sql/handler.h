@@ -3195,13 +3195,9 @@ struct handlerton {
 
 #define HTON_SUPPORTS_EXTENDED_KEYS (1 << 10)
 
-/**
-  Engine supports secondary clustered keys.
-*/
-#define HTON_SUPPORTS_CLUSTERED_KEYS (1 << 12)
 // Engine support foreign key constraint.
 
-#define HTON_SUPPORTS_FOREIGN_KEYS (1 << 13)
+#define HTON_SUPPORTS_FOREIGN_KEYS (1 << 11)
 
 /**
   Engine supports atomic DDL. That is rollback of transaction for DDL
@@ -3222,6 +3218,21 @@ struct handlerton {
 
 /** Engine supports table or tablespace encryption . */
 #define HTON_SUPPORTS_TABLE_ENCRYPTION (1 << 16)
+
+struct TABLE_STATS {
+  ulonglong rows_read, rows_changed;
+  ulonglong rows_changed_x_indexes;
+  /* Stores enum db_type, but forward declarations cannot be done */
+  const int engine_type;
+
+  TABLE_STATS(int engine_type_, ulonglong rows_read_, ulonglong rows_changed_,
+              ulonglong rows_changed_x_indexes_)
+  noexcept
+      : rows_read(rows_read_),
+        rows_changed(rows_changed_),
+        rows_changed_x_indexes(rows_changed_x_indexes_),
+        engine_type(engine_type_) {}
+};
 
 constexpr const decltype(handlerton::flags) HTON_SUPPORTS_ENGINE_ATTRIBUTE{
     1 << 17};
@@ -3260,6 +3271,23 @@ inline constexpr const decltype(handlerton::flags)
 /** Whether the secondary engine supports creation of temporary tables. */
 inline constexpr const decltype(handlerton::flags)
     HTON_SECONDARY_SUPPORTS_TEMPORARY_TABLE(1 << 25);
+
+/** Start of Percona specific HTON_* defines */
+
+/**
+  Engine supports compressed columns.
+*/
+#define HTON_SUPPORTS_COMPRESSED_COLUMNS (1 << 30)
+
+/**
+   Set if the storage engine supports 'online' backups. This means that there
+   exists a way to create a consistent copy of its tables without blocking
+   updates to them. If so, statements that update such tables will not be
+   affected by an active LOCK TABLES FOR BACKUP.
+*/
+#define HTON_SUPPORTS_ONLINE_BACKUPS (1 << 31)
+
+/** End of Percona specific HTON_* defines */
 
 /* Whether the handlerton is a secondary engine. */
 inline bool hton_is_secondary_engine(const handlerton *hton) {
@@ -6376,15 +6404,6 @@ class handler {
 
   virtual bool low_byte_first() const { return true; }
   virtual ha_checksum checksum() const { return 0; }
-  void update_global_table_stats();
-  void update_global_index_stats();
-  void update_index_stats(uint current_index) {
-    rows_read++;
-    if (current_index < MAX_KEY)
-      index_rows_read[current_index]++;
-    else
-      index_rows_read[0]++;
-  }
 
   /**
     Check if the table is crashed.
@@ -6394,6 +6413,16 @@ class handler {
   */
 
   virtual bool is_crashed() const { return false; }
+
+  void update_global_table_stats();
+  void update_global_index_stats();
+  void update_index_stats(uint current_index) noexcept {
+    rows_read++;
+    if (current_index < MAX_KEY)
+      index_rows_read[current_index]++;
+    else
+      index_rows_read[0]++;
+  }
 
   /**
     Check if the table can be automatically repaired.

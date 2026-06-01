@@ -1473,6 +1473,8 @@ class THD : public MDL_context_owner,
     return m_SSL;
   }
 
+  bool is_ssl() const noexcept { return m_SSL != nullptr; }
+
   /**
     Asserts that the protocol is of type text or binary and then
     returns the m_protocol casted to Protocol_classic. This method
@@ -2803,6 +2805,8 @@ class THD : public MDL_context_owner,
   int thd_tx_priority;
 
   enum_check_fields check_for_truncated_fields;
+  ha_rows updated_row_count{0};
+  ha_rows sent_row_count_2{0}; /* for userstat */
 
   // For user variables replication
   Prealloced_array<Binlog_user_var_event *, 2> user_var_events;
@@ -2999,6 +3003,48 @@ class THD : public MDL_context_owner,
   /** number of name_const() substitutions, see sp_head.cc:subst_spvars() */
   uint query_name_consts;
 
+  /*
+    Used to update global user stats.  The global user stats are updated
+    occasionally with the 'diff' variables.  After the update, the 'diff'
+    variables are reset to 0.
+  */
+  // Time when the current thread connected to MySQL.
+  ulonglong current_connect_time;
+  // Last time when THD stats were updated in global_user_stats.
+  ulonglong last_global_update_time;
+  // Busy (non-idle) time for just one command.
+  double busy_time{0.0};
+  // Busy time not updated in global_user_stats yet.
+  double diff_total_busy_time;
+  // Cpu (non-idle) time for just one thread.
+  double cpu_time{0.0};
+  // Cpu time not updated in global_user_stats yet.
+  double diff_total_cpu_time;
+  /* bytes counting */
+  ulonglong bytes_received{0};
+  ulonglong diff_total_bytes_received;
+  ulonglong bytes_sent{0};
+  ulonglong diff_total_bytes_sent;
+  ulonglong binlog_bytes_written{0};
+  ulonglong diff_total_binlog_bytes_written;
+
+  // Number of rows not reflected in global_user_stats yet.
+  ha_rows diff_total_sent_rows, diff_total_updated_rows, diff_total_read_rows;
+  // Number of commands not reflected in global_user_stats yet.
+  ulonglong diff_select_commands, diff_update_commands, diff_other_commands;
+  // Number of transactions not reflected in global_user_stats yet.
+  ulonglong diff_commit_trans, diff_rollback_trans;
+  // Number of connection errors not reflected in global_user_stats yet.
+  ulonglong diff_denied_connections, diff_lost_connections;
+  // Number of db access denied, not reflected in global_user_stats yet.
+  ulonglong diff_access_denied_errors;
+  // Number of queries that return 0 rows
+  ulonglong diff_empty_queries;
+
+  // Per account query delay in miliseconds. When not 0, sleep this number of
+  // milliseconds before every SQL command.
+  ulonglong query_delay_millis;
+
   /* Used by the sys_var class to store temporary values */
   union {
     bool bool_value;
@@ -3155,6 +3201,11 @@ class THD : public MDL_context_owner,
   */
   void init_query_mem_roots();
   void cleanup_connection(void);
+  void reset_stats(void) noexcept;
+  void reset_diff_stats(void) noexcept;
+  // ran_command is true when this is called immediately after a
+  // command has been run.
+  void update_stats(bool ran_command) noexcept;
   /**
     Sets the THD::variables values that depend on the protocol
 
