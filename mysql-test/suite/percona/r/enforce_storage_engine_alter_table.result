@@ -36,8 +36,6 @@ WHERE table_schema = DATABASE() AND table_name LIKE 't%';
 engines_match
 1
 SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
-Warnings:
-Warning	3090	Changing sql mode 'NO_AUTO_CREATE_USER' is deprecated. It will be removed in a future release.
 OPTIMIZE TABLE t1;
 Table	Op	Msg_type	Msg_text
 test.t1	optimize	note	Table does not support optimize, doing recreate + analyze instead
@@ -49,8 +47,24 @@ engine_match
 Checking 't1': Column = 'varchar(1)'
 column_match
 1
-ALTER TABLE t1 MODIFY a INT;
-After ALTER TABLE
+ALTER TABLE t1 ADD COLUMN b ENUM('a', 'b'), ALGORITHM=INSTANT;
+After ALTER TABLE with ALGORITHM=INSTANT
+Checking 't1': Engine = 'InnoDB'
+engine_match
+1
+Checking 't1': Column = 'varchar(1)'
+column_match
+1
+ALTER TABLE t1 DROP COLUMN b, ALGORITHM=INPLACE;
+After ALTER TABLE with ALGORITHM=INPLACE
+Checking 't1': Engine = 'InnoDB'
+engine_match
+1
+Checking 't1': Column = 'varchar(1)'
+column_match
+1
+ALTER TABLE t1 MODIFY a INT, ALGORITHM=COPY;
+After ALTER TABLE with ALGORITHM=COPY
 Checking 't1': Engine = 'InnoDB'
 engine_match
 1
@@ -102,8 +116,24 @@ engine_match
 Checking 't4': Column = 'varchar(1)'
 column_match
 1
-ALTER TABLE t4 MODIFY a INT;
-After ALTER TABLE
+ALTER TABLE t4 ADD COLUMN b ENUM('a', 'b'), ALGORITHM=INSTANT;
+After ALTER TABLE with ALGORITHM=INSTANT
+Checking 't4': Engine = 'InnoDB'
+engine_match
+1
+Checking 't4': Column = 'varchar(1)'
+column_match
+1
+ALTER TABLE t4 DROP COLUMN b, ALGORITHM=INPLACE;
+After ALTER TABLE with ALGORITHM=INPLACE
+Checking 't4': Engine = 'InnoDB'
+engine_match
+1
+Checking 't4': Column = 'varchar(1)'
+column_match
+1
+ALTER TABLE t4 MODIFY a INT, ALGORITHM=COPY;
+After ALTER TABLE with ALGORITHM=COPY
 Checking 't4': Engine = 'InnoDB'
 engine_match
 1
@@ -125,8 +155,6 @@ Checking 't6': Column = 'int'
 column_match
 1
 ALTER TABLE t7 ENGINE=Memory;
-Warnings:
-Note	1266	Using storage engine MyISAM for table 't7'
 Checking 't7': Engine = 'MyISAM'
 engine_match
 1
@@ -134,8 +162,6 @@ Checking 't7': Column = 'varchar(1)'
 column_match
 1
 ALTER TABLE t8 MODIFY a INT, ENGINE=Memory;
-Warnings:
-Note	1266	Using storage engine MyISAM for table 't8'
 Checking 't8': Engine = 'MyISAM'
 engine_match
 1
@@ -143,8 +169,6 @@ Checking 't8': Column = 'int'
 column_match
 1
 ALTER TABLE t9 ENGINE=InnoDB;
-Warnings:
-Note	1266	Using storage engine MyISAM for table 't9'
 Checking 't9': Engine = 'MyISAM'
 engine_match
 1
@@ -152,8 +176,6 @@ Checking 't9': Column = 'varchar(1)'
 column_match
 1
 ALTER TABLE t10 MODIFY a INT, ENGINE=InnoDB;
-Warnings:
-Note	1266	Using storage engine MyISAM for table 't10'
 Checking 't10': Engine = 'MyISAM'
 engine_match
 1
