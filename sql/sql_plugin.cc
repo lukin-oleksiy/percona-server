@@ -71,7 +71,8 @@
 #include "prealloced_array.h"
 #include "sql/auth/auth_acls.h"
 #include "sql/auth/auth_common.h"  // check_table_access
-#include "sql/auto_thd.h"          // Auto_THD
+#include "sql/auth/auth_plugin_shutdown.h"
+#include "sql/auto_thd.h"  // Auto_THD
 #include "sql/current_thd.h"
 #include "sql/dd/cache/dictionary_client.h"  // dd::cache::Dictionary_client
 #include "sql/dd/dd_schema.h"                // dd::Schema_MDL_locker
@@ -2062,6 +2063,10 @@ void plugin_shutdown() {
 
   if (initialized) {
     size_t count = plugin_array->size();
+
+    // Stop new auth plugin operations and drain in-flight callbacks first.
+    start_auth_plugin_shutdown_and_wait();
+
     mysql_mutex_lock(&LOCK_plugin);
 
     reap_needed = true;
