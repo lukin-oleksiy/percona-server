@@ -180,6 +180,12 @@ ERROR HY000: Table storage engine for 'memory_summary_by_host_by_event_name' doe
 SELECT TABLE_NAME INTO @table_name FROM table_list WHERE id=61;
 HANDLER performance_schema.memory_summary_by_account_by_event_name OPEN;
 ERROR HY000: Table storage engine for 'memory_summary_by_account_by_event_name' doesn't have this option
+SELECT TABLE_NAME INTO @table_name FROM table_list WHERE id=62;
+HANDLER performance_schema.malloc_stats_totals OPEN;
+ERROR HY000: Table storage engine for 'malloc_stats_totals' doesn't have this option
+SELECT TABLE_NAME INTO @table_name FROM table_list WHERE id=61;
+HANDLER performance_schema.malloc_stats OPEN;
+ERROR HY000: Table storage engine for 'malloc_stats' doesn't have this option
 SELECT TABLE_NAME INTO @table_name FROM table_list WHERE id=60;
 HANDLER performance_schema.log_status OPEN;
 ERROR HY000: Table storage engine for 'log_status' doesn't have this option

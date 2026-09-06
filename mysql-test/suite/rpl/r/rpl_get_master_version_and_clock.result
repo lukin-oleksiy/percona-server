@@ -8,6 +8,7 @@ call mtr.add_suppression("Replica I/O: .* failed with error: Lost connection to 
 call mtr.add_suppression("Fatal error: The replica I/O thread stops because source and replica have equal MySQL server ids; .*");
 call mtr.add_suppression("Replica I/O thread .* register on source");
 call mtr.add_suppression("Unknown system variable 'SERVER_UUID' on source");
+call mtr.add_suppression("Get source clock failed with error");
 include/rpl/stop_replica.inc
 SET @@global.debug= "+d,'debug_lock.before_get_UNIX_TIMESTAMP'";
 include/rpl/start_replica.inc
