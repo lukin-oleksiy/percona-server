@@ -367,7 +367,7 @@ count(*)
 1000
 SHOW STATUS LIKE 'Handler_write';
 Variable_name	Value
-Handler_write	1021
+Handler_write	1011
 FLUSH STATUS;
 SELECT count(*)
 FROM t1 JOIN (
@@ -735,13 +735,13 @@ COUNT(DISTINCT a)
 128
 SHOW STATUS LIKE 'Created_tmp_files';
 Variable_name	Value
-Created_tmp_files	1
+Created_tmp_files	0
 DROP TABLE t1;
 CALL test_hint("SET_VAR(tmp_table_size=1024)", "tmp_table_size");
 VARIABLE_VALUE
 16777216
 VARIABLE_VALUE
-1024
+1048576
 VARIABLE_VALUE
 16777216
 CALL test_hint("SET_VAR(updatable_views_with_limit=NO)", "updatable_views_with_limit");

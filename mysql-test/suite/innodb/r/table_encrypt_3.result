@@ -1434,5 +1434,5 @@ DROP TABLE t1;
 # Removing local configuration file for keyring component: component_keyring_file
 # Restarting server without the manifest file
 # ----------------------------------------------------------------------
-# restart:
+# restart:<hidden args>
 SET GLOBAL innodb_file_per_table=1;

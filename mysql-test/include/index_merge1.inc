@@ -316,6 +316,10 @@ analyze table t1;
 
 --echo #  index_merge on first table in join
 --replace_regex $elide_costs
+if ($index_merge_random_rows_in_EXPLAIN)
+{
+  --replace_regex $elide_costs_and_rows
+}
 explain select * from t0 left join t1 on (t0.key1=t1.key1)
   where t0.key1=3 or t0.key2=4;
 
@@ -323,14 +327,22 @@ select * from t0 left join t1 on (t0.key1=t1.key1)
   where t0.key1=3 or t0.key2=4;
 
 --replace_regex $elide_costs
+if ($index_merge_random_rows_in_EXPLAIN)
+{
+  --replace_regex $elide_costs_and_rows
+}
 explain
 select * from t0,t1 where (t0.key1=t1.key1) and ( t0.key1=3 or t0.key2=4);
 
+
 --echo #  index_merge vs. ref
+if (!$index_merge_random_rows_in_EXPLAIN)
+{
 --replace_regex $elide_costs
 explain
 select * from t0,t1 where (t0.key1=t1.key1) and
   (t0.key1=3 or t0.key2=4) and t1.key1<200;
+}
 
 --echo #  index_merge vs. ref
 --replace_regex $elide_costs
@@ -644,6 +656,7 @@ select * from t1 where a=4 or b=4;
 select * from t1 ignore index(a,b) where a=4 or b=4;
 
 --echo must use union, not sort-union:
+--replace_column 10 # 11 #
 --replace_regex $elide_costs_and_rows
 explain select * from t2 where a=4 or b=4;
 --sorted_result
@@ -692,6 +705,10 @@ analyze table t3;
 -- enable_result_log
 -- enable_query_log
 
+if ($index_merge_random_rows_in_EXPLAIN)
+{
+  --replace_column 10 # 11 #
+}
 --replace_regex $elide_costs
 explain select * from t1 
 where exists (select 1 from t2, t3 
