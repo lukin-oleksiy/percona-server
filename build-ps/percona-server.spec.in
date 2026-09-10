@@ -40,11 +40,12 @@
 
 %global release %{percona_server_version}.%{rpm_release}%{?dist}
 
+# rhel8 or above
 %if 0%{?rhel} >= 8 || 0%{?amzn} >= 2023
 %global add_fido_plugins 1
 %else
 %global add_fido_plugins 0
-%endif # rhel8 or above
+%endif
 
 # By default, a build will be done using the system SSL library
 %{?with_ssl: %global ssl_option -DWITH_SSL=%{with_ssl}}
@@ -755,6 +756,9 @@ rm -rf %{buildroot}/usr/lib/libkmip.a
 rm -rf %{buildroot}/usr/lib/libkmippp.a
 rm -rf %{buildroot}/usr/lib/libkmipclient.a
 rm -rf %{buildroot}/usr/lib/libkmipcore.a
+
+find %{buildroot}%{_datadir}/mysql-test -maxdepth 1 -name 'core*' -exec rm -f {} + 2>/dev/null || :
+
 %if 0%{?tokudb}
   rm -f %{buildroot}%{_prefix}/README.md
   rm -f %{buildroot}%{_prefix}/COPYING.AGPLv3
@@ -780,6 +784,11 @@ rm -rf %{buildroot}/usr/lib/libkmipcore.a
     --suite-timeout=720 --testcase-timeout=30 \
     --clean-vardir
   rm -r $(readlink var) var
+  # Remove any core dump a crashed mysqld may have left directly under
+  # mysql-test/ (outside var/), so it never gets swept into the package.
+  rm -f core*
+  popd
+  popd
 %endif
 
 %pretrans -n percona-server-server
@@ -1135,6 +1144,7 @@ fi
 %attr(755, root, root) %{_libdir}/mysql/plugin/component_audit_log_filter.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/component_test_server_telemetry_metrics.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/component_keyring_file.so
+%attr(755, root, root) %{_libdir}/mysql/plugin/component_percona_keyring_encrypted_file.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/component_test_execute_prepared_statement.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/component_test_execute_regular_statement.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/component_test_mysql_signal_handler.so
@@ -1199,6 +1209,7 @@ fi
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/component_test_server_telemetry_traces.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/component_audit_log_filter.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/component_keyring_file.so
+%attr(755, root, root) %{_libdir}/mysql/plugin/debug/component_percona_keyring_encrypted_file.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/component_test_session_var_service.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/component_test_server_telemetry_logs_client.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/component_test_server_telemetry_logs_export.so
@@ -1228,7 +1239,8 @@ fi
 #%attr(755, root, root) %{_libdir}/mysql/plugin/keyring_okv.so
 #%attr(755, root, root) %{_libdir}/mysql/plugin/keyring_encrypted_file.so
 #%attr(755, root, root) %{_libdir}/mysql/plugin/mysql_clone.so
-#%attr(755, root, root) %{_libdir}/mysql/plugin/thread_pool.so
+%attr(755, root, root) %{_libdir}/mysql/plugin/thread_pool.so
+%attr(755, root, root) %{_libdir}/mysql/plugin/debug/thread_pool.so
 #%attr(755, root, root) %{_libdir}/mysql/plugin/openssl_udf.so
 #%attr(755, root, root) %{_libdir}/mysql/plugin/firewall.so
 #%attr(644, root, root) %{_datadir}/mysql-*/linux_install_firewall.sql
@@ -1364,7 +1376,10 @@ fi
 %{_libdir}/mysql/lib%{shared_lib_pri_name}.so.24*
 #coredumper
 %attr(755, root, root) %{_includedir}/coredumper/coredumper.h
-%ifnarch aarch64
+%ifarch aarch64
+# libcoredumper.a is built but not shipped on aarch64
+%exclude /usr/lib/libcoredumper.a
+%else
 %attr(755, root, root) /usr/lib/libcoredumper.a
 %endif
 
@@ -1377,9 +1392,7 @@ fi
 %attr(755, root, root) %{_libdir}/mysql/plugin/authentication_openid_connect_client.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/authentication_oci_client.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/auth_openid_connect.so
-%attr(755, root, root) %{_libdir}/mysql/plugin/authentication_openid_connect_client.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/auth_openid_connect.so
-%attr(755, root, root) %{_libdir}/mysql/plugin/debug/authentication_openid_connect_client.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/dialog.so
 %if 0%{?add_fido_plugins}
 %attr(755, root, root) %{_libdir}/mysql/private/libfido2.so.1.15.0
