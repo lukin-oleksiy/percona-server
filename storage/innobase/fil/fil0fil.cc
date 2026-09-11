@@ -9046,7 +9046,6 @@ bool Fil_shard::needs_encryption_rotate(fil_space_t *space) {
       "ib_encryption_rotate_skip",
       ib::info(ER_IB_MSG_INJECT_FAILURE, "ib_encryption_rotate_skip");
       return false;);
-
   return true;
 }
 

@@ -419,6 +419,7 @@ void recv_sys_close() {
   if (recv_sys->flush_end != nullptr) {
     os_event_destroy(recv_sys->flush_end);
   }
+
 #endif /* !UNIV_HOTBACKUP */
 
   ut::delete_(recv_sys->dblwr);

@@ -65,6 +65,7 @@
 #include "sql/system_variables.h"
 #include "sql_string.h"
 #include "string_with_len.h"
+#include "strings/m_ctype_internals.h"
 #include "typelib.h"
 #include "unsafe_string_append.h"
 
@@ -100,8 +101,8 @@ class Observe_transmission_guard {
 
     - The event is an `XID_EVENT`
     - The event is an `XA_PREPARE_LOG_EVENT`.
-    - The event is a `QUERY_EVENT` with query equal to "XA COMMIT" or "XA ABORT"
-      or "COMMIT".
+    - The event is a `QUERY_EVENT` with query equal to "XA COMMIT" or
+      "XA ROLLBACK" or "COMMIT".
     - The event is the first `QUERY_EVENT` after a `GTID_EVENT` and the query is
       not "BEGIN" --the statement is a DDL, for instance.
 
@@ -139,7 +140,7 @@ class Observe_transmission_guard {
             m_to_set = (strcmp("BEGIN", ev.query) != 0);
           else
             m_to_set = (strncmp("XA COMMIT", ev.query, 9) == 0) ||
-                       (strncmp("XA ABORT", ev.query, 8) == 0) ||
+                       (strncmp("XA ROLLBACK", ev.query, 11) == 0) ||
                        (strncmp("COMMIT", ev.query, 6) == 0);
           break;
         }
@@ -479,12 +480,12 @@ void Binlog_sender::run() {
   if (reader.is_open()) {
     if (is_fatal_error()) {
       /* output events range to error message */
-      snprintf(error_text, sizeof(error_text),
-               "%s; the first event '%s' at %lld, "
-               "the last event read from '%s' at %lld, "
-               "the last byte read from '%s' at %lld.",
-               m_errmsg, m_start_file, m_start_pos, m_last_file, m_last_pos,
-               log_file, reader.position());
+      my_snprintf_8bit(nullptr, error_text, sizeof(error_text),
+                       "%s; the first event '%s' at %lld, "
+                       "the last event read from '%s' at %lld, "
+                       "the last byte read from '%s' at %lld.",
+                       m_errmsg, m_start_file, m_start_pos, m_last_file,
+                       m_last_pos, log_file, reader.position());
       set_fatal_error(error_text);
     }
 

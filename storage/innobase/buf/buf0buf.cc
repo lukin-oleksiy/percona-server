@@ -1131,7 +1131,7 @@ static buf_chunk_t *buf_chunk_init(
   ulint i;
   ulint size_target;
 
-  mutex_own(&buf_pool->chunks_mutex);
+  ut_ad(mutex_own(&buf_pool->chunks_mutex));
 
   /* Round down to a multiple of page size,
   although it already should be. */

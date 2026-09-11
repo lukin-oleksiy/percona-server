@@ -662,7 +662,7 @@ class Parallel_reader::Scan_ctx {
   Config m_config;
 
   /** Covering transaction. */
-  const trx_t *m_trx{};
+  trx_t *m_trx{};
 
   /** Callback function. */
   F m_f;
