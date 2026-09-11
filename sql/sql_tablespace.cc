@@ -796,9 +796,9 @@ static bool set_table_encryption_type(THD *thd, const dd::Tablespace &ts,
 
   // If the source tablespace encryption type is same as request type.
   dd::String_type source_tablespace_encryption;
-  if (ts.options().exists("encryption"))
+  if (ts.options().exists("encryption")) {
     (void)ts.options().get("encryption", &source_tablespace_encryption);
-  else
+  } else
     source_tablespace_encryption = "N";
   if (dd::is_encrypted(source_tablespace_encryption) == is_request_to_encrypt)
     return false;

@@ -494,7 +494,7 @@ constexpr int my_b_EOF = INT_MIN;
 
 inline int my_b_read(IO_CACHE *info, uchar *buffer, size_t count) {
   assert(info->type != WRITE_CACHE);
-  if (info->read_pos + count <= info->read_end) {
+  if ((size_t)(info->read_end - info->read_pos) >= count) {
     memcpy(buffer, info->read_pos, count);
     info->read_pos += count;
     return 0;
@@ -504,7 +504,7 @@ inline int my_b_read(IO_CACHE *info, uchar *buffer, size_t count) {
 
 inline int my_b_write(IO_CACHE *info, const uchar *buffer, size_t count) {
   assert(info->type != READ_CACHE);
-  if (info->write_pos + count <= info->write_end) {
+  if ((size_t)(info->write_end - info->write_pos) >= count) {
     memcpy(info->write_pos, buffer, count);
     info->write_pos += count;
     return 0;
@@ -526,22 +526,22 @@ inline int my_b_get(IO_CACHE *info) {
   return info->pos_in_file + *info->current_pos - info->request_pos;
 }
 
-inline uchar *my_b_get_buffer_start(const IO_CACHE *info) {
+[[nodiscard]] inline uchar *my_b_get_buffer_start(const IO_CACHE *info) {
   return info->request_pos;
 }
 
-inline size_t my_b_get_bytes_in_buffer(const IO_CACHE *info) {
+[[nodiscard]] inline size_t my_b_get_bytes_in_buffer(const IO_CACHE *info) {
   return info->read_end - my_b_get_buffer_start(info);
 }
 
-inline my_off_t my_b_get_pos_in_file(const IO_CACHE *info) {
+[[nodiscard]] inline my_off_t my_b_get_pos_in_file(const IO_CACHE *info) {
   return info->pos_in_file;
 }
 
 /* tell write offset in the SEQ_APPEND cache */
 int my_b_copy_to_file(IO_CACHE *cache, FILE *file);
 
-inline size_t my_b_bytes_in_cache(const IO_CACHE *info) {
+[[nodiscard]] inline size_t my_b_bytes_in_cache(const IO_CACHE *info) {
   return *info->current_end - *info->current_pos;
 }
 
@@ -745,12 +745,13 @@ my_off_t my_get_ptr(uchar *ptr, size_t pack_length);
                                            my_off_t seek_offset,
                                            bool use_async_io, myf cache_myflags,
                                            PSI_file_key file_key);
-extern int init_io_cache(IO_CACHE *info, File file, size_t cachesize,
-                         enum cache_type type, my_off_t seek_offset,
-                         bool use_async_io, myf cache_myflags);
-extern bool reinit_io_cache(IO_CACHE *info, enum cache_type type,
-                            my_off_t seek_offset, bool use_async_io,
-                            bool clear_cache);
+[[nodiscard]] extern int init_io_cache(IO_CACHE *info, File file,
+                                       size_t cachesize, enum cache_type type,
+                                       my_off_t seek_offset, bool use_async_io,
+                                       myf cache_myflags);
+[[nodiscard]] extern bool reinit_io_cache(IO_CACHE *info, enum cache_type type,
+                                          my_off_t seek_offset,
+                                          bool use_async_io, bool clear_cache);
 extern void setup_io_cache(IO_CACHE *info);
 [[nodiscard]] extern int _my_b_read(IO_CACHE *info, uchar *Buffer,
                                     size_t Count);

@@ -1623,8 +1623,8 @@ bool Query_logger::slow_log_write(THD *thd, const char *query,
   PSI_LogRecord rec(key_slow_query_logger, OTELLogLevel::TLOG_WARN,
                     (query != nullptr && *query != '\0') ? query : "none");
   const bool telemetry_log = rec.check_enabled();
-  const bool legacy_log = thd->enable_slow_log && opt_slow_log &&
-                          ((*slow_log_handler_list) != nullptr);
+  const bool legacy_log =
+      thd->enable_slow_log && ((*slow_log_handler_list) != nullptr);
 
   if (!legacy_log && !telemetry_log) return false;
 
