@@ -156,6 +156,7 @@ component_reference_cache      plugin_output_directory  no  REFERENCE_CACHE_COMP
 
 # keyring file component
 component_keyring_file          plugin_output_directory  yes  KEYRING_FILE_COMPONENT component_keyring_file
+component_keyring_kmip          plugin_output_directory  yes  KEYRING_KMIP_COMPONENT component_keyring_kmip
 
 # a test component for the system variable set service
 component_test_mysql_system_variable_set          plugin_output_directory  no  COMPONENT_TEST_MYSQL_SYSTEM_VARIABLE_SET component_test_mysql_system_variable_set
@@ -235,10 +236,10 @@ auth_pam_compat    plugin_output_directory  no  AUTH_PAM_COMPAT
 authentication_ldap_simple          plugin_output_directory  no  AUTH_LDAP             authentication_ldap_simple
 authentication_ldap_sasl          plugin_output_directory  no  AUTH_LDAP_SASL             authentication_ldap_sasl
 keyring_vault      plugin_output_directory  no  KEYRING_VAULT_PLUGIN keyring_vault
-component_binlog_utils_udf          plugin_output_directory  no  BINLOG_UTILS_UDF_LIB
-component_percona_udf               plugin_output_directory  no  PERCONA_UDF_COMPONENT
 test_udf_wrappers  plugin_output_directory  no  TEST_UDF_WRAPPERS_LIB
 procfs             plugin_output_directory  no  PROCFS_PLUGIN procfs
+component_binlog_utils_udf          plugin_output_directory  no  BINLOG_UTILS_UDF_LIB
+component_percona_udf               plugin_output_directory  no  PERCONA_UDF_COMPONENT
 auth_openid_connect                 plugin_output_directory  no  AUTH_OIDC             auth_openid_connect
 
 # Thread Pool Plugin
