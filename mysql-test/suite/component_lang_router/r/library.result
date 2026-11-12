@@ -1,0 +1,93 @@
+#
+# Language router: CREATE LIBRARY routing (02-router.md section 6, P2-1).
+# ECHO provides the library services, SHOUT does not (like js_lang).
+#
+INSTALL COMPONENT "file://component_test_lang_shout";
+INSTALL COMPONENT "file://component_test_lang_echo";
+INSTALL COMPONENT "file://component_lang_router";
+#
+# 1. ECHO libraries are validated by ECHO.
+#
+CREATE LIBRARY e_lib LANGUAGE ECHO AS $$ any text $$;
+SHOW WARNINGS;
+Level	Code	Message
+CREATE LIBRARY e_bad LANGUAGE ECHO AS $$ SYNTAX_ERROR $$;
+ERROR HY000: ECHO> Syntax error in library body.
+# Language names are case-insensitive.
+CREATE LIBRARY e_lc LANGUAGE echo AS $$ lower case $$;
+SHOW CREATE LIBRARY e_lib;
+Library	sql_mode	Create Library
+e_lib	ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION	CREATE LIBRARY `e_lib`
+    LANGUAGE ECHO
+AS $$ any text $$
+#
+# 2. SHOUT has no library services: the body is stored without
+#    validation, with the same warning as without the router (P2-1).
+#
+CREATE LIBRARY s_lib LANGUAGE SHOUT AS $$ x $$;
+Warnings:
+Warning	6001	Language component: Not available.
+SHOW WARNINGS;
+Level	Code	Message
+Warning	6001	Language component: Not available.
+CREATE LIBRARY s_unchecked LANGUAGE SHOUT AS $$ SYNTAX_ERROR $$;
+Warnings:
+Warning	6001	Language component: Not available.
+SHOW WARNINGS;
+Level	Code	Message
+Warning	6001	Language component: Not available.
+#
+# 3. No backend supports the language: error. (With js_lang alone this
+#    was a warning; with a backend that has library services, as here,
+#    it was already an error.)
+#
+CREATE LIBRARY n_lib LANGUAGE NOPE AS $$ x $$;
+ERROR HY000: Libraries are not supported for NOPE.
+SELECT library_schema, library_name, language
+FROM information_schema.libraries
+WHERE library_schema = 'test' ORDER BY library_name;
+LIBRARY_SCHEMA	LIBRARY_NAME	LANGUAGE
+test	e_lc	ECHO
+test	e_lib	ECHO
+test	s_lib	SHOUT
+test	s_unchecked	SHOUT
+#
+# 4. Backend uninstalled and installed again: the cached backend is
+#    forgotten, then found again.
+#
+UNINSTALL COMPONENT "file://component_test_lang_echo";
+CREATE LIBRARY e_gone LANGUAGE ECHO AS $$ x $$;
+ERROR HY000: Libraries are not supported for ECHO.
+CREATE LIBRARY s_still LANGUAGE SHOUT AS $$ x $$;
+Warnings:
+Warning	6001	Language component: Not available.
+INSTALL COMPONENT "file://component_test_lang_echo";
+CREATE LIBRARY e_back LANGUAGE ECHO AS $$ x $$;
+CREATE LIBRARY e_bad LANGUAGE ECHO AS $$ SYNTAX_ERROR $$;
+ERROR HY000: ECHO> Syntax error in library body.
+#
+# 5. Router uninstalled: SHOUT (the previous default) gets the execution
+#    services back. It has no library services, so the registry makes
+#    ECHO's library services the default, as before the router.
+#
+UNINSTALL COMPONENT "file://component_lang_router";
+CREATE LIBRARY e_after LANGUAGE ECHO AS $$ x $$;
+CREATE LIBRARY s_after LANGUAGE SHOUT AS $$ x $$;
+ERROR HY000: Libraries are not supported for SHOUT.
+CREATE FUNCTION s1(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE SHOUT AS $$ $$;
+SELECT s1('shout is the default again') AS r;
+r
+SHOUT IS THE DEFAULT AGAIN
+DROP FUNCTION s1;
+#
+# Cleanup
+#
+DROP LIBRARY e_lib;
+DROP LIBRARY e_lc;
+DROP LIBRARY s_lib;
+DROP LIBRARY s_unchecked;
+DROP LIBRARY s_still;
+DROP LIBRARY e_back;
+DROP LIBRARY e_after;
+UNINSTALL COMPONENT "file://component_test_lang_echo";
+UNINSTALL COMPONENT "file://component_test_lang_shout";

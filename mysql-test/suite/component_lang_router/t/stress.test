@@ -1,0 +1,166 @@
+--echo #
+--echo # Language router stress test (02-router.md 13.3): 8 connections call
+--echo # ECHO, SHOUT and (if js_lang is built) JS routines in a loop while the
+--echo # default connection installs and uninstalls the router repeatedly.
+--echo # Pass criteria: no crash, no result from a wrong backend, clean end.
+--echo # Errors are expected while the router is not installed (only the
+--echo # default backend, ECHO, is reachable then).
+--echo #
+--echo # Set LANG_ROUTER_STRESS_VERBOSE=1 to print the counters.
+--echo #
+
+--source include/have_test_lang_components.inc
+--source include/have_lang_router_component.inc
+--source include/big_test.inc
+--source include/count_sessions.inc
+
+--let $workers = 8
+--let $rounds = 150
+--let $iterations = 3
+--let $use_js = 0
+if ($JS_LANG_COMPONENT) {
+  --let $use_js = 1
+}
+
+INSTALL COMPONENT "file://component_test_lang_echo";
+INSTALL COMPONENT "file://component_test_lang_shout";
+--disable_query_log
+if ($use_js) {
+  INSTALL COMPONENT "file://component_js_lang";
+}
+--enable_query_log
+INSTALL COMPONENT "file://component_lang_router";
+--disable_query_log
+if ($use_js) {
+  GRANT CREATE_JS_ROUTINE ON *.* TO root@localhost;
+  CREATE FUNCTION j1(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE JS AS $$ return s + "!" $$;
+}
+--enable_query_log
+
+CREATE FUNCTION e1(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE ECHO AS $$ $$;
+CREATE FUNCTION s1(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE SHOUT AS $$ $$;
+CREATE TABLE results (worker INT, wrong INT, errors INT, calls INT);
+
+DELIMITER |;
+CREATE PROCEDURE worker(id INT, n INT, use_js BOOL, max_delay DOUBLE)
+BEGIN
+  DECLARE i INT DEFAULT 0;
+  DECLARE wrong INT DEFAULT 0;
+  DECLARE errs INT DEFAULT 0;
+  DECLARE v VARCHAR(50);
+  DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET errs = errs + 1;
+  # Random start, so the concurrent UNINSTALL of the router comes before,
+  # during or after the creation of the routine handles.
+  DO SLEEP(RAND() * max_delay);
+  WHILE i < n DO
+    SET v = NULL;
+    SET v = e1('echo');
+    IF v IS NOT NULL AND BINARY v <> BINARY 'echo' THEN SET wrong = wrong + 1; END IF;
+    SET v = NULL;
+    SET v = s1('shout');
+    IF v IS NOT NULL AND BINARY v <> BINARY 'SHOUT' THEN SET wrong = wrong + 1; END IF;
+    IF use_js THEN
+      SET v = NULL;
+      SET v = j1('js');
+      IF v IS NOT NULL AND BINARY v <> BINARY 'js!' THEN SET wrong = wrong + 1; END IF;
+    END IF;
+    SET i = i + 1;
+  END WHILE;
+  INSERT INTO results VALUES (id, wrong, errs, n);
+END|
+DELIMITER ;|
+
+--echo # Each round: all workers connect, then the default connection starts
+--echo # to uninstall the router and the workers start a short CALL (in
+--echo # varying order and timing); then
+--echo # the workers disconnect (freeing their handles) and the router is
+--echo # installed again if it was uninstalled.
+--disable_query_log
+--let $uninstalled = 0
+--let $refused = 0
+--let $round = $rounds
+while ($round) {
+  --let $i = $workers
+  while ($i) {
+    --connect (w$i, localhost, root,,test)
+    --dec $i
+  }
+  # Three timings: the workers start first; UNINSTALL starts first and
+  # the workers start after a random delay; UNINSTALL starts first.
+  --let $uninstall_first = `SELECT $round % 3 <> 0`
+  --let $max_delay = `SELECT IF($round % 3 = 1, 0.003, 0)`
+  if ($uninstall_first) {
+    --connection default
+    --send UNINSTALL COMPONENT "file://component_lang_router"
+  }
+  --let $i = $workers
+  while ($i) {
+    --connection w$i
+    --send_eval CALL worker($i, $iterations, $use_js, $max_delay)
+    --dec $i
+  }
+  if (!$uninstall_first) {
+    --connection default
+    --send UNINSTALL COMPONENT "file://component_lang_router"
+  }
+  --let $i = $workers
+  while ($i) {
+    --connection w$i
+    --reap
+    --disconnect w$i
+    --dec $i
+  }
+  --connection default
+  --error 0,ER_COMPONENTS_UNLOAD_CANT_DEINITIALIZE
+  --reap
+  if ($mysql_errno) {
+    --inc $refused
+  }
+  if (!$mysql_errno) {
+    --inc $uninstalled
+    INSTALL COMPONENT "file://component_lang_router";
+  }
+  --dec $round
+}
+--enable_query_log
+--source include/wait_until_count_sessions.inc
+
+--echo # No result came from a wrong backend.
+SELECT COUNT(DISTINCT worker) AS workers, SUM(wrong) AS wrong FROM results;
+if ($LANG_ROUTER_STRESS_VERBOSE) {
+  --echo # rounds: $rounds, router uninstalled: $uninstalled, refused: $refused
+  SELECT SUM(errors) AS errors, SUM(calls) AS calls FROM results;
+  SELECT COUNT(*) AS refused_while_uninstalling FROM performance_schema.error_log WHERE data LIKE '%Uninstall refused: stored programs used the router%';
+}
+
+--echo # All handles are released: the router uninstalls cleanly.
+let $wait_condition = SELECT variable_value = 0 FROM performance_schema.global_status WHERE variable_name = 'Lang_router_live_handles';
+--source include/wait_condition.inc
+UNINSTALL COMPONENT "file://component_lang_router";
+
+--echo #
+--echo # Cleanup
+--echo #
+DROP PROCEDURE worker;
+DROP FUNCTION e1;
+DROP FUNCTION s1;
+DROP TABLE results;
+--disable_query_log
+if ($use_js) {
+  DROP FUNCTION j1;
+  REVOKE CREATE_JS_ROUTINE ON *.* FROM root@localhost;
+  # js_lang refuses UNINSTALL while a session holds a JS context.
+  --disconnect default
+  --source include/wait_until_disconnected.inc
+  --connect (default, localhost, root,,test)
+  UNINSTALL COMPONENT "file://component_js_lang";
+}
+--enable_query_log
+UNINSTALL COMPONENT "file://component_test_lang_shout";
+UNINSTALL COMPONENT "file://component_test_lang_echo";
+--disable_query_log
+if ($use_js) {
+  # js_lang cannot be installed again without a restart.
+  --source include/restart_mysqld_no_echo.inc
+}
+--enable_query_log

@@ -1,0 +1,137 @@
+--echo #
+--echo # Test language backends ECHO and SHOUT without the router.
+--echo # Checks the semantics documented in components/test/test_lang_backend.h
+--echo # and shows the problems the router solves.
+--echo #
+
+--source include/have_test_lang_components.inc
+--source include/count_sessions.inc
+INSTALL COMPONENT "file://component_test_lang_echo";
+
+--echo # Functions: no argument returns the body, first argument is echoed.
+CREATE FUNCTION e_body() RETURNS VARCHAR(50) LANGUAGE ECHO AS $$hello body$$;
+CREATE FUNCTION e_str(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE ECHO AS $$ $$;
+CREATE FUNCTION e_int(i INT) RETURNS VARCHAR(50) LANGUAGE ECHO AS $$ $$;
+CREATE FUNCTION e_big(i BIGINT) RETURNS VARCHAR(50) LANGUAGE ECHO AS $$ $$;
+SELECT e_body() AS body, e_str('abc') AS str, e_int(42) AS i, e_big(-9223372036854775808) AS big;
+SELECT e_str(NULL) IS NULL AS str_null, e_int(NULL) IS NULL AS int_null;
+SELECT e_str('utf8: ÄÖü €') AS utf8;
+
+--echo # Procedures: an OUT or INOUT first parameter receives the body.
+CREATE PROCEDURE e_out(OUT r VARCHAR(50)) LANGUAGE ECHO AS $$echo proc$$;
+CREATE PROCEDURE e_inout(INOUT r VARCHAR(50)) LANGUAGE ECHO AS $$echo inout$$;
+CREATE PROCEDURE e_in(s VARCHAR(50)) LANGUAGE ECHO AS $$does nothing$$;
+CREATE PROCEDURE e_none() LANGUAGE ECHO AS $$does nothing$$;
+CALL e_out(@r1);
+SET @r2 = 'before';
+CALL e_inout(@r2);
+CALL e_in('x');
+CALL e_none();
+SELECT @r1, @r2;
+
+--echo # Error triggers.
+--error ER_LANGUAGE_COMPONENT
+CREATE FUNCTION e_bad() RETURNS INT LANGUAGE ECHO AS $$ SYNTAX_ERROR $$;
+CREATE PROCEDURE e_err() LANGUAGE ECHO AS $$ RUNTIME_ERROR $$;
+--error ER_LANGUAGE_COMPONENT
+CALL e_err();
+--error ER_LANGUAGE_COMPONENT_UNSUPPORTED_LANGUAGE
+CREATE FUNCTION u1() RETURNS INT LANGUAGE NOPE AS $$ $$;
+
+--echo # Libraries (ECHO provides the library services).
+CREATE LIBRARY e_lib LANGUAGE ECHO AS $$ any text $$;
+--error ER_LANGUAGE_COMPONENT
+CREATE LIBRARY e_badlib LANGUAGE ECHO AS $$ SYNTAX_ERROR $$;
+SHOW CREATE LIBRARY e_lib;
+DROP LIBRARY e_lib;
+
+--echo # SQL routines are unaffected.
+CREATE FUNCTION sqlf() RETURNS INT RETURN 42;
+SELECT sqlf();
+
+--echo #
+--echo # UNINSTALL of a backend is refused while a connection holds its
+--echo # routine handles; it succeeds once they are released.
+--echo #
+--connect (con1, localhost, root,,test)
+SELECT e_str('handle in con1') AS r;
+--connection default
+--error ER_COMPONENTS_UNLOAD_CANT_DEINITIALIZE
+UNINSTALL COMPONENT "file://component_test_lang_echo";
+SELECT e_str('ECHO still works') AS r;
+--disconnect con1
+DROP FUNCTION e_body;
+DROP FUNCTION e_str;
+DROP FUNCTION e_int;
+DROP FUNCTION e_big;
+DROP PROCEDURE e_out;
+DROP PROCEDURE e_inout;
+DROP PROCEDURE e_in;
+DROP PROCEDURE e_none;
+DROP PROCEDURE e_err;
+DROP FUNCTION sqlf;
+--echo # Reconnect to release this session's cached routine handles.
+--connect (con2, localhost, root,,test)
+--disconnect default
+--connection con2
+--source include/wait_until_count_sessions.inc
+UNINSTALL COMPONENT "file://component_test_lang_echo";
+
+--echo #
+--echo # SHOUT alone: functions and procedures work. SHOUT has no library
+--echo # services, so CREATE LIBRARY gives a warning and stores the body
+--echo # without validation (today's js_lang behaviour, kept by the router).
+--echo #
+INSTALL COMPONENT "file://component_test_lang_shout";
+CREATE FUNCTION s1(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE SHOUT AS $$ $$;
+CREATE PROCEDURE s_out(OUT r VARCHAR(50)) LANGUAGE SHOUT AS $$shout proc$$;
+SELECT s1('shout') AS r, s1(7) AS i;
+CALL s_out(@r3);
+SELECT @r3;
+CREATE LIBRARY s_lib LANGUAGE SHOUT AS $$ x $$;
+DROP LIBRARY s_lib;
+
+--echo #
+--echo # Problem 1: with two backends only the default one is reachable.
+--echo # SHOUT was installed first, so it is the default; ECHO is unreachable.
+--echo #
+INSTALL COMPONENT "file://component_test_lang_echo";
+--error ER_LANGUAGE_COMPONENT_UNSUPPORTED_LANGUAGE
+CREATE FUNCTION e1(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE ECHO AS $$ $$;
+SELECT s1('shout is still the default') AS r;
+
+--echo #
+--echo # Problem 2: a refused UNINSTALL moves the default. The dynamic loader
+--echo # unregisters SHOUT's services before calling its deinit(); when
+--echo # deinit() refuses, the rollback registers them again but does not make
+--echo # SHOUT the default again (dynamic_loader.cc, unload rollback guard).
+--echo #
+--connect (con3, localhost, root,,test)
+SELECT s1('handle in con3') AS r;
+--connection con2
+--error ER_COMPONENTS_UNLOAD_CANT_DEINITIALIZE
+UNINSTALL COMPONENT "file://component_test_lang_shout";
+--echo # ECHO is now the default: ECHO routines can be created ...
+CREATE FUNCTION e1(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE ECHO AS $$ $$;
+SELECT e1('echo became the default') AS r;
+--echo # ... and SHOUT routines are no longer reachable (ECHO's init refuses).
+--connection con3
+--error ER_LANGUAGE_COMPONENT_UNSUPPORTED_LANGUAGE
+SELECT s1('not reachable');
+--echo # The SHOUT handle cached in con3 is now released through ECHO's
+--echo # deinit, so SHOUT's live-handle count never returns to zero. With
+--echo # real backends this would hand one component another component's
+--echo # handle. The router avoids both problems by routing on the handle.
+--disconnect con3
+--connection con2
+
+--echo # Cleanup: a restart resets the components' state. At shutdown SHOUT's
+--echo # deinit() still refuses (its count is stuck), which is logged.
+call mtr.add_suppression("De-initialization method provided by component 'test_lang_shout' failed");
+call mtr.add_suppression("Failed to shutdown components infrastructure");
+DROP FUNCTION s1;
+DROP FUNCTION e1;
+DROP PROCEDURE s_out;
+--source include/restart_mysqld.inc
+UNINSTALL COMPONENT "file://component_test_lang_shout";
+UNINSTALL COMPONENT "file://component_test_lang_echo";

@@ -1,0 +1,169 @@
+#
+# Language router: routing of external stored programs between two
+# language components (test backends ECHO and SHOUT).
+#
+#
+# 1. Router installed at runtime while ECHO routines are cached:
+#    their handles were created without the router (fallback path).
+#
+INSTALL COMPONENT "file://component_test_lang_echo";
+CREATE FUNCTION e1(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE ECHO AS $$ $$;
+SELECT e1('cached before router') AS r;
+r
+cached before router
+INSTALL COMPONENT "file://component_test_lang_shout";
+CREATE FUNCTION s1(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE SHOUT AS $$ $$;
+ERROR HY000: Language component: Unsupported language 'SHOUT'
+INSTALL COMPONENT "file://component_lang_router";
+SELECT e1('old handle via fallback') AS r;
+r
+old handle via fallback
+#
+# 2. Both languages work, also in one statement and nested.
+#
+CREATE FUNCTION s1(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE SHOUT AS $$ $$;
+CREATE FUNCTION s_int(i INT) RETURNS VARCHAR(50) LANGUAGE SHOUT AS $$ $$;
+CREATE PROCEDURE e_out(OUT r VARCHAR(50)) LANGUAGE ECHO AS $$ran by echo$$;
+CREATE PROCEDURE s_out(OUT r VARCHAR(50)) LANGUAGE SHOUT AS $$ran by shout$$;
+SELECT e1('echo') AS e, s1('shout') AS s, s_int(7) AS i;
+e	s	i
+echo	SHOUT	7
+SELECT e1(s1('nested')) AS es, s1(e1('nested')) AS se;
+es	se
+NESTED	NESTED
+SELECT e1(NULL) IS NULL AS e_null, s1('mixed ÄÖ') AS s_utf8;
+e_null	s_utf8
+1	MIXED ÄÖ
+CALL e_out(@e);
+CALL s_out(@s);
+SELECT @e, @s;
+@e	@s
+ran by echo	RAN BY SHOUT
+# Language names are case-insensitive.
+CREATE FUNCTION lc(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE shout AS $$ $$;
+SELECT lc('lower case language name') AS r;
+r
+LOWER CASE LANGUAGE NAME
+# Errors from backends pass through unchanged.
+CREATE PROCEDURE p_err() LANGUAGE SHOUT AS $$ RUNTIME_ERROR $$;
+CALL p_err();
+ERROR HY000: SHOUT> Runtime error requested by routine body.
+CREATE FUNCTION bad() RETURNS VARCHAR(10) LANGUAGE ECHO AS $$ SYNTAX_ERROR $$;
+ERROR HY000: ECHO> Syntax error in routine body.
+CREATE FUNCTION u1() RETURNS INT LANGUAGE NOPE AS $$ $$;
+ERROR HY000: Language component: Unsupported language 'NOPE'
+# SQL routines still work (deinit fast path).
+CREATE FUNCTION sqlf() RETURNS INT RETURN 42;
+SELECT sqlf(), e1(sqlf()) AS e_of_sql;
+sqlf()	e_of_sql
+42	42
+#
+# 3. UNINSTALL of the router is refused while routed handles are alive;
+#    the router stays the default and keeps working.
+#
+UNINSTALL COMPONENT "file://component_lang_router";
+ERROR HY000: De-initialization method provided by component 'lang_router' failed.
+SELECT e1('router still active') AS e, s1('router still active') AS s;
+e	s
+router still active	ROUTER STILL ACTIVE
+# A backend refusing UNINSTALL does not move the default away from the
+# router (unlike without the router, see backends.test).
+UNINSTALL COMPONENT "file://component_test_lang_shout";
+ERROR HY000: De-initialization method provided by component 'test_lang_shout' failed.
+SELECT e1('still routed') AS e, s1('still routed') AS s;
+e	s
+still routed	STILL ROUTED
+#
+# 4. Restart with all three components persisted: the router is the
+#    default again.
+#
+# restart
+SELECT e1('after restart') AS e, s1('after restart') AS s;
+e	s
+after restart	AFTER RESTART
+CALL s_out(@s2);
+SELECT @s2;
+@s2
+RAN BY SHOUT
+#
+# 5. UNINSTALL of the router after all routed handles are released.
+#    No previous default is known after a restart and no backend
+#    supports JS, so the router names no successor and the registry picks
+#    the first implementation by name: test_lang_echo.
+#
+UNINSTALL COMPONENT "file://component_lang_router";
+# Without the router only ECHO is reachable again.
+SELECT e1('echo is the default again') AS e;
+e
+echo is the default again
+SELECT s1('unreachable');
+ERROR HY000: Language component: Unsupported language 'SHOUT'
+#
+# 6. Reverse order: router installed before any backend.
+#
+DROP FUNCTION e1;
+DROP FUNCTION s1;
+DROP FUNCTION s_int;
+DROP FUNCTION lc;
+DROP FUNCTION sqlf;
+DROP PROCEDURE e_out;
+DROP PROCEDURE s_out;
+DROP PROCEDURE p_err;
+UNINSTALL COMPONENT "file://component_test_lang_shout";
+UNINSTALL COMPONENT "file://component_test_lang_echo";
+INSTALL COMPONENT "file://component_lang_router";
+# No backend yet: no language is supported.
+CREATE FUNCTION e2(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE ECHO AS $$ $$;
+ERROR HY000: Language component: Unsupported language 'ECHO'
+INSTALL COMPONENT "file://component_test_lang_shout";
+INSTALL COMPONENT "file://component_test_lang_echo";
+CREATE FUNCTION e2(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE ECHO AS $$ $$;
+CREATE FUNCTION s2(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE SHOUT AS $$ $$;
+SELECT e2('reverse order') AS e, s2('reverse order') AS s;
+e	s
+reverse order	REVERSE ORDER
+#
+# 7. A backend uninstalled while the router stays: its language becomes
+#    unsupported, the other one keeps working; reinstalling restores it.
+#
+DROP FUNCTION s2;
+UNINSTALL COMPONENT "file://component_test_lang_shout";
+SELECT e2('echo still works') AS e;
+e
+echo still works
+CREATE FUNCTION s_back(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE SHOUT AS $$ $$;
+ERROR HY000: Language component: Unsupported language 'SHOUT'
+INSTALL COMPONENT "file://component_test_lang_shout";
+CREATE FUNCTION s_back(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE SHOUT AS $$ $$;
+SELECT s_back('shout is back') AS s;
+s
+SHOUT IS BACK
+DROP FUNCTION e2;
+DROP FUNCTION s_back;
+UNINSTALL COMPONENT "file://component_lang_router";
+UNINSTALL COMPONENT "file://component_test_lang_shout";
+UNINSTALL COMPONENT "file://component_test_lang_echo";
+#
+# 8. Successor default: the backend that was the default before the
+#    router becomes the default again after it, even though the
+#    registry would otherwise pick test_lang_echo by name.
+#
+INSTALL COMPONENT "file://component_test_lang_shout";
+INSTALL COMPONENT "file://component_test_lang_echo";
+INSTALL COMPONENT "file://component_lang_router";
+CREATE FUNCTION e3(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE ECHO AS $$ $$;
+CREATE FUNCTION s4(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE SHOUT AS $$ $$;
+SELECT e3('with router') AS e, s4('with router') AS s;
+e	s
+with router	WITH ROUTER
+UNINSTALL COMPONENT "file://component_lang_router";
+SELECT s4('shout is the default again') AS s;
+s
+SHOUT IS THE DEFAULT AGAIN
+SELECT e3('unreachable');
+ERROR HY000: Language component: Unsupported language 'ECHO'
+# Cleanup.
+DROP FUNCTION e3;
+DROP FUNCTION s4;
+UNINSTALL COMPONENT "file://component_test_lang_echo";
+UNINSTALL COMPONENT "file://component_test_lang_shout";

@@ -1,0 +1,70 @@
+#
+# Language router stress test (02-router.md 13.3): 8 connections call
+# ECHO, SHOUT and (if js_lang is built) JS routines in a loop while the
+# default connection installs and uninstalls the router repeatedly.
+# Pass criteria: no crash, no result from a wrong backend, clean end.
+# Errors are expected while the router is not installed (only the
+# default backend, ECHO, is reachable then).
+#
+# Set LANG_ROUTER_STRESS_VERBOSE=1 to print the counters.
+#
+INSTALL COMPONENT "file://component_test_lang_echo";
+INSTALL COMPONENT "file://component_test_lang_shout";
+INSTALL COMPONENT "file://component_lang_router";
+CREATE FUNCTION e1(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE ECHO AS $$ $$;
+CREATE FUNCTION s1(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE SHOUT AS $$ $$;
+CREATE TABLE results (worker INT, wrong INT, errors INT, calls INT);
+CREATE PROCEDURE worker(id INT, n INT, use_js BOOL, max_delay DOUBLE)
+BEGIN
+DECLARE i INT DEFAULT 0;
+DECLARE wrong INT DEFAULT 0;
+DECLARE errs INT DEFAULT 0;
+DECLARE v VARCHAR(50);
+DECLARE CONTINUE HANDLER FOR SQLEXCEPTION SET errs = errs + 1;
+# Random start, so the concurrent UNINSTALL of the router comes before,
+# during or after the creation of the routine handles.
+DO SLEEP(RAND() * max_delay);
+WHILE i < n DO
+SET v = NULL;
+SET v = e1('echo');
+IF v IS NOT NULL AND BINARY v <> BINARY 'echo' THEN SET wrong = wrong + 1; END IF;
+SET v = NULL;
+SET v = s1('shout');
+IF v IS NOT NULL AND BINARY v <> BINARY 'SHOUT' THEN SET wrong = wrong + 1; END IF;
+IF use_js THEN
+SET v = NULL;
+SET v = j1('js');
+IF v IS NOT NULL AND BINARY v <> BINARY 'js!' THEN SET wrong = wrong + 1; END IF;
+END IF;
+SET i = i + 1;
+END WHILE;
+INSERT INTO results VALUES (id, wrong, errs, n);
+END|
+Warnings:
+Warning	1287	'BINARY expr' is deprecated and will be removed in a future release. Please use CAST instead
+Warning	1287	'BINARY expr' is deprecated and will be removed in a future release. Please use CAST instead
+Warning	1287	'BINARY expr' is deprecated and will be removed in a future release. Please use CAST instead
+Warning	1287	'BINARY expr' is deprecated and will be removed in a future release. Please use CAST instead
+Warning	1287	'BINARY expr' is deprecated and will be removed in a future release. Please use CAST instead
+Warning	1287	'BINARY expr' is deprecated and will be removed in a future release. Please use CAST instead
+# Each round: all workers connect, then the default connection starts
+# to uninstall the router and the workers start a short CALL (in
+# varying order and timing); then
+# the workers disconnect (freeing their handles) and the router is
+# installed again if it was uninstalled.
+# No result came from a wrong backend.
+SELECT COUNT(DISTINCT worker) AS workers, SUM(wrong) AS wrong FROM results;
+workers	wrong
+8	0
+# All handles are released: the router uninstalls cleanly.
+UNINSTALL COMPONENT "file://component_lang_router";
+#
+# Cleanup
+#
+DROP PROCEDURE worker;
+DROP FUNCTION e1;
+DROP FUNCTION s1;
+DROP TABLE results;
+UNINSTALL COMPONENT "file://component_js_lang";
+UNINSTALL COMPONENT "file://component_test_lang_shout";
+UNINSTALL COMPONENT "file://component_test_lang_echo";

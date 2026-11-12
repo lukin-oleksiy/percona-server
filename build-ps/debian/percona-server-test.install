@@ -15,6 +15,8 @@ usr/lib/mysql/plugin/component_test_backup_lock_service.so
 usr/lib/mysql/plugin/component_test_string_service_charset.so
 usr/lib/mysql/plugin/component_test_string_service_long.so
 usr/lib/mysql/plugin/component_test_string_service.so
+usr/lib/mysql/plugin/component_test_lang_echo.so
+usr/lib/mysql/plugin/component_test_lang_shout.so
 usr/lib/mysql/plugin/component_pfs_example.so
 usr/lib/mysql/plugin/component_pfs_example_component_population.so
 usr/lib/mysql/plugin/component_test_pfs_notification.so
@@ -108,6 +110,8 @@ usr/lib/mysql/plugin/debug/component_test_backup_lock_service.so
 usr/lib/mysql/plugin/debug/component_test_string_service_charset.so
 usr/lib/mysql/plugin/debug/component_test_string_service_long.so
 usr/lib/mysql/plugin/debug/component_test_string_service.so
+usr/lib/mysql/plugin/debug/component_test_lang_echo.so
+usr/lib/mysql/plugin/debug/component_test_lang_shout.so
 usr/lib/mysql/plugin/debug/component_pfs_example.so
 usr/lib/mysql/plugin/debug/component_pfs_example_component_population.so
 usr/lib/mysql/plugin/debug/pfs_example_plugin_employee.so
