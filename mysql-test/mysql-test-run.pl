@@ -326,6 +326,7 @@ our @DEFAULT_SUITES = qw(
   percona-pam-for-mysql
   component_encryption_udf
   component_js_lang
+  component_lang_router
   component_masking_functions
   procfs
   rocksdb

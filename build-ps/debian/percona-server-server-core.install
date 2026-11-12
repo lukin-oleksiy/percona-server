@@ -74,6 +74,7 @@ usr/lib/mysql/plugin/component_test_server_telemetry_logs_client.so
 usr/lib/mysql/plugin/component_test_server_telemetry_logs_export.so
 usr/lib/mysql/plugin/component_connection_control.so
 usr/lib/mysql/plugin/component_classic_hashing.so
+usr/lib/mysql/plugin/component_lang_router.so
 usr/lib/mysql/plugin/group_replication.so
 usr/lib/mysql/plugin/semisync_replica.so
 usr/lib/mysql/plugin/semisync_source.so
@@ -81,6 +82,7 @@ usr/lib/mysql/plugin/semisync_source.so
 # debug plugins
 usr/lib/mysql/plugin/debug/component_mysqlbackup.so
 usr/lib/mysql/plugin/debug/component_percona_telemetry.so
+usr/lib/mysql/plugin/debug/component_lang_router.so
 usr/lib/mysql/plugin/debug/mysql_clone.so
 usr/lib/mysql/plugin/debug/adt_null.so
 usr/lib/mysql/plugin/debug/auth_socket.so

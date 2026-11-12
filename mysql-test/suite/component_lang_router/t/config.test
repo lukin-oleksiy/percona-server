@@ -1,0 +1,147 @@
+--echo #
+--echo # Language router: sysvar lang_router.language_map, status variables and
+--echo # error log messages (02-router.md sections 4 and 9, P2-4, P2-6).
+--echo # Both test backends also support LANGUAGE TWIN: ECHO returns the
+--echo # argument as is, SHOUT upper-cases it.
+--echo #
+
+--source include/have_test_lang_components.inc
+--source include/have_lang_router_component.inc
+--source include/count_sessions.inc
+call mtr.add_suppression("Component lang_router reported");
+
+--let $log_query = SELECT prio, data FROM performance_schema.error_log WHERE data LIKE '%lang_router reported%' AND logged > @log_start ORDER BY logged
+SELECT MAX(logged) INTO @log_start FROM performance_schema.error_log;
+
+--echo #
+--echo # 1. A routine cached before the router (fallback path), then status.
+--echo #
+INSTALL COMPONENT "file://component_test_lang_echo";
+INSTALL COMPONENT "file://component_test_lang_shout";
+CREATE FUNCTION e1(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE ECHO AS $$ $$;
+SELECT e1('before router') AS r;
+INSTALL COMPONENT "file://component_lang_router";
+SELECT @@global.lang_router.language_map;
+SHOW GLOBAL STATUS LIKE 'Lang_router%';
+SELECT e1('fallback') AS r;
+SHOW GLOBAL STATUS LIKE 'Lang_router%';
+
+--echo #
+--echo # 2. Two backends support TWIN and there is no language_map entry: the
+--echo #    first one (registry name order: test_lang_echo) wins, with a
+--echo #    warning in the error log.
+--echo #
+CREATE FUNCTION t1(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE TWIN AS $$ $$;
+SELECT t1('twin') AS r;
+SHOW GLOBAL STATUS LIKE 'Lang_router_languages';
+--eval $log_query
+SELECT MAX(logged) INTO @log_start FROM performance_schema.error_log;
+
+--echo #
+--echo # 3. language_map chooses SHOUT. The cache is cleared; routines already
+--echo #    parsed in a session keep their backend, new ones use the map.
+--echo #
+SET GLOBAL lang_router.language_map = 'twin=test_lang_shout';
+SELECT @@global.lang_router.language_map;
+SHOW GLOBAL STATUS LIKE 'Lang_router_languages';
+SELECT t1('same session, old handle') AS r;
+--connect (con1, localhost, root,,test)
+SELECT t1('new session') AS r;
+--disconnect con1
+--source include/wait_until_disconnected.inc
+--connection default
+--eval $log_query
+SELECT MAX(logged) INTO @log_start FROM performance_schema.error_log;
+
+--echo #
+--echo # 4. Syntax is checked on SET (backends may be installed later, so
+--echo #    unknown component names are accepted).
+--echo #
+--error ER_WRONG_VALUE_FOR_VAR
+SET GLOBAL lang_router.language_map = 'JS';
+--error ER_WRONG_VALUE_FOR_VAR
+SET GLOBAL lang_router.language_map = 'JS=js_lang,js=other';
+--error ER_WRONG_VALUE_FOR_VAR
+SET GLOBAL lang_router.language_map = 'J S=js_lang';
+--error ER_WRONG_VALUE_FOR_VAR
+SET GLOBAL lang_router.language_map = '=js_lang';
+--error ER_WRONG_VALUE_FOR_VAR
+SET GLOBAL lang_router.language_map = 'JS=';
+--error ER_WRONG_VALUE_FOR_VAR
+SET GLOBAL lang_router.language_map = 'JS=js_lang,';
+--error ER_WRONG_VALUE_FOR_VAR
+SET GLOBAL lang_router.language_map = 'JS=js-lang';
+--error ER_GLOBAL_VARIABLE
+SET SESSION lang_router.language_map = 'JS=js_lang';
+SELECT @@global.lang_router.language_map AS unchanged;
+SET GLOBAL lang_router.language_map = ' JS = js_lang , TWIN=test_lang_shout ';
+SELECT @@global.lang_router.language_map;
+SET GLOBAL lang_router.language_map = '';
+SELECT @@global.lang_router.language_map;
+SET GLOBAL lang_router.language_map = DEFAULT;
+SELECT @@global.lang_router.language_map;
+
+--echo #
+--echo # 5. Entries that cannot be used are ignored with a warning, and
+--echo #    discovery decides: a component that is not installed, and one that
+--echo #    does not support the language.
+--echo #
+SET GLOBAL lang_router.language_map = 'TWIN=nope_lang,ECHO=test_lang_shout';
+--connect (con1, localhost, root,,test)
+SELECT t1('twin') AS t, e1('echo') AS e;
+--disconnect con1
+--source include/wait_until_disconnected.inc
+--connection default
+--eval $log_query
+SELECT MAX(logged) INTO @log_start FROM performance_schema.error_log;
+
+--echo #
+--echo # 6. Live handles: the default connection holds t1. Its e1 handle was
+--echo #    created before the router (fallback path) and is not counted.
+--echo #
+SHOW GLOBAL STATUS LIKE 'Lang_router_live_handles';
+--connect (con1, localhost, root,,test)
+SELECT t1('one more') AS r;
+SHOW GLOBAL STATUS LIKE 'Lang_router_live_handles';
+--disconnect con1
+--source include/wait_until_disconnected.inc
+--connection default
+let $wait_condition = SELECT variable_value = 1 FROM performance_schema.global_status WHERE variable_name = 'Lang_router_live_handles';
+--source include/wait_condition.inc
+
+--echo #
+--echo # 7. A persisted value is applied at startup; an invalid value from the
+--echo #    command line is ignored with a warning.
+--echo #
+SET PERSIST lang_router.language_map = 'TWIN=test_lang_shout';
+--source include/restart_mysqld.inc
+SELECT @@global.lang_router.language_map;
+SELECT t1('after restart') AS r;
+RESET PERSIST lang_router.language_map;
+--let $restart_parameters = restart: --loose-lang_router.language_map=TWIN
+--source include/restart_mysqld.inc
+SELECT @@global.lang_router.language_map;
+SELECT t1('invalid value ignored') AS r;
+SELECT prio, data FROM performance_schema.error_log WHERE data LIKE '%language_map%' ORDER BY logged;
+--let $restart_parameters = restart:
+--source include/restart_mysqld.inc
+SELECT MAX(logged) INTO @log_start FROM performance_schema.error_log;
+
+--echo #
+--echo # 8. Router uninstalled: the successor is logged, and the status and
+--echo #    system variables are gone.
+--echo #
+UNINSTALL COMPONENT "file://component_lang_router";
+--eval $log_query
+SHOW GLOBAL STATUS LIKE 'Lang_router%';
+--error ER_UNKNOWN_SYSTEM_VARIABLE
+SELECT @@global.lang_router.language_map;
+
+--echo #
+--echo # Cleanup
+--echo #
+DROP FUNCTION e1;
+DROP FUNCTION t1;
+UNINSTALL COMPONENT "file://component_test_lang_shout";
+UNINSTALL COMPONENT "file://component_test_lang_echo";
+--source include/wait_until_count_sessions.inc

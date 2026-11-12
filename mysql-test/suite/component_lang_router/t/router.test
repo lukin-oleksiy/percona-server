@@ -1,0 +1,175 @@
+--echo #
+--echo # Language router: routing of external stored programs between two
+--echo # language components (test backends ECHO and SHOUT).
+--echo #
+
+--source include/have_test_lang_components.inc
+--source include/have_lang_router_component.inc
+--source include/count_sessions.inc
+
+--echo #
+--echo # 1. Router installed at runtime while ECHO routines are cached:
+--echo #    their handles were created without the router (fallback path).
+--echo #
+INSTALL COMPONENT "file://component_test_lang_echo";
+CREATE FUNCTION e1(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE ECHO AS $$ $$;
+SELECT e1('cached before router') AS r;
+INSTALL COMPONENT "file://component_test_lang_shout";
+--error ER_LANGUAGE_COMPONENT_UNSUPPORTED_LANGUAGE
+CREATE FUNCTION s1(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE SHOUT AS $$ $$;
+
+INSTALL COMPONENT "file://component_lang_router";
+SELECT e1('old handle via fallback') AS r;
+
+--echo #
+--echo # 2. Both languages work, also in one statement and nested.
+--echo #
+CREATE FUNCTION s1(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE SHOUT AS $$ $$;
+CREATE FUNCTION s_int(i INT) RETURNS VARCHAR(50) LANGUAGE SHOUT AS $$ $$;
+CREATE PROCEDURE e_out(OUT r VARCHAR(50)) LANGUAGE ECHO AS $$ran by echo$$;
+CREATE PROCEDURE s_out(OUT r VARCHAR(50)) LANGUAGE SHOUT AS $$ran by shout$$;
+--connect (con1, localhost, root,,test)
+SELECT e1('echo') AS e, s1('shout') AS s, s_int(7) AS i;
+SELECT e1(s1('nested')) AS es, s1(e1('nested')) AS se;
+SELECT e1(NULL) IS NULL AS e_null, s1('mixed ÄÖ') AS s_utf8;
+CALL e_out(@e);
+CALL s_out(@s);
+SELECT @e, @s;
+--echo # Language names are case-insensitive.
+CREATE FUNCTION lc(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE shout AS $$ $$;
+SELECT lc('lower case language name') AS r;
+--echo # Errors from backends pass through unchanged.
+CREATE PROCEDURE p_err() LANGUAGE SHOUT AS $$ RUNTIME_ERROR $$;
+--error ER_LANGUAGE_COMPONENT
+CALL p_err();
+--error ER_LANGUAGE_COMPONENT
+CREATE FUNCTION bad() RETURNS VARCHAR(10) LANGUAGE ECHO AS $$ SYNTAX_ERROR $$;
+--error ER_LANGUAGE_COMPONENT_UNSUPPORTED_LANGUAGE
+CREATE FUNCTION u1() RETURNS INT LANGUAGE NOPE AS $$ $$;
+--echo # SQL routines still work (deinit fast path).
+CREATE FUNCTION sqlf() RETURNS INT RETURN 42;
+SELECT sqlf(), e1(sqlf()) AS e_of_sql;
+
+--echo #
+--echo # 3. UNINSTALL of the router is refused while routed handles are alive;
+--echo #    the router stays the default and keeps working.
+--echo #
+--connection default
+--error ER_COMPONENTS_UNLOAD_CANT_DEINITIALIZE
+UNINSTALL COMPONENT "file://component_lang_router";
+SELECT e1('router still active') AS e, s1('router still active') AS s;
+--echo # A backend refusing UNINSTALL does not move the default away from the
+--echo # router (unlike without the router, see backends.test).
+--error ER_COMPONENTS_UNLOAD_CANT_DEINITIALIZE
+UNINSTALL COMPONENT "file://component_test_lang_shout";
+SELECT e1('still routed') AS e, s1('still routed') AS s;
+--disconnect con1
+
+--echo #
+--echo # 4. Restart with all three components persisted: the router is the
+--echo #    default again.
+--echo #
+--source include/restart_mysqld.inc
+SELECT e1('after restart') AS e, s1('after restart') AS s;
+CALL s_out(@s2);
+SELECT @s2;
+
+--echo #
+--echo # 5. UNINSTALL of the router after all routed handles are released.
+--echo #    No previous default is known after a restart and no backend
+--echo #    supports JS, so the router names no successor and the registry picks
+--echo #    the first implementation by name: test_lang_echo.
+--echo #
+--connect (con2, localhost, root,,test)
+--disconnect default
+--connection con2
+--source include/wait_until_count_sessions.inc
+UNINSTALL COMPONENT "file://component_lang_router";
+--echo # Without the router only ECHO is reachable again.
+SELECT e1('echo is the default again') AS e;
+--error ER_LANGUAGE_COMPONENT_UNSUPPORTED_LANGUAGE
+SELECT s1('unreachable');
+
+--echo #
+--echo # 6. Reverse order: router installed before any backend.
+--echo #
+DROP FUNCTION e1;
+DROP FUNCTION s1;
+DROP FUNCTION s_int;
+DROP FUNCTION lc;
+DROP FUNCTION sqlf;
+DROP PROCEDURE e_out;
+DROP PROCEDURE s_out;
+DROP PROCEDURE p_err;
+--connect (con3, localhost, root,,test)
+--disconnect con2
+--connection con3
+--source include/wait_until_count_sessions.inc
+UNINSTALL COMPONENT "file://component_test_lang_shout";
+UNINSTALL COMPONENT "file://component_test_lang_echo";
+INSTALL COMPONENT "file://component_lang_router";
+--echo # No backend yet: no language is supported.
+--error ER_LANGUAGE_COMPONENT_UNSUPPORTED_LANGUAGE
+CREATE FUNCTION e2(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE ECHO AS $$ $$;
+INSTALL COMPONENT "file://component_test_lang_shout";
+INSTALL COMPONENT "file://component_test_lang_echo";
+CREATE FUNCTION e2(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE ECHO AS $$ $$;
+CREATE FUNCTION s2(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE SHOUT AS $$ $$;
+SELECT e2('reverse order') AS e, s2('reverse order') AS s;
+
+--echo #
+--echo # 7. A backend uninstalled while the router stays: its language becomes
+--echo #    unsupported, the other one keeps working; reinstalling restores it.
+--echo #
+DROP FUNCTION s2;
+--connect (con4, localhost, root,,test)
+--disconnect con3
+--connection con4
+--source include/wait_until_count_sessions.inc
+UNINSTALL COMPONENT "file://component_test_lang_shout";
+SELECT e2('echo still works') AS e;
+--error ER_LANGUAGE_COMPONENT_UNSUPPORTED_LANGUAGE
+CREATE FUNCTION s_back(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE SHOUT AS $$ $$;
+INSTALL COMPONENT "file://component_test_lang_shout";
+CREATE FUNCTION s_back(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE SHOUT AS $$ $$;
+SELECT s_back('shout is back') AS s;
+
+DROP FUNCTION e2;
+DROP FUNCTION s_back;
+--connect (con5, localhost, root,,test)
+--disconnect con4
+--connection con5
+--source include/wait_until_count_sessions.inc
+UNINSTALL COMPONENT "file://component_lang_router";
+UNINSTALL COMPONENT "file://component_test_lang_shout";
+UNINSTALL COMPONENT "file://component_test_lang_echo";
+
+--echo #
+--echo # 8. Successor default: the backend that was the default before the
+--echo #    router becomes the default again after it, even though the
+--echo #    registry would otherwise pick test_lang_echo by name.
+--echo #
+INSTALL COMPONENT "file://component_test_lang_shout";
+INSTALL COMPONENT "file://component_test_lang_echo";
+INSTALL COMPONENT "file://component_lang_router";
+CREATE FUNCTION e3(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE ECHO AS $$ $$;
+CREATE FUNCTION s4(s VARCHAR(50)) RETURNS VARCHAR(50) LANGUAGE SHOUT AS $$ $$;
+SELECT e3('with router') AS e, s4('with router') AS s;
+--connect (con6, localhost, root,,test)
+--disconnect con5
+--connection con6
+--source include/wait_until_count_sessions.inc
+UNINSTALL COMPONENT "file://component_lang_router";
+SELECT s4('shout is the default again') AS s;
+--error ER_LANGUAGE_COMPONENT_UNSUPPORTED_LANGUAGE
+SELECT e3('unreachable');
+
+--echo # Cleanup.
+DROP FUNCTION e3;
+DROP FUNCTION s4;
+--connect (con7, localhost, root,,test)
+--disconnect con6
+--connection con7
+--source include/wait_until_count_sessions.inc
+UNINSTALL COMPONENT "file://component_test_lang_echo";
+UNINSTALL COMPONENT "file://component_test_lang_shout";

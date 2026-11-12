@@ -1146,6 +1146,9 @@ fi
 %attr(755, root, root) %{_libdir}/mysql/plugin/component_test_component_init_then_register.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/component_test_udf_aggregate.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/component_classic_hashing.so
+%if 0%{?js_lang}
+%attr(755, root, root) %{_libdir}/mysql/plugin/component_lang_router.so
+%endif
 %attr(755, root, root) %{_libdir}/mysql/plugin/component_test_mysql_file_service.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/component_telemetry.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/telemetry_client.so
@@ -1170,6 +1173,9 @@ fi
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/component_connection_control.so
 %if 0%{?rhel} >= 8 || 0%{?amzn} >= 2023
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/component_percona_telemetry.so
+%if 0%{?js_lang}
+%attr(755, root, root) %{_libdir}/mysql/plugin/debug/component_lang_router.so
+%endif
 %endif
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/connection_control.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/ddl_rewriter.so
@@ -1433,6 +1439,10 @@ fi
 %attr(755, root, root) %{_libdir}/mysql/plugin/component_test_string_service_charset.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/component_test_string_service_long.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/component_test_string_service.so
+%if 0%{?js_lang}
+%attr(755, root, root) %{_libdir}/mysql/plugin/component_test_lang_echo.so
+%attr(755, root, root) %{_libdir}/mysql/plugin/component_test_lang_shout.so
+%endif
 %attr(755, root, root) %{_libdir}/mysql/plugin/component_pfs_example.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/component_pfs_example_component_population.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/pfs_example_plugin_employee.so
@@ -1521,6 +1531,10 @@ fi
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/component_test_string_service_charset.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/component_test_string_service_long.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/component_test_string_service.so
+%if 0%{?js_lang}
+%attr(755, root, root) %{_libdir}/mysql/plugin/debug/component_test_lang_echo.so
+%attr(755, root, root) %{_libdir}/mysql/plugin/debug/component_test_lang_shout.so
+%endif
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/component_pfs_example.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/component_pfs_example_component_population.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/pfs_example_plugin_employee.so

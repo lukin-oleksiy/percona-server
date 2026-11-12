@@ -140,6 +140,20 @@ MYSQL_ADD_COMPONENT(test_mysql_runtime_error
   MODULE_ONLY
   TEST_ONLY
   )
+# Trivial language backends for testing external stored program routing
+# (component_lang_router: built with WITH_JS_LANG or WITH_LANG_ROUTER).
+IF(WITH_JS_LANG OR WITH_LANG_ROUTER)
+  MYSQL_ADD_COMPONENT(test_lang_echo
+    test_lang_echo.cc
+    MODULE_ONLY
+    TEST_ONLY
+    )
+  MYSQL_ADD_COMPONENT(test_lang_shout
+    test_lang_shout.cc
+    MODULE_ONLY
+    TEST_ONLY
+    )
+ENDIF()
 MYSQL_ADD_COMPONENT(test_udf_aggregate
   test_udf_aggregate.cc
   MODULE_ONLY
