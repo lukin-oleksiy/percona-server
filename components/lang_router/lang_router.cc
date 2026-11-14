@@ -178,12 +178,25 @@ std::optional<bool> with_service(const char *name, const std::string &backend,
 }
 
 /**
+  Whether the backend's services are registered, waiting a moment as
+  with_backend does: a refused UNINSTALL unregisters them for a while, and
+  that must not make the router forget or bypass the backend.
+*/
+bool registered(const std::string &backend) {
+  for (int attempt = 0; attempt < 200; attempt++) {
+    if (Backend_execution(backend).valid()) return true;
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  return false;
+}
+
+/**
   Backend for the language of a library, or "". A cached backend that was
   uninstalled is forgotten and discovery runs once more.
 */
 std::string library_backend(std::string_view language) {
   std::string backend = backend_for(language);
-  if (!backend.empty() && !Backend_execution(backend).valid()) {
+  if (!backend.empty() && !registered(backend)) {
     forget_language(language);
     backend = backend_for(language);
   }
@@ -195,7 +208,8 @@ std::string library_backend(std::string_view language) {
   (Sql_cmd_create_library), this needs both library services.
 */
 bool has_libraries(const std::string &backend) {
-  return Backend_service<Library>(kLibrary, backend).valid() &&
+  return registered(backend) &&
+         Backend_service<Library>(kLibrary, backend).valid() &&
          Backend_service<Library_ext>(kLibraryExt, backend).valid();
 }
 
@@ -352,8 +366,10 @@ class Router_services {
           return s->is_language_supported(language, result);
         }))
       return *r;
-    *result = true;  // the backend went away meanwhile: as without libraries
-    return false;
+    // The backend went away meanwhile: fail closed (its parse checks the
+    // CREATE_<LANGUAGE>_ROUTINE privilege and the syntax).
+    report_no_backend();
+    return true;
   }
 
   static DEFINE_BOOL_METHOD(library_parse, (mysql_cstring_with_length name,
@@ -373,8 +389,8 @@ class Router_services {
           return s->parse(name, language, body);
         }))
       return *r;
-    warn_libraries_not_validated();
-    return false;
+    report_no_backend();  // gone meanwhile: fail closed (as above)
+    return true;
   }
 
   /* external_library_ext */
@@ -400,9 +416,8 @@ class Router_services {
               return s->parse(name, language, body, is_binary, result);
             }))
       return *r;
-    warn_libraries_not_validated();
-    *result = true;
-    return false;
+    report_no_backend();  // gone meanwhile: fail closed (as above)
+    return true;
   }
 };
 

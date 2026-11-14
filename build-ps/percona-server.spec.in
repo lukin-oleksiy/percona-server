@@ -1173,9 +1173,9 @@ fi
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/component_connection_control.so
 %if 0%{?rhel} >= 8 || 0%{?amzn} >= 2023
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/component_percona_telemetry.so
+%endif
 %if 0%{?js_lang}
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/component_lang_router.so
-%endif
 %endif
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/connection_control.so
 %attr(755, root, root) %{_libdir}/mysql/plugin/debug/ddl_rewriter.so
