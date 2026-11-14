@@ -124,7 +124,7 @@ using Language_map = std::map<std::string, std::string>;
   around names allowed; empty text = empty map). Language names are stored
   upper case, implementation names as given.
   @retval true  valid, *map is filled
-  @retval false syntax error or duplicate language
+  @retval false syntax error or duplicate language; *map is empty
 */
 bool parse_language_map(std::string_view text, Language_map *map);
 
