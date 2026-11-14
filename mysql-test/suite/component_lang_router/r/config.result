@@ -117,6 +117,11 @@ SET GLOBAL lang_router.language_map = 'TWIN=nope_lang,ECHO=test_lang_shout';
 SELECT t1('twin') AS t, e1('echo') AS e;
 t	e
 twin	echo
+# The unusable TWIN entry is not cached, so discovery runs again; its
+# warnings are logged once (review 2026-11-14).
+SELECT t1('twin again') AS t;
+t
+twin again
 SELECT prio, data FROM performance_schema.error_log WHERE data LIKE '%lang_router reported%' AND logged > @log_start ORDER BY logged;
 prio	data
 Warning	Component lang_router reported: 'lang_router.language_map entry TWIN=nope_lang is ignored: no installed language component nope_lang supports LANGUAGE TWIN.'
@@ -149,16 +154,17 @@ SELECT t1('after restart') AS r;
 r
 AFTER RESTART
 RESET PERSIST lang_router.language_map;
-# restart: --loose-lang_router.language_map=TWIN
+# None of its entries applies (here ECHO=test_lang_shout would shout).
+# restart: --loose-lang_router.language_map=ECHO=test_lang_shout,TWIN
 SELECT @@global.lang_router.language_map;
 @@global.lang_router.language_map
-TWIN
-SELECT t1('invalid value ignored') AS r;
-r
-invalid value ignored
+ECHO=test_lang_shout,TWIN
+SELECT t1('invalid value ignored') AS r, e1('echo') AS e;
+r	e
+invalid value ignored	echo
 SELECT prio, data FROM performance_schema.error_log WHERE data LIKE '%language_map%' ORDER BY logged;
 prio	data
-Warning	Component lang_router reported: 'lang_router.language_map value 'TWIN' is invalid and is ignored.'
+Warning	Component lang_router reported: 'lang_router.language_map value 'ECHO=test_lang_shout,TWIN' is invalid and is ignored.'
 Warning	Component lang_router reported: 'LANGUAGE TWIN is supported by test_lang_echo, test_lang_shout; using test_lang_echo. Set lang_router.language_map to choose.'
 # restart:
 SELECT MAX(logged) INTO @log_start FROM performance_schema.error_log;

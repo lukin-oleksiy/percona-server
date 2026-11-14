@@ -159,6 +159,25 @@ std::optional<bool> with_backend(const std::string &backend, F &&use) {
 }
 
 /**
+  Runs use(service) with the backend's Service; nullopt if it is not there.
+  Retried like with_backend: has_libraries() may have seen the services just
+  before a refused UNINSTALL unregistered them for a moment.
+*/
+template <typename Service, typename F>
+std::optional<bool> with_service(const char *name, const std::string &backend,
+                                 F &&use) {
+  if (backend.empty()) return std::nullopt;
+  for (int attempt = 0; attempt < 200; attempt++) {
+    {
+      Backend_service<Service> service(name, backend);
+      if (service.valid()) return use(service.get());
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  return std::nullopt;
+}
+
+/**
   Backend for the language of a library, or "". A cached backend that was
   uninstalled is forgotten and discovery runs once more.
 */
@@ -329,8 +348,12 @@ class Router_services {
       *result = true;  // P2-1: parse stores the body with a warning
       return false;
     }
-    return Backend_service<Library>(kLibrary, backend)
-        ->is_language_supported(language, result);
+    if (auto r = with_service<Library>(kLibrary, backend, [&](Library *s) {
+          return s->is_language_supported(language, result);
+        }))
+      return *r;
+    *result = true;  // the backend went away meanwhile: as without libraries
+    return false;
   }
 
   static DEFINE_BOOL_METHOD(library_parse, (mysql_cstring_with_length name,
@@ -346,8 +369,12 @@ class Router_services {
       warn_libraries_not_validated();
       return false;
     }
-    return Backend_service<Library>(kLibrary, backend)
-        ->parse(name, language, body);
+    if (auto r = with_service<Library>(kLibrary, backend, [&](Library *s) {
+          return s->parse(name, language, body);
+        }))
+      return *r;
+    warn_libraries_not_validated();
+    return false;
   }
 
   /* external_library_ext */
@@ -368,8 +395,14 @@ class Router_services {
       *result = true;
       return false;
     }
-    return Backend_service<Library_ext>(kLibraryExt, backend)
-        ->parse(name, language, body, is_binary, result);
+    if (auto r = with_service<Library_ext>(
+            kLibraryExt, backend, [&](Library_ext *s) {
+              return s->parse(name, language, body, is_binary, result);
+            }))
+      return *r;
+    warn_libraries_not_validated();
+    *result = true;
+    return false;
   }
 };
 

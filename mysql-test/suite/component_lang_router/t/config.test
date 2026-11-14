@@ -91,6 +91,12 @@ SET GLOBAL lang_router.language_map = 'TWIN=nope_lang,ECHO=test_lang_shout';
 SELECT t1('twin') AS t, e1('echo') AS e;
 --disconnect con1
 --source include/wait_until_disconnected.inc
+--echo # The unusable TWIN entry is not cached, so discovery runs again; its
+--echo # warnings are logged once (review 2026-11-14).
+--connect (con1, localhost, root,,test)
+SELECT t1('twin again') AS t;
+--disconnect con1
+--source include/wait_until_disconnected.inc
 --connection default
 --eval $log_query
 SELECT MAX(logged) INTO @log_start FROM performance_schema.error_log;
@@ -118,10 +124,11 @@ SET PERSIST lang_router.language_map = 'TWIN=test_lang_shout';
 SELECT @@global.lang_router.language_map;
 SELECT t1('after restart') AS r;
 RESET PERSIST lang_router.language_map;
---let $restart_parameters = restart: --loose-lang_router.language_map=TWIN
+--echo # None of its entries applies (here ECHO=test_lang_shout would shout).
+--let $restart_parameters = restart: --loose-lang_router.language_map=ECHO=test_lang_shout,TWIN
 --source include/restart_mysqld.inc
 SELECT @@global.lang_router.language_map;
-SELECT t1('invalid value ignored') AS r;
+SELECT t1('invalid value ignored') AS r, e1('echo') AS e;
 SELECT prio, data FROM performance_schema.error_log WHERE data LIKE '%language_map%' ORDER BY logged;
 --let $restart_parameters = restart:
 --source include/restart_mysqld.inc

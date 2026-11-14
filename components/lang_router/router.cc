@@ -187,7 +187,9 @@ std::string backend_for(std::string_view language) {
   if (chosen.empty()) {
     if (supporters.empty()) return "";
     chosen = supporters.front();
-    if (supporters.size() > 1)
+    // Once per map version: an unusable map entry is not cached (below),
+    // so this runs again on every lookup until its component is installed.
+    if (supporters.size() > 1 && warn_once(key + " (ambiguous)", version))
       log_warning("LANGUAGE " + key + " is supported by " + join(supporters) +
                   "; using " + chosen +
                   ". Set lang_router.language_map to choose.");
@@ -222,7 +224,8 @@ void clear_language_cache() {
   g_cached_languages = 0;
 }
 
-bool parse_language_map(std::string_view text, Language_map *map) {
+namespace {
+bool parse_entries(std::string_view text, Language_map *map) {
   map->clear();
   if (trim(text).empty()) return true;
   while (true) {
@@ -238,6 +241,13 @@ bool parse_language_map(std::string_view text, Language_map *map) {
     if (comma == std::string_view::npos) return true;
     text.remove_prefix(comma + 1);
   }
+}
+}  // namespace
+
+bool parse_language_map(std::string_view text, Language_map *map) {
+  if (parse_entries(text, map)) return true;
+  map->clear();  // an invalid value applies no entry at all
+  return false;
 }
 
 void set_language_map(Language_map map) {
