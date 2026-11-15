@@ -4004,6 +4004,8 @@ class Item_func_row_count final : public Item_int_func {
 class sp_head;
 class sp_name;
 
+struct Sp_rcontext_reuse;
+
 class Item_func_sp final : public Item_func {
   typedef Item_func super;
 
@@ -4017,6 +4019,9 @@ class Item_func_sp final : public Item_func {
   sp_head *m_sp{nullptr};
   /// The result field of the concrete stored function.
   Field *sp_result_field{nullptr};
+  /// An external routine's runtime context kept for its next call in this
+  /// statement execution (sp_head.cc, Sp_rcontext_reuse).
+  Sp_rcontext_reuse *m_ctx_reuse{nullptr};
   /// true when function execution is deterministic
   bool m_deterministic{false};
 
@@ -4029,6 +4034,7 @@ class Item_func_sp final : public Item_func {
   Item_func_sp(const POS &pos, const LEX_STRING &db_name,
                const LEX_STRING &fn_name, bool use_explicit_name,
                PT_item_list *opt_list);
+  ~Item_func_sp() override;
 
   bool do_itemize(Parse_context *pc, Item **res) override;
   /**

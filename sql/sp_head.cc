@@ -2755,8 +2755,31 @@ bool sp_head::init_external_routine(
   return false;
 }
 
+struct Sp_rcontext_reuse {
+  MEM_ROOT root{key_memory_sp_head_call_root, MEM_ROOT_BLOCK_SIZE};
+  Query_arena arena{&root, Query_arena::STMT_INITIALIZED_FOR_SP};
+  sp_rcontext *ctx{nullptr};
+  const sp_head *sp{nullptr};
+  const Field *return_fld{nullptr};
+
+  void clear() {
+    if (ctx != nullptr) ::destroy_at(ctx);
+    ctx = nullptr;
+    sp = nullptr;
+    return_fld = nullptr;
+    arena.free_items();
+    root.Clear();
+  }
+  ~Sp_rcontext_reuse() { clear(); }
+};
+
+Sp_rcontext_reuse *sp_rcontext_reuse_new() { return new Sp_rcontext_reuse; }
+
+void sp_rcontext_reuse_delete(Sp_rcontext_reuse *reuse) { delete reuse; }
+
 bool sp_head::execute_function(THD *thd, Item **argp, uint argcount,
-                               Field *return_value_fld) {
+                               Field *return_value_fld,
+                               Sp_rcontext_reuse *reuse) {
   ulonglong binlog_save_options = 0;
   bool need_binlog_call = false;
   uint arg_no;
@@ -2796,10 +2819,32 @@ bool sp_head::execute_function(THD *thd, Item **argp, uint argcount,
     return true;
   }
 
-  thd->swap_query_arena(call_arena, &backup_arena);
+  /*
+    An external routine's context may be kept by the caller (reuse) for its
+    next call in this statement execution: built once, in the caller's arena.
+  */
+  if (reuse != nullptr && (is_sql() || reuse->sp != this ||
+                           reuse->return_fld != return_value_fld))
+    reuse->clear();
+  const bool kept = reuse != nullptr && !is_sql();
+  sp_rcontext *func_runtime_ctx = kept ? reuse->ctx : nullptr;
 
-  sp_rcontext *func_runtime_ctx =
-      sp_rcontext::create(thd, m_root_parsing_ctx, return_value_fld);
+  if (func_runtime_ctx != nullptr) {
+    func_runtime_ctx->reset_for_next_call();
+    thd->swap_query_arena(call_arena, &backup_arena);
+  } else {
+    thd->swap_query_arena(kept ? reuse->arena : call_arena, &backup_arena);
+    func_runtime_ctx =
+        sp_rcontext::create(thd, m_root_parsing_ctx, return_value_fld);
+    if (kept) {
+      // Back from the kept arena; the call's own objects go to call_arena.
+      thd->swap_query_arena(backup_arena, &reuse->arena);
+      thd->swap_query_arena(call_arena, &backup_arena);
+      reuse->ctx = func_runtime_ctx;
+      reuse->sp = this;
+      reuse->return_fld = return_value_fld;
+    }
+  }
 
   if (!func_runtime_ctx) {
     thd->swap_query_arena(backup_arena, &call_arena);
@@ -2962,7 +3007,7 @@ bool sp_head::execute_function(THD *thd, Item **argp, uint argcount,
   m_security_ctx.restore_security_context(thd, save_security_ctx);
 
 err_with_cleanup:
-  if (func_runtime_ctx != nullptr) ::destroy_at(func_runtime_ctx);
+  if (func_runtime_ctx != nullptr && !kept) ::destroy_at(func_runtime_ctx);
   call_arena.free_items();
   call_mem_root.Clear();
   thd->sp_runtime_ctx = parent_sp_runtime_ctx;

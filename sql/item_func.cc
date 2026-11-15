@@ -8490,7 +8490,11 @@ bool Item_func_sp::do_itemize(Parse_context *pc, Item **res) {
   return false;
 }
 
+Item_func_sp::~Item_func_sp() { sp_rcontext_reuse_delete(m_ctx_reuse); }
+
 void Item_func_sp::cleanup() {
+  sp_rcontext_reuse_delete(m_ctx_reuse);
+  m_ctx_reuse = nullptr;
   if (sp_result_field != nullptr) {
     sp_result_field->mem_free();
     sp_result_field->table->in_use = nullptr;
@@ -8773,7 +8777,10 @@ bool Item_func_sp::execute_impl(THD *thd) {
     function call into binlog.
   */
   thd->reset_sub_statement_state(&statement_state, SUB_STMT_FUNCTION);
-  err_status = m_sp->execute_function(thd, args, arg_count, sp_result_field);
+  if (m_ctx_reuse == nullptr && !m_sp->is_sql())
+    m_ctx_reuse = sp_rcontext_reuse_new();
+  err_status = m_sp->execute_function(thd, args, arg_count, sp_result_field,
+                                      m_ctx_reuse);
   thd->restore_sub_statement_state(&statement_state);
 
 error:

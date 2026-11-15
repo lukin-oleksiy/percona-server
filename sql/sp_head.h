@@ -57,6 +57,18 @@ class Item_trigger_field;
 class Sroutine_hash_entry;
 class Table_trigger_field_support;
 class THD;
+/**
+  An external-language function's runtime context kept by its caller
+  (Item_func_sp) for the calls of one statement execution, instead of a new
+  one (with its variable table) per call: MySQL's own TODO in
+  sp_head::execute_function, done for routines that are not SQL, which use the
+  context for their parameters and return value only. Freed by
+  sp_rcontext_reuse_delete (Item_func_sp::cleanup).
+*/
+struct Sp_rcontext_reuse;
+Sp_rcontext_reuse *sp_rcontext_reuse_new();
+void sp_rcontext_reuse_delete(Sp_rcontext_reuse *reuse);
+
 class sp_head;
 struct CHARSET_INFO;
 struct MY_BITMAP;
@@ -654,7 +666,8 @@ class sp_head {
     @return Error status.
   */
   bool execute_function(THD *thd, Item **args, uint argcount,
-                        Field *return_fld);
+                        Field *return_fld,
+                        Sp_rcontext_reuse *reuse = nullptr);
 
   /**
     Execute a procedure.
