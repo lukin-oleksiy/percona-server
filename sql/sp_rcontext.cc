@@ -79,6 +79,10 @@ sp_rcontext::~sp_rcontext() {
   // They are allocated in mem roots and will be freed accordingly.
 }
 
+void sp_rcontext::free_var_blobs() {
+  if (m_var_table != nullptr) free_blobs(m_var_table);
+}
+
 sp_rcontext *sp_rcontext::create(THD *thd, const sp_pcontext *root_parsing_ctx,
                                  Field *return_value_fld) {
   sp_rcontext *ctx = new (thd->mem_root)
