@@ -185,6 +185,10 @@ class sp_rcontext {
 
   bool is_return_value_set() const { return m_return_value_set; }
 
+  /// A context kept for the next call of an external routine (sp_head.cc,
+  /// Sp_rcontext_reuse): the per-call state starts again.
+  void reset_for_next_call() { m_return_value_set = false; }
+
   /////////////////////////////////////////////////////////////////////////
   // SQL-handlers.
   /////////////////////////////////////////////////////////////////////////
