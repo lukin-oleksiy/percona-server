@@ -187,7 +187,14 @@ class sp_rcontext {
 
   /// A context kept for the next call of an external routine (sp_head.cc,
   /// Sp_rcontext_reuse): the per-call state starts again.
-  void reset_for_next_call() { m_return_value_set = false; }
+  void reset_for_next_call() {
+    m_return_value_set = false;
+    end_partial_result_set = false;
+  }
+
+  /// After a call of a kept context: the variables' blob buffers are freed, so
+  /// a statement does not hold the largest argument of every call site.
+  void free_var_blobs();
 
   /////////////////////////////////////////////////////////////////////////
   // SQL-handlers.

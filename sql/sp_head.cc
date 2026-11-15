@@ -2773,7 +2773,10 @@ struct Sp_rcontext_reuse {
   ~Sp_rcontext_reuse() { clear(); }
 };
 
-Sp_rcontext_reuse *sp_rcontext_reuse_new() { return new Sp_rcontext_reuse; }
+// Out of memory: nullptr, and the caller uses a context per call as before.
+Sp_rcontext_reuse *sp_rcontext_reuse_new() {
+  return new (std::nothrow) Sp_rcontext_reuse;
+}
 
 void sp_rcontext_reuse_delete(Sp_rcontext_reuse *reuse) { delete reuse; }
 
@@ -2840,9 +2843,13 @@ bool sp_head::execute_function(THD *thd, Item **argp, uint argcount,
       // Back from the kept arena; the call's own objects go to call_arena.
       thd->swap_query_arena(backup_arena, &reuse->arena);
       thd->swap_query_arena(call_arena, &backup_arena);
-      reuse->ctx = func_runtime_ctx;
-      reuse->sp = this;
-      reuse->return_fld = return_value_fld;
+      if (func_runtime_ctx != nullptr) {
+        reuse->ctx = func_runtime_ctx;
+        reuse->sp = this;
+        reuse->return_fld = return_value_fld;
+      } else {
+        reuse->clear();  // what a failed create() left in the kept arena
+      }
     }
   }
 
@@ -3007,7 +3014,12 @@ bool sp_head::execute_function(THD *thd, Item **argp, uint argcount,
   m_security_ctx.restore_security_context(thd, save_security_ctx);
 
 err_with_cleanup:
-  if (func_runtime_ctx != nullptr && !kept) ::destroy_at(func_runtime_ctx);
+  if (func_runtime_ctx != nullptr) {
+    if (kept)
+      func_runtime_ctx->free_var_blobs();
+    else
+      ::destroy_at(func_runtime_ctx);
+  }
   call_arena.free_items();
   call_mem_root.Clear();
   thd->sp_runtime_ctx = parent_sp_runtime_ctx;
