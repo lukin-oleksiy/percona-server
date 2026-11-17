@@ -173,6 +173,30 @@ static auto test_execute_regular_statement(UDF_INIT *, UDF_ARGS *arguments,
           ->lookup_debug_keyword("attribute_get")) {
     output += std::to_string(buffer_capacity) + "\n";
   }
+
+  // For testing the statement's warnings (at most max_error_count are kept)
+  if (SERVICE_PLACEHOLDER(mysql_debug_keyword_service)
+          ->lookup_debug_keyword("warnings")) {
+    auto count = uint32_t{};
+    if (SERVICE_PLACEHOLDER(mysql_stmt_diagnostics)
+            ->num_warnings(statement, &count) != 0)
+      return {};
+    output += "warnings: " + std::to_string(count) + "\n";
+    for (auto i = uint32_t{}; i < count; i++) {
+      auto warning = my_h_warning{};
+      auto code = uint32_t{};
+      auto message = mysql_cstring_with_length{};
+      if (SERVICE_PLACEHOLDER(mysql_stmt_diagnostics)
+                  ->get_warning(statement, i, &warning) != 0 ||
+          SERVICE_PLACEHOLDER(mysql_stmt_diagnostics)
+                  ->warning_code(warning, &code) != 0 ||
+          SERVICE_PLACEHOLDER(mysql_stmt_diagnostics)
+                  ->warning_message(warning, &message) != 0)
+        return {};
+      output += std::to_string(code) + " " +
+                std::string{message.str, message.length} + "\n";
+    }
+  }
 #endif
 
   for (auto i = size_t{}; i < num_result_sets; i++) {

@@ -484,8 +484,19 @@ Statement_handle::Statement_handle(THD *thd, const char *query, size_t length)
       m_protocol(thd, this) {}
 
 auto Statement_handle::copy_warnings() -> void {
-  m_warnings_count = m_diagnostics_area->warn_count(m_thd) -
-                     m_diagnostics_area->error_count(m_thd);
+  // Only the conditions the diagnostics area kept (at most max_error_count)
+  // can be copied: warn_count() counts every condition raised, kept or not,
+  // and counting by it left the entries past max_error_count uninitialized.
+  m_warnings_count = 0;
+  {
+    const Sql_condition *kept;
+    Diagnostics_area::Sql_condition_iterator count_it =
+        m_diagnostics_area->sql_conditions();
+    while ((kept = count_it++))
+      if (kept->severity() == Sql_condition::SL_WARNING ||
+          kept->severity() == Sql_condition::SL_NOTE)
+        m_warnings_count++;
+  }
 
   assert(alloc_root_inited(&m_warning_mem_root));
 
