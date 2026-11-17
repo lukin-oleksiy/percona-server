@@ -203,6 +203,56 @@ SET SESSION DEBUG = '+d,code_coverage';
 SELECT test_execute_prepared_statement("SELECT * FROM mle_db.my_table WHERE col_c = ?", 12);
 ERROR 22003: Parameter index value is out of range in 'statement'
 SET SESSION DEBUG = '-d,code_coverage';
+# Without a cursor (attribute use_cursor = false): the same results, no temporary table
+SELECT test_execute_prepared_statement("SELECT * FROM mle_db.my_table WHERE col_c > ?", 12);
+test_execute_prepared_statement("SELECT * FROM mle_db.my_table WHERE col_c > ?", 12)
+id	col_a	col_b	col_c	col_d
+3	row_c	14	13	1.300000
+4	row_d	15	14	1.400000
+6	row_b	13	13	1.300000
+7	row_c	14	14	1.400000
+8	row_a	13	13	1.300000
+9	row_b	14	14	1.400000
+10	row_c	15	15	1.500000
+13	row_a	15	15	
+
+SET SESSION DEBUG = '+d,no_cursor';
+SELECT test_execute_prepared_statement("SELECT * FROM mle_db.my_table WHERE col_c > ?", 12);
+test_execute_prepared_statement("SELECT * FROM mle_db.my_table WHERE col_c > ?", 12)
+id	col_a	col_b	col_c	col_d
+3	row_c	14	13	1.300000
+4	row_d	15	14	1.400000
+6	row_b	13	13	1.300000
+7	row_c	14	14	1.400000
+8	row_a	13	13	1.300000
+9	row_b	14	14	1.400000
+10	row_c	15	15	1.500000
+13	row_a	15	15	
+
+SELECT test_execute_prepared_statement("SELECT * FROM mle_db.my_table WHERE col_a = ? AND col_c > ?", "row_a", 11);
+test_execute_prepared_statement("SELECT * FROM mle_db.my_table WHERE col_a = ? AND col_c > ?", "row_a", 11)
+id	col_a	col_b	col_c	col_d
+5	row_a	12	12	1.200000
+8	row_a	13	13	1.300000
+13	row_a	15	15	
+
+SELECT test_execute_prepared_statement("SELECT * FROM mle_db.my_table WHERE col_c = ?", 99);
+test_execute_prepared_statement("SELECT * FROM mle_db.my_table WHERE col_c = ?", 99)
+id	col_a	col_b	col_c	col_d
+
+
+# Bind and execute 2nd time, without a cursor
+SET SESSION DEBUG = '+d,second_bind';
+SELECT test_execute_prepared_statement("SELECT * FROM mle_db.my_table WHERE col_b = ?", 12);
+test_execute_prepared_statement("SELECT * FROM mle_db.my_table WHERE col_b = ?", 12)
+id	col_a	col_b	col_c	col_d
+2	row_b	13	12	1.200000
+6	row_b	13	13	1.300000
+8	row_a	13	13	1.300000
+
+SET SESSION DEBUG = '-d,second_bind';
+SET SESSION DEBUG = '-d,no_cursor';
+# temporary tables: with a cursor 1, without 0
 DROP TABLE my_table;
 DROP DATABASE mle_db;
 SET DEBUG='-d,skip_statement_execution_within_UDF_check';

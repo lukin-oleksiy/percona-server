@@ -137,6 +137,24 @@ SET SESSION DEBUG = '+d,code_coverage';
 SELECT test_execute_prepared_statement("SELECT * FROM mle_db.my_table WHERE col_c = ?", 12);
 SET SESSION DEBUG = '-d,code_coverage';
 
+--echo # Without a cursor (attribute use_cursor = false): the same results, no temporary table
+let $tmp0 = query_get_value(SHOW SESSION STATUS LIKE 'Created_tmp_tables', Value, 1);
+SELECT test_execute_prepared_statement("SELECT * FROM mle_db.my_table WHERE col_c > ?", 12);
+let $tmp1 = query_get_value(SHOW SESSION STATUS LIKE 'Created_tmp_tables', Value, 1);
+SET SESSION DEBUG = '+d,no_cursor';
+SELECT test_execute_prepared_statement("SELECT * FROM mle_db.my_table WHERE col_c > ?", 12);
+SELECT test_execute_prepared_statement("SELECT * FROM mle_db.my_table WHERE col_a = ? AND col_c > ?", "row_a", 11);
+SELECT test_execute_prepared_statement("SELECT * FROM mle_db.my_table WHERE col_c = ?", 99);
+let $tmp2 = query_get_value(SHOW SESSION STATUS LIKE 'Created_tmp_tables', Value, 1);
+--echo # Bind and execute 2nd time, without a cursor
+SET SESSION DEBUG = '+d,second_bind';
+SELECT test_execute_prepared_statement("SELECT * FROM mle_db.my_table WHERE col_b = ?", 12);
+SET SESSION DEBUG = '-d,second_bind';
+SET SESSION DEBUG = '-d,no_cursor';
+--expr $with_cursor = $tmp1 - $tmp0
+--expr $without_cursor = $tmp2 - $tmp1
+--echo # temporary tables: with a cursor $with_cursor, without $without_cursor
+
 DROP TABLE my_table;
 DROP DATABASE mle_db;
 

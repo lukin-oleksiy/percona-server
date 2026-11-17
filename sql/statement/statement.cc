@@ -648,6 +648,10 @@ bool Prepared_statement_handle::enable_cursor() {
   */
   if (m_stmt->m_lex->is_explain()) return false;
 
+  // The caller asked for the whole result at execution (attribute
+  // "use_cursor" of the statement service).
+  if (!m_use_cursor) return false;
+
   /*
     Enable cursors only when results are not directly relayed to the client and
     only command is suitable for cursors.
