@@ -111,6 +111,31 @@ test_execute_regular_statement_field_metadata("SELECT col_enum, col_set, col_cha
 col_enum:MYSQL_FIELD_TYPE=254:MYSQL_SP_ARG_TYPE=33554432	col_set:MYSQL_FIELD_TYPE=254:MYSQL_SP_ARG_TYPE=67108864	col_char:MYSQL_FIELD_TYPE=254:MYSQL_SP_ARG_TYPE=4294967296	col_varchar:MYSQL_FIELD_TYPE=15:MYSQL_SP_ARG_TYPE=32768
 
 DROP TABLE my_type_table;
+# Warnings: only those kept in the diagnostics area (max_error_count)
+SET SESSION DEBUG = '+d,warnings';
+SET SESSION max_error_count = 2;
+SELECT test_execute_regular_statement("SELECT CAST('1x' AS SIGNED) AS a, CAST('2x' AS SIGNED) AS b, CAST('3x' AS SIGNED) AS c");
+test_execute_regular_statement("SELECT CAST('1x' AS SIGNED) AS a, CAST('2x' AS SIGNED) AS b, CAST('3x' AS SIGNED) AS c")
+warnings: 2
+1292 Truncated incorrect INTEGER value: '1x'
+1292 Truncated incorrect INTEGER value: '2x'
+a	b	c
+1	2	3
+
+Warnings:
+Warning	1292	Truncated incorrect INTEGER value: '1x'
+Warning	1292	Truncated incorrect INTEGER value: '2x'
+SET SESSION max_error_count = DEFAULT;
+SELECT test_execute_regular_statement("SELECT CAST('4x' AS SIGNED) AS d");
+test_execute_regular_statement("SELECT CAST('4x' AS SIGNED) AS d")
+warnings: 1
+1292 Truncated incorrect INTEGER value: '4x'
+d
+4
+
+Warnings:
+Warning	1292	Truncated incorrect INTEGER value: '4x'
+SET SESSION DEBUG = '-d,warnings';
 SELECT test_execute_regular_statement("DROP PROCEDURE multiple_queries;");
 test_execute_regular_statement("DROP PROCEDURE multiple_queries;")
 Number of affected rows: 0

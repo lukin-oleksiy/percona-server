@@ -69,6 +69,14 @@ SELECT test_execute_regular_statement_field_metadata("SELECT col_enum, col_set, 
 
 DROP TABLE my_type_table;
 
+--echo # Warnings: only those kept in the diagnostics area (max_error_count)
+SET SESSION DEBUG = '+d,warnings';
+SET SESSION max_error_count = 2;
+SELECT test_execute_regular_statement("SELECT CAST('1x' AS SIGNED) AS a, CAST('2x' AS SIGNED) AS b, CAST('3x' AS SIGNED) AS c");
+SET SESSION max_error_count = DEFAULT;
+SELECT test_execute_regular_statement("SELECT CAST('4x' AS SIGNED) AS d");
+SET SESSION DEBUG = '-d,warnings';
+
 SELECT test_execute_regular_statement("DROP PROCEDURE multiple_queries;");
 SELECT test_execute_regular_statement("DROP TABLE my_table;");
 SELECT test_execute_regular_statement("DROP TABLE my_table2;");
