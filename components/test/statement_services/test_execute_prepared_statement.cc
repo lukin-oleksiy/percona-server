@@ -141,6 +141,26 @@ static auto test_execute_prepared_statement(UDF_INIT *, UDF_ARGS *arguments,
           ->get(statement, charset_name_name, &charset_name) != 0)
     return {};
 
+#if !defined(NDEBUG)
+  // For testing a prepared statement without a cursor: the whole result is
+  // collected at execution
+  if (SERVICE_PLACEHOLDER(mysql_debug_keyword_service)
+          ->lookup_debug_keyword("no_cursor")) {
+    auto use_cursor = false;
+    auto use_cursor_name =
+        mysql_cstring_with_length{"use_cursor", strlen("use_cursor")};
+    if (SERVICE_PLACEHOLDER(mysql_stmt_attributes)
+            ->set(statement, use_cursor_name,
+                  static_cast<const void *>(&use_cursor)) != 0)
+      return {};
+    auto got = true;
+    if (SERVICE_PLACEHOLDER(mysql_stmt_attributes)
+            ->get(statement, use_cursor_name, &got) != 0 ||
+        got)
+      return {};
+  }
+#endif
+
   if (SERVICE_PLACEHOLDER(mysql_stmt_execute)->prepare(query, statement) != 0)
     return handle_error(statement, error, result, length);
 

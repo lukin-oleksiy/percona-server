@@ -305,6 +305,20 @@ class Statement_handle {
   }
 
   /**
+   * @brief Set whether a prepared statement that can use a cursor opens one
+   * (the default). Without a cursor, execution collects the whole result in
+   * the result set, as for a regular statement, within the buffer capacity.
+   *
+   * @param use_cursor false: do not open a cursor
+   */
+  void set_use_cursor(bool use_cursor) { m_use_cursor = use_cursor; }
+
+  /**
+   * @brief Whether a prepared statement may open a cursor.
+   */
+  bool is_using_cursor() const { return m_use_cursor; }
+
+  /**
    * @brief Destroy the Statement_handle object
    *
    */
@@ -348,6 +362,11 @@ class Statement_handle {
 
   // Max rows to read per fetch() call.
   size_t m_num_rows_per_fetch = 1;
+
+  // A prepared statement opens a cursor when it can (see enable_cursor()).
+  // Without one, the cursor's temporary table and the row-by-row fetches are
+  // avoided, and the whole result is held in the result set.
+  bool m_use_cursor = true;
 
   CHARSET_INFO *m_expected_charset;
 
