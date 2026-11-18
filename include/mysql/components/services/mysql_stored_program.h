@@ -57,6 +57,8 @@ BEGIN_SERVICE_DEFINITION(mysql_stored_program_metadata_query)
   "sp_type"        -> uint16_t
   "argument_count" -> uint32_t
   "import_count"   -> uint32_t
+  "sp_definer_user" -> mysql_cstring_with_length * (empty while the routine is created)
+  "sp_definer_host" -> mysql_cstring_with_length *
 
   @param [in]  sp_handle Handle to stored procedure structure
   @param [in]  key       Metadata name

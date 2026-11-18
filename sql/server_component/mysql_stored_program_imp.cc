@@ -107,6 +107,10 @@ DEFINE_BOOL_METHOD(mysql_stored_program_metadata_query_imp::get,
   else if (strcmp("argument_count", key) == 0)
     *reinterpret_cast<uint32_t *>(value) =
         sp->get_root_parsing_context()->context_var_count();
+  else if (strcmp("sp_definer_user", key) == 0)
+    *reinterpret_cast<MYSQL_LEX_STRING *>(value) = sp->m_definer_user;
+  else if (strcmp("sp_definer_host", key) == 0)
+    *reinterpret_cast<MYSQL_LEX_STRING *>(value) = sp->m_definer_host;
   else if (strcmp("import_count", key) == 0)
     *reinterpret_cast<uint32_t *>(value) =
         get_libraries_count(sp->m_chistics->get_imported_libraries());

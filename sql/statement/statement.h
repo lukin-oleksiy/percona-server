@@ -240,6 +240,15 @@ class Statement_handle {
   size_t get_capacity() { return m_protocol.get_result_set_capacity(); }
 
   /**
+   * @brief Get the memory in bytes that the buffered results hold now.
+   *
+   * @return size_t
+   */
+  size_t get_result_memory() const {
+    return m_protocol.get_result_set_memory();
+  }
+
+  /**
    * @brief Set thd protocol to enable result pass through.
    *
    * @param use_thd_protocol - parameter that decides if THD protocol should be

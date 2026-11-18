@@ -32,6 +32,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
 #include "mysql/components/services/bits/stored_program_bits.h"
 #include "mysql/components/services/defs/mysql_string_defs.h"
 
+/** The statement attribute "result_memory" is there (mysql_stmt_attributes). */
+#define MYSQL_STMT_ATTR_RESULT_MEMORY "result_memory"
+
 DEFINE_SERVICE_HANDLE(my_h_statement);
 DEFINE_SERVICE_HANDLE(my_h_row);
 DEFINE_SERVICE_HANDLE(my_h_field);
@@ -498,6 +501,9 @@ BEGIN_SERVICE_DEFINITION(mysql_stmt_attributes)
   - Use the existing protocol from thd ("use_thd_protocol" of the input bool type, default: false)
   - Open a cursor for a prepared statement that can use one ("use_cursor" of the input bool type, default: true).
     false: the whole result is collected at execution, as for a regular statement, within the buffer capacity
+  - Read only, "result_memory" (size_t): the memory in bytes that the statement's buffered result sets hold now
+    (0 before the statement is prepared or executed). A caller compiled against this header may ask for it:
+    MYSQL_STMT_ATTR_RESULT_MEMORY is defined.
 
   @param [out] value The value of the attribute
   @retval false success

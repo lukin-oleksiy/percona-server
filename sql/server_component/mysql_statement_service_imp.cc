@@ -221,6 +221,7 @@ MYSQL_TIME convert_to_mysql_time(const mle_time &value) {
   result.minute = value.minute;
   result.second = value.second;
   result.second_part = value.second_part;
+  result.neg = value.neg;  // a negative TIME
   result.time_zone_displacement = value.time_zone_displacement;
   switch (value.time_type) {
     case MYSQL_TIMESTAMP_TYPE_DATE:
@@ -389,6 +390,8 @@ DEFINE_BOOL_METHOD(mysql_stmt_attributes_imp::get,
   if (statement == nullptr) {
     if (strncmp(name.str, "buffer_capacity", name.length) == 0) {
       *reinterpret_cast<size_t *>(value) = service_stmt->capacity;
+    } else if (strncmp(name.str, "result_memory", name.length) == 0) {
+      *reinterpret_cast<size_t *>(value) = 0;
     } else if (strncmp(name.str, "prefetch_rows", name.length) == 0) {
       *reinterpret_cast<size_t *>(value) = service_stmt->num_rows_per_fetch;
     } else if (strncmp(name.str, "use_thd_protocol", name.length) == 0) {
@@ -408,6 +411,8 @@ DEFINE_BOOL_METHOD(mysql_stmt_attributes_imp::get,
   } else {
     if (strncmp(name.str, "buffer_capacity", name.length) == 0) {
       *reinterpret_cast<size_t *>(value) = statement->get_capacity();
+    } else if (strncmp(name.str, "result_memory", name.length) == 0) {
+      *reinterpret_cast<size_t *>(value) = statement->get_result_memory();
     } else if (strncmp(name.str, "prefetch_rows", name.length) == 0) {
       *reinterpret_cast<size_t *>(value) = statement->get_num_rows_per_fetch();
     } else if (strncmp(name.str, "use_thd_protocol", name.length) == 0) {
@@ -858,6 +863,7 @@ auto convert_to_mle_time(const MYSQL_TIME &value) -> mle_time {
   result.minute = value.minute;
   result.second = value.second;
   result.second_part = value.second_part;
+  result.neg = value.neg;  // a negative TIME
   result.time_zone_displacement = value.time_zone_displacement;
   switch (value.time_type) {
     case MYSQL_TIMESTAMP_TYPE_DATE:
