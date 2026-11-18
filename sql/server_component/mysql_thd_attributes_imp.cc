@@ -186,6 +186,10 @@ DEFINE_BOOL_METHOD(mysql_thd_attributes_imp::get,
         }(t->get_stmt_da()->status());
       } else if (!strcmp(name, "is_global_read_lock_acquired")) {
         *((bool *)inout_pvalue) = t->global_read_lock.is_acquired();
+      } else if (!strcmp(name, "main_security_context")) {
+        // The account of the session (its client), also while a stored
+        // program runs under another one (SQL SECURITY DEFINER).
+        *((Security_context **)inout_pvalue) = &t->m_main_security_ctx;
       } else
         return true; /* invalid option */
     }

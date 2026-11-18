@@ -442,6 +442,14 @@ class Protocol_local_v2 final : public Protocol {
   }
 
   /**
+   * @brief The memory the buffered result sets hold now, in bytes (rows,
+   * metadata and their overhead; all result sets of the last execution).
+   */
+  size_t get_result_set_memory() const {
+    return m_result_set_mem_root.allocated_size();
+  }
+
+  /**
    * @brief Clear MEM_ROOT and related members.
    *
    */

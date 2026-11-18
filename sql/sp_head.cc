@@ -1740,6 +1740,10 @@ sp_head::sp_head(MEM_ROOT &&mem_root, enum_sp_type type)
   m_db = NULL_STR;
   m_name = NULL_STR;
   m_qname = NULL_STR;
+  // Not set until the routine is loaded or its CREATE is executed: read by
+  // components before that (mysql_stored_program_metadata_query).
+  m_definer_user = NULL_STR;
+  m_definer_host = NULL_STR;
 
   m_params = NULL_STR;
 

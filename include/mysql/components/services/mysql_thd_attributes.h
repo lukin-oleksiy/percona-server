@@ -138,6 +138,9 @@ BEGIN_SERVICE_DEFINITION(mysql_thd_attributes)
     mysql_cstring_with_length type)
   - Query execution status ("da_status" of the returned uint16 type).
   - SQL Command Number/Enum ("sql_command_id" of the returned uint32 type).
+  - The session's own security context ("main_security_context" of the
+    returned Security_context_handle type): the client's account, also while a
+    stored program runs under its definer's.
 
   @param      thd           Session THD object.
   @param      name          Name of the attribute to be set.
